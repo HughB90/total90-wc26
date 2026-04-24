@@ -12,14 +12,22 @@ export async function POST() {
     const xaiKey = process.env.XAI_API_KEY
     if (!xaiKey) return NextResponse.json({ error: 'XAI_API_KEY not set' }, { status: 500 })
 
-    const prompt = `You are a soccer news aggregator for a World Cup 2026 fantasy app.
-Search X and the web for breaking soccer news from the LAST 2 HOURS.
-Focus on: injuries, suspensions, team selection, transfers, fitness, match results — World Cup 2026 players and teams.
+    const today = new Date().toISOString().split('T')[0]
+    const prompt = `You are a soccer news aggregator for the 2026 FIFA World Cup fantasy app. Today is ${today}.
 
-Return EXACTLY 5 news items as a pure JSON array (no markdown):
-[{"headline":"Short headline max 80 chars","summary":"2-3 sentence summary","category":"injury|transfer|form|suspension|result|general","players":["Name"],"teams":["Team"],"is_breaking":true}]
+Search X (Twitter) and recent news (2025-2026 ONLY) for the latest World Cup 2026 news about:
+- FIFA World Cup 2026 squad selections, injuries, suspensions (hosted USA/Canada/Mexico, starts June 11 2026)
+- Player form and fitness heading into WC2026
+- Manager/coach decisions affecting WC2026 squads
+- Transfer or injury news that affects WC2026 player availability (Jan 2026 onwards)
+- Qualifying results and final 26-man squad confirmations
 
-If nothing breaking, return general World Cup 2026 news.`
+DO NOT return: club league news unrelated to WC2026, news from before 2025, domestic cups.
+
+Return EXACTLY 5 news items as a pure JSON array (no markdown, no code blocks):
+[{"headline":"Punchy headline max 80 chars","summary":"2-3 sentences with specific facts and player/country names","category":"injury|transfer|form|suspension|squad|general","players":["Full Name"],"teams":["Country"],"is_breaking":false}]
+
+Most recent news first.`
 
     const grokRes = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',

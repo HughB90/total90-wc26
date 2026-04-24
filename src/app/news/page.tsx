@@ -66,7 +66,7 @@ export default function NewsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {lastFetch && (
             <span style={{ color: '#4A6080', fontSize: '0.75rem' }}>
-              Updated {new Date(lastFetch).toLocaleTimeString()}
+              Updated {new Date(lastFetch).toLocaleDateString("en-US", {month:"short",day:"numeric"})} at {new Date(lastFetch).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}
             </span>
           )}
           <button
@@ -144,7 +144,7 @@ export default function NewsPage() {
                       </span>
                     )}
                     <span style={{ color: '#4A6080', fontSize: '0.72rem', marginLeft: 'auto' }}>
-                      {new Date(a.published_at).toLocaleTimeString()}
+                      {new Date(a.published_at).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"2-digit"})} {new Date(a.published_at).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}
                     </span>
                   </div>
                   <p style={{ color: '#F0F4FF', fontWeight: 700, fontSize: '0.95rem', margin: '0 0 0.5rem', lineHeight: 1.4 }}>{a.headline}</p>
