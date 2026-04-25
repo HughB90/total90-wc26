@@ -1,4 +1,5 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
@@ -6,312 +7,135 @@ interface Player {
   id: string
   name: string
   nationality: string
-  age?: number
   position: string
   s3_value: number
-  sign_count: number
-  sell_count: number
-  sack_count: number
+  age?: number
 }
 
-type VoteType = 'sign' | 'sell' | 'sack'
-type SortKey = 't90' | 'sign' | 'sack'
-type PositionFilter = 'ALL' | 'FWD' | 'MID' | 'DEF' | 'GK'
+type SortKey = 't90' | 'age'
+type PosFilter = 'All' | 'FWD' | 'MID' | 'DEF' | 'GK'
 
-const positionColors: Record<string, { bg: string; color: string }> = {
-  FWD: { bg: 'rgba(239,68,68,0.15)',  color: '#ef4444' },
-  MID: { bg: 'rgba(0,230,118,0.15)',  color: '#00E676' },
-  DEF: { bg: 'rgba(96,165,250,0.15)', color: '#60A5FA' },
+const posColors: Record<string, { bg: string; color: string }> = {
+  FWD: { bg: 'rgba(239,68,68,0.15)',   color: '#ef4444' },
+  MID: { bg: 'rgba(96,165,250,0.15)',  color: '#60A5FA' },
+  DEF: { bg: 'rgba(0,230,118,0.15)',   color: '#00E676' },
   GK:  { bg: 'rgba(251,191,36,0.15)', color: '#FBBF24' },
 }
 
-function getFingerprint(): string {
-  const key = 's3_fp'
-  if (typeof window === 'undefined') return 'server'
-  let fp = localStorage.getItem(key)
-  if (!fp) {
-    fp = Math.random().toString(36).slice(2) + Date.now().toString(36)
-    localStorage.setItem(key, fp)
-  }
-  return fp
-}
-
-function getVoted(playerId: string): VoteType | null {
-  if (typeof window === 'undefined') return null
-  return (localStorage.getItem(`s3_voted_${playerId}`) as VoteType) || null
-}
-
-function setVoted(playerId: string, vote: VoteType) {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(`s3_voted_${playerId}`, vote)
-  }
+const t90Tier = (score: number) => {
+  if (score >= 100) return { label: '🟡 Elite', color: '#FFD700' }
+  if (score >= 80)  return { label: '🟣 World Class', color: '#C084FC' }
+  if (score >= 60)  return { label: '🔵 Top Tier', color: '#60A5FA' }
+  if (score >= 40)  return { label: '🟢 Quality', color: '#00E676' }
+  return { label: '⚪ Solid', color: '#8899CC' }
 }
 
 export default function S3Page() {
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
-  const [votedMap, setVotedMap] = useState<Record<string, VoteType>>({})
-  const [voting, setVoting] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('t90')
-  const [posFilter, setPosFilter] = useState<PositionFilter>('ALL')
+  const [posFilter, setPosFilter] = useState<PosFilter>('All')
 
-  const loadPlayers = async () => {
-    try {
-      const res = await fetch('/api/s3/players')
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        setPlayers(data)
-        // Load local votes
-        const map: Record<string, VoteType> = {}
-        for (const p of data) {
-          const v = getVoted(p.id)
-          if (v) map[p.id] = v
-        }
-        setVotedMap(map)
-      }
-    } catch {
-      // silent
-    }
-    setLoading(false)
-  }
+  useEffect(() => {
+    fetch('/api/s3/players')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPlayers(d) })
+      .finally(() => setLoading(false))
+  }, [])
 
-  useEffect(() => { loadPlayers() }, [])
-
-  const handleVote = async (playerId: string, vote: VoteType) => {
-    if (voting) return
-    if (votedMap[playerId]) return
-    setVoting(playerId)
-    try {
-      const fp = getFingerprint()
-      const res = await fetch('/api/s3/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId, vote, voterFingerprint: fp }),
-      })
-      const data = await res.json()
-      if (data.ok) {
-        setVoted(playerId, vote)
-        setVotedMap(prev => ({ ...prev, [playerId]: vote }))
-        setPlayers(prev => prev.map(p => {
-          if (p.id !== playerId) return p
-          return {
-            ...p,
-            s3_value: data.newT90 ?? p.s3_value,
-            sign_count: vote === 'sign' ? p.sign_count + 1 : p.sign_count,
-            sell_count: vote === 'sell' ? p.sell_count + 1 : p.sell_count,
-            sack_count: vote === 'sack' ? p.sack_count + 1 : p.sack_count,
-          }
-        }))
-      }
-    } catch {
-      // silent
-    }
-    setVoting(null)
-  }
-
-  const sorted = [...players].sort((a, b) => {
-    if (sortKey === 't90') return b.s3_value - a.s3_value
-    if (sortKey === 'sign') {
-      const ta = a.sign_count + a.sell_count + a.sack_count
-      const tb = b.sign_count + b.sell_count + b.sack_count
-      const pctA = ta > 0 ? a.sign_count / ta : 0
-      const pctB = tb > 0 ? b.sign_count / tb : 0
-      return pctB - pctA
-    }
-    // sack
-    const ta = a.sign_count + a.sell_count + a.sack_count
-    const tb = b.sign_count + b.sell_count + b.sack_count
-    const pctA = ta > 0 ? a.sack_count / ta : 0
-    const pctB = tb > 0 ? b.sack_count / tb : 0
-    return pctB - pctA
-  })
-
-  const filtered = sorted.filter(p => {
-    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.nationality.toLowerCase().includes(search.toLowerCase())
-    const matchPos = posFilter === 'ALL' || p.position === posFilter
-    return matchSearch && matchPos
-  })
-
-  const pillStyle = (active: boolean): React.CSSProperties => ({
-    padding: '0.35rem 0.85rem',
-    borderRadius: '2rem',
-    border: `1px solid ${active ? '#00E676' : '#1E3A6E'}`,
-    backgroundColor: active ? 'rgba(0,230,118,0.12)' : 'transparent',
-    color: active ? '#00E676' : '#8899CC',
-    fontSize: '0.8rem',
-    fontWeight: 600,
-    cursor: 'pointer',
-    background: active ? 'rgba(0,230,118,0.12)' : 'transparent',
-  })
+  const filtered = players
+    .filter(p => {
+      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.nationality.toLowerCase().includes(search.toLowerCase())
+      const matchPos = posFilter === 'All' || p.position === posFilter
+      return matchSearch && matchPos
+    })
+    .sort((a, b) => sortKey === 't90' ? b.s3_value - a.s3_value : (a.age ?? 99) - (b.age ?? 99))
 
   return (
-    <div style={{ backgroundColor: '#0A0F2E', minHeight: '100vh', color: '#F0F4FF', fontFamily: "'Poppins', system-ui, sans-serif" }}>
-      <nav style={{ borderBottom: '1px solid #1E3A6E', padding: '0.875rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', maxWidth: '1100px', margin: '0 auto' }}>
-        <Link href="/" style={{ color: '#00E676', fontWeight: 800, textDecoration: 'none', fontSize: '1rem' }}>
-          TOTAL90 <span style={{ color: '#FBBF24' }}>WC26</span>
+    <div style={{ backgroundColor: '#0A0F2E', minHeight: '100vh', color: '#F0F4FF', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {/* Nav */}
+      <nav style={{ borderBottom: '1px solid #1E3A6E', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+          <img src="/total90-logo-green.png" alt="Total90" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+          <span style={{ color: '#00E676', fontWeight: 800, fontSize: '1rem' }}>TOTAL90</span>
+          <span style={{ color: '#8899CC', fontSize: '0.8rem' }}>WC26</span>
         </Link>
-        <span style={{ color: '#4A6080' }}>/</span>
-        <span style={{ color: '#8899CC', fontSize: '0.9rem' }}>S³ Ratings</span>
+        <div style={{ display: 'flex', gap: '1.25rem' }}>
+          {[['News', '/news'], ['S³ Ratings', '/s3'], ['Bracket', '/bracket'], ['Scores', '/scores']].map(([label, href]) => (
+            <Link key={href} href={href} style={{ color: href === '/s3' ? '#00E676' : '#8899CC', fontSize: '0.85rem', fontWeight: href === '/s3' ? 700 : 400, textDecoration: 'none' }}>{label}</Link>
+          ))}
+        </div>
       </nav>
 
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '1.5rem' }}>
+      <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1.5rem' }}>
         {/* Header */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 0.35rem' }}>📊 S³ Ratings — Sign · Sell · Sack</h1>
-          <p style={{ color: '#8899CC', fontSize: '0.875rem', margin: 0 }}>
-            How does the world rate World Cup 2026 players? Vote on each player&apos;s value.
+        <div style={{ marginBottom: '2rem' }}>
+          <h1 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', fontWeight: 900, margin: '0 0 0.5rem', letterSpacing: '-0.02em' }}>
+            📊 S³ Ratings
+          </h1>
+          <p style={{ color: '#8899CC', fontSize: '1rem', margin: '0 0 0.5rem' }}>
+            Sign · Sell · Sack — Total90 player valuations for World Cup 2026
+          </p>
+          <p style={{ color: '#4A6080', fontSize: '0.8rem', margin: 0 }}>
+            {players.length} players ranked · Voting coming soon
           </p>
         </div>
 
         {/* Controls */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem', alignItems: 'center' }}>
-          {/* Search */}
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="text"
-            placeholder="Search players or teams..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{
-              backgroundColor: '#0F1C4D',
-              border: '1px solid #1E3A6E',
-              borderRadius: '0.75rem',
-              padding: '0.5rem 1rem',
-              color: '#F0F4FF',
-              fontSize: '0.875rem',
-              outline: 'none',
-              minWidth: '200px',
-              flex: 1,
-            }}
+            placeholder="🔍 Search players or nations..."
+            style={{ flex: 1, minWidth: '200px', backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.75rem', padding: '0.6rem 1rem', color: '#F0F4FF', fontSize: '0.875rem', outline: 'none' }}
           />
+          {/* Position filter */}
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            {(['All', 'FWD', 'MID', 'DEF', 'GK'] as PosFilter[]).map(p => (
+              <button key={p} onClick={() => setPosFilter(p)} style={{ padding: '0.4rem 0.75rem', borderRadius: '0.625rem', border: '1px solid', borderColor: posFilter === p ? '#00E676' : '#1E3A6E', backgroundColor: posFilter === p ? 'rgba(0,230,118,0.1)' : 'transparent', color: posFilter === p ? '#00E676' : '#8899CC', cursor: 'pointer', fontSize: '0.78rem', fontWeight: posFilter === p ? 700 : 400, fontFamily: 'inherit' }}>{p}</button>
+            ))}
+          </div>
           {/* Sort */}
           <div style={{ display: 'flex', gap: '0.4rem' }}>
-            {(['t90', 'sign', 'sack'] as SortKey[]).map(k => (
-              <button key={k} onClick={() => setSortKey(k)} style={pillStyle(sortKey === k)}>
-                {k === 't90' ? 'By T90' : k === 'sign' ? 'By Sign %' : 'By Sack %'}
-              </button>
+            {[['t90', 'By T90'], ['age', 'By Age']] .map(([k, label]) => (
+              <button key={k} onClick={() => setSortKey(k as SortKey)} style={{ padding: '0.4rem 0.75rem', borderRadius: '0.625rem', border: '1px solid', borderColor: sortKey === k ? '#FBBF24' : '#1E3A6E', backgroundColor: sortKey === k ? 'rgba(251,191,36,0.1)' : 'transparent', color: sortKey === k ? '#FBBF24' : '#8899CC', cursor: 'pointer', fontSize: '0.78rem', fontWeight: sortKey === k ? 700 : 400, fontFamily: 'inherit' }}>{label}</button>
             ))}
           </div>
         </div>
 
-        {/* Position filters */}
-        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {(['ALL', 'FWD', 'MID', 'DEF', 'GK'] as PositionFilter[]).map(pos => (
-            <button key={pos} onClick={() => setPosFilter(pos)} style={pillStyle(posFilter === pos)}>
-              {pos}
-            </button>
-          ))}
-        </div>
-
+        {/* Player list */}
         {loading ? (
-          <p style={{ color: '#8899CC', textAlign: 'center', padding: '3rem 0' }}>Loading players…</p>
+          <div style={{ textAlign: 'center', padding: '4rem', color: '#8899CC' }}>Loading {638} players...</div>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem 0' }}>
-            <p style={{ color: '#8899CC' }}>
-              {players.length === 0
-                ? 'No players yet. The S³ player database will be populated before the World Cup.'
-                : 'No players match your search.'}
-            </p>
-          </div>
+          <div style={{ textAlign: 'center', padding: '4rem', color: '#8899CC' }}>No players found.</div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: '1rem',
-          }}>
-            {filtered.map(p => {
-              const total = p.sign_count + p.sell_count + p.sack_count
-              const signPct = total > 0 ? Math.round((p.sign_count / total) * 100) : 0
-              const sellPct = total > 0 ? Math.round((p.sell_count / total) * 100) : 0
-              const sackPct = total > 0 ? Math.round((p.sack_count / total) * 100) : 0
-              const myVote = votedMap[p.id] || null
-              const posColor = positionColors[p.position] || positionColors.MID
-
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {filtered.map((p, idx) => {
+              const tier = t90Tier(p.s3_value)
+              const posStyle = posColors[p.position] || posColors.MID
+              const globalRank = players.indexOf(p) + 1
               return (
-                <div key={p.id} style={{
-                  backgroundColor: '#0F1C4D',
-                  border: '1px solid #1E3A6E',
-                  borderRadius: '1.25rem',
-                  padding: '1.25rem',
-                }}>
-                  {/* Header row */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                    <div>
-                      <p style={{ margin: '0 0 0.3rem', fontWeight: 700, fontSize: '0.975rem' }}>{p.name}</p>
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '0.5rem', backgroundColor: posColor.bg, color: posColor.color }}>
-                          {p.position}
-                        </span>
-                        <span style={{ fontSize: '0.75rem', color: '#8899CC' }}>{p.nationality}</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#FBBF24', lineHeight: 1 }}>{p.s3_value}</p>
-                      <p style={{ margin: '0.15rem 0 0', fontSize: '0.65rem', color: '#4A6080' }}>T90</p>
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.75rem 1.25rem' }}>
+                  {/* Rank */}
+                  <span style={{ color: '#4A6080', fontSize: '0.8rem', fontWeight: 700, width: '28px', flexShrink: 0, textAlign: 'right' }}>#{globalRank}</span>
+
+                  {/* Name + nationality */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                    <div style={{ color: '#8899CC', fontSize: '0.75rem', marginTop: '0.1rem' }}>
+                      {p.nationality}{p.age ? ` · Age ${p.age}` : ''}
                     </div>
                   </div>
 
-                  {/* Bar chart */}
-                  <div style={{ marginBottom: '0.75rem' }}>
-                    {/* Sign bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                      <span style={{ fontSize: '0.7rem', color: '#00E676', width: '38px' }}>Sign</span>
-                      <div style={{ flex: 1, backgroundColor: '#162040', borderRadius: '0.25rem', height: '6px', overflow: 'hidden' }}>
-                        <div style={{ width: `${signPct}%`, height: '100%', backgroundColor: '#00E676', borderRadius: '0.25rem' }} />
-                      </div>
-                      <span style={{ fontSize: '0.7rem', color: '#8899CC', width: '28px', textAlign: 'right' }}>{signPct}%</span>
-                    </div>
-                    {/* Sell bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                      <span style={{ fontSize: '0.7rem', color: '#60A5FA', width: '38px' }}>Sell</span>
-                      <div style={{ flex: 1, backgroundColor: '#162040', borderRadius: '0.25rem', height: '6px', overflow: 'hidden' }}>
-                        <div style={{ width: `${sellPct}%`, height: '100%', backgroundColor: '#60A5FA', borderRadius: '0.25rem' }} />
-                      </div>
-                      <span style={{ fontSize: '0.7rem', color: '#8899CC', width: '28px', textAlign: 'right' }}>{sellPct}%</span>
-                    </div>
-                    {/* Sack bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '0.7rem', color: '#ef4444', width: '38px' }}>Sack</span>
-                      <div style={{ flex: 1, backgroundColor: '#162040', borderRadius: '0.25rem', height: '6px', overflow: 'hidden' }}>
-                        <div style={{ width: `${sackPct}%`, height: '100%', backgroundColor: '#ef4444', borderRadius: '0.25rem' }} />
-                      </div>
-                      <span style={{ fontSize: '0.7rem', color: '#8899CC', width: '28px', textAlign: 'right' }}>{sackPct}%</span>
-                    </div>
-                    <p style={{ color: '#4A6080', fontSize: '0.7rem', margin: '0.4rem 0 0' }}>{total} vote{total !== 1 ? 's' : ''}</p>
-                  </div>
+                  {/* Position badge */}
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '0.4rem', backgroundColor: posStyle.bg, color: posStyle.color, flexShrink: 0 }}>{p.position}</span>
 
-                  {/* Vote buttons */}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {(['sign', 'sell', 'sack'] as VoteType[]).map(v => {
-                      const isMyVote = myVote === v
-                      const voted = !!myVote
-                      const labels: Record<VoteType, string> = { sign: '✅ Sign', sell: '💰 Sell', sack: '❌ Sack' }
-                      const colors: Record<VoteType, { active: string; border: string }> = {
-                        sign: { active: '#00E676', border: '#00E676' },
-                        sell: { active: '#60A5FA', border: '#60A5FA' },
-                        sack: { active: '#ef4444', border: '#ef4444' },
-                      }
-                      return (
-                        <button
-                          key={v}
-                          onClick={() => !voted && handleVote(p.id, v)}
-                          disabled={voted || voting === p.id}
-                          style={{
-                            flex: 1,
-                            padding: '0.45rem 0.25rem',
-                            borderRadius: '0.75rem',
-                            border: `1px solid ${isMyVote ? colors[v].border : '#1E3A6E'}`,
-                            backgroundColor: isMyVote ? `rgba(${v === 'sign' ? '0,230,118' : v === 'sell' ? '96,165,250' : '239,68,68'},0.18)` : '#162040',
-                            color: isMyVote ? colors[v].active : voted ? '#3A4A6E' : '#8899CC',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            cursor: voted ? 'default' : 'pointer',
-                          }}
-                        >
-                          {labels[v]}
-                        </button>
-                      )
-                    })}
+                  {/* T90 + tier */}
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ color: tier.color, fontWeight: 800, fontSize: '1rem' }}>{p.s3_value}</div>
+                    <div style={{ color: '#4A6080', fontSize: '0.65rem' }}>{tier.label.split(' ').slice(1).join(' ')}</div>
                   </div>
                 </div>
               )
