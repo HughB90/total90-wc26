@@ -5,7 +5,8 @@ import Link from 'next/link'
 interface Player {
   id: string
   name: string
-  team: string
+  nationality: string
+  age?: number
   position: string
   s3_value: number
   sign_count: number
@@ -127,7 +128,7 @@ export default function S3Page() {
   })
 
   const filtered = sorted.filter(p => {
-    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.team.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.nationality.toLowerCase().includes(search.toLowerCase())
     const matchPos = posFilter === 'ALL' || p.position === posFilter
     return matchSearch && matchPos
   })
@@ -241,7 +242,7 @@ export default function S3Page() {
                         <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '0.5rem', backgroundColor: posColor.bg, color: posColor.color }}>
                           {p.position}
                         </span>
-                        <span style={{ fontSize: '0.75rem', color: '#8899CC' }}>{p.team}</span>
+                        <span style={{ fontSize: '0.75rem', color: '#8899CC' }}>{p.nationality}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>

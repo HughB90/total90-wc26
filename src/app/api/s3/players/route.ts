@@ -11,7 +11,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('s3_players')
-      .select('id, name, team, position, s3_value, sign_count, sell_count, sack_count')
+      .select('id, name, nationality, position, s3_value, age, is_active')
       .order('s3_value', { ascending: false })
 
     if (error) {

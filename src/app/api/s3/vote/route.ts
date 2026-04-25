@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     // Fetch current player
     const { data: player, error: fetchErr } = await supabase
       .from('s3_players')
-      .select('s3_value, sign_count, sell_count, sack_count')
+      .select('s3_value, vote_count')
       .eq('id', playerId)
       .single()
 
@@ -43,10 +43,8 @@ export async function POST(request: Request) {
     const t90Delta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
     const updates: Record<string, number> = {
       s3_value: (player.s3_value || 1000) + t90Delta,
+      vote_count: (player.vote_count || 0) + 1,
     }
-    if (vote === 'sign') updates.sign_count = (player.sign_count || 0) + 1
-    if (vote === 'sell') updates.sell_count = (player.sell_count || 0) + 1
-    if (vote === 'sack') updates.sack_count = (player.sack_count || 0) + 1
 
     const { error: updateErr } = await supabase
       .from('s3_players')
