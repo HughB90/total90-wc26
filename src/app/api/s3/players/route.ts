@@ -11,8 +11,8 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('s3_players')
-      .select('id, name, team, position, elo_score, sign_count, sell_count, sack_count')
-      .order('elo_score', { ascending: false })
+      .select('id, name, team, position, s3_value, sign_count, sell_count, sack_count')
+      .order('s3_value', { ascending: false })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

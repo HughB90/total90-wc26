@@ -7,14 +7,14 @@ interface Player {
   name: string
   team: string
   position: string
-  elo_score: number
+  s3_value: number
   sign_count: number
   sell_count: number
   sack_count: number
 }
 
 type VoteType = 'sign' | 'sell' | 'sack'
-type SortKey = 'elo' | 'sign' | 'sack'
+type SortKey = 't90' | 'sign' | 'sack'
 type PositionFilter = 'ALL' | 'FWD' | 'MID' | 'DEF' | 'GK'
 
 const positionColors: Record<string, { bg: string; color: string }> = {
@@ -52,7 +52,7 @@ export default function S3Page() {
   const [votedMap, setVotedMap] = useState<Record<string, VoteType>>({})
   const [voting, setVoting] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('elo')
+  const [sortKey, setSortKey] = useState<SortKey>('t90')
   const [posFilter, setPosFilter] = useState<PositionFilter>('ALL')
 
   const loadPlayers = async () => {
@@ -96,7 +96,7 @@ export default function S3Page() {
           if (p.id !== playerId) return p
           return {
             ...p,
-            elo_score: data.newElo ?? p.elo_score,
+            s3_value: data.newT90 ?? p.s3_value,
             sign_count: vote === 'sign' ? p.sign_count + 1 : p.sign_count,
             sell_count: vote === 'sell' ? p.sell_count + 1 : p.sell_count,
             sack_count: vote === 'sack' ? p.sack_count + 1 : p.sack_count,
@@ -110,7 +110,7 @@ export default function S3Page() {
   }
 
   const sorted = [...players].sort((a, b) => {
-    if (sortKey === 'elo') return b.elo_score - a.elo_score
+    if (sortKey === 't90') return b.s3_value - a.s3_value
     if (sortKey === 'sign') {
       const ta = a.sign_count + a.sell_count + a.sack_count
       const tb = b.sign_count + b.sell_count + b.sack_count
@@ -185,9 +185,9 @@ export default function S3Page() {
           />
           {/* Sort */}
           <div style={{ display: 'flex', gap: '0.4rem' }}>
-            {(['elo', 'sign', 'sack'] as SortKey[]).map(k => (
+            {(['t90', 'sign', 'sack'] as SortKey[]).map(k => (
               <button key={k} onClick={() => setSortKey(k)} style={pillStyle(sortKey === k)}>
-                {k === 'elo' ? 'By ELO' : k === 'sign' ? 'By Sign %' : 'By Sack %'}
+                {k === 't90' ? 'By T90' : k === 'sign' ? 'By Sign %' : 'By Sack %'}
               </button>
             ))}
           </div>
@@ -245,8 +245,8 @@ export default function S3Page() {
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#FBBF24', lineHeight: 1 }}>{p.elo_score}</p>
-                      <p style={{ margin: '0.15rem 0 0', fontSize: '0.65rem', color: '#4A6080' }}>ELO</p>
+                      <p style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#FBBF24', lineHeight: 1 }}>{p.s3_value}</p>
+                      <p style={{ margin: '0.15rem 0 0', fontSize: '0.65rem', color: '#4A6080' }}>T90</p>
                     </div>
                   </div>
 

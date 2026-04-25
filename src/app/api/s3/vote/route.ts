@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     // Fetch current player
     const { data: player, error: fetchErr } = await supabase
       .from('s3_players')
-      .select('elo_score, sign_count, sell_count, sack_count')
+      .select('s3_value, sign_count, sell_count, sack_count')
       .eq('id', playerId)
       .single()
 
@@ -39,10 +39,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 })
     }
 
-    // Update counts + ELO
-    const eloDelta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
+    // Update counts + T90
+    const t90Delta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
     const updates: Record<string, number> = {
-      elo_score: (player.elo_score || 1000) + eloDelta,
+      s3_value: (player.s3_value || 1000) + t90Delta,
     }
     if (vote === 'sign') updates.sign_count = (player.sign_count || 0) + 1
     if (vote === 'sell') updates.sell_count = (player.sell_count || 0) + 1
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, newElo: updates.elo_score })
+    return NextResponse.json({ ok: true, newT90: updates.s3_value })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
