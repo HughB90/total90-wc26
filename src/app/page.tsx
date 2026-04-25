@@ -47,43 +47,22 @@ const cards = [
 export default function HomePage() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0A0F2E' }}>
-      {/* Nav */}
-      <nav style={{
-        borderBottom: '1px solid #1E3A6E',
-        padding: '0.875rem 1.5rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        maxWidth: '1100px',
-        margin: '0 auto',
-      }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
-          <Image src="/total90-logo-green.png" alt="Total90" width={32} height={32} style={{ objectFit: 'contain' }} />
-          <span style={{ color: '#00E676', fontWeight: 800, fontSize: '1rem', letterSpacing: '0.05em' }}>
-            TOTAL90 <span style={{ color: '#FBBF24' }}>WC26</span>
-          </span>
-        </Link>
-        <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-          <Link href="/news" style={navLinkStyle}>News</Link>
-          <Link href="/s3" style={navLinkStyle}>S³ Ratings</Link>
-          <span style={{ ...navLinkStyle, color: '#3A4A6E', cursor: 'default' }}>Bracket</span>
-          <span style={{ ...navLinkStyle, color: '#3A4A6E', cursor: 'default' }}>Scores</span>
-        </div>
-      </nav>
-
       {/* Hero */}
       <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '3rem 1.5rem 4rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <h1 style={{
-            fontSize: 'clamp(2rem, 5vw, 3.5rem)',
-            fontWeight: 800,
-            color: '#FBBF24',
-            margin: '0 0 0.75rem',
-            lineHeight: 1.15,
-          }}>
-            ⚽ World Cup 2026 Hub
-          </h1>
-          <p style={{ color: '#8899CC', fontSize: 'clamp(0.9rem, 2vw, 1.1rem)', margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <img src="/total90-logo-green.png" alt="" style={{ width: '48px', height: '48px', objectFit: 'contain' }} />
+            <h1 style={{
+              fontSize: 'clamp(1.75rem, 5vw, 3rem)',
+              fontWeight: 900,
+              color: '#FBBF24',
+              margin: 0,
+              lineHeight: 1.1,
+            }}>
+              World Cup 2026 Hub
+            </h1>
+          </div>
+          <p style={{ color: '#8899CC', fontSize: 'clamp(0.85rem, 2vw, 1rem)', margin: 0 }}>
             June 11 – July 19 · The Beautiful Game · Total90 Intelligence
           </p>
         </div>
@@ -108,25 +87,25 @@ export default function HomePage() {
             }
             const inner = (
               <>
-                <div style={{ fontSize: '2.25rem', marginBottom: '0.75rem' }}>{card.emoji}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <h2 style={{ color: '#F0F4FF', fontWeight: 700, fontSize: '1.15rem', margin: 0 }}>
-                    {card.title}
-                  </h2>
-                  {card.tag && (
-                    <span style={{
-                      fontSize: '0.65rem',
-                      fontWeight: 700,
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: '1rem',
-                      backgroundColor: 'rgba(251,191,36,0.12)',
-                      color: '#FBBF24',
-                    }}>
-                      {card.tag}
-                    </span>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                  <div style={{ fontSize: '1.75rem', flexShrink: 0, lineHeight: 1 }}>{card.emoji}</div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
+                      <h2 style={{ color: '#F0F4FF', fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>
+                        {card.title}
+                      </h2>
+                      {card.tag && (
+                        <span style={{
+                          fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.5rem',
+                          borderRadius: '1rem', backgroundColor: 'rgba(251,191,36,0.12)', color: '#FBBF24',
+                        }}>
+                          {card.tag}
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ color: '#8899CC', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>{card.desc}</p>
+                  </div>
                 </div>
-                <p style={{ color: '#8899CC', fontSize: '0.875rem', margin: 0, lineHeight: 1.5 }}>{card.desc}</p>
               </>
             )
             return card.active

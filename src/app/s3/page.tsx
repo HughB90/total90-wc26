@@ -98,23 +98,26 @@ export default function S3Page() {
             <button key={k} onClick={() => setSortKey(k)} style={{ padding: '0.4rem 0.7rem', borderRadius: '0.5rem', border: '1px solid', borderColor: sortKey === k ? '#FBBF24' : '#1E3A6E', backgroundColor: sortKey === k ? 'rgba(251,191,36,0.08)' : 'transparent', color: sortKey === k ? '#FBBF24' : '#8899CC', cursor: 'pointer', fontSize: '0.75rem', fontWeight: sortKey === k ? 700 : 400, fontFamily: 'inherit' }}>{label}</button>
           ))}
         </div>
-        {/* Page size */}
-        <div style={{ display: 'flex', gap: '0.35rem' }}>
-          {([25, 50, 100] as PageSize[]).map(n => (
-            <button key={n} onClick={() => setPageSize(n)} style={{ padding: '0.4rem 0.7rem', borderRadius: '0.5rem', border: '1px solid', borderColor: pageSize === n ? '#8899CC' : '#1E3A6E', backgroundColor: pageSize === n ? 'rgba(136,153,204,0.1)' : 'transparent', color: pageSize === n ? '#F0F4FF' : '#8899CC', cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'inherit' }}>{n}</button>
-          ))}
-        </div>
+
       </div>
 
-      {/* Results count + pagination */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <span style={{ color: '#4A6080', fontSize: '0.78rem' }}>
-          Showing #{startRank}–#{Math.min(startRank + pageSize - 1, filtered.length)} of {filtered.length} players
-        </span>
-        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '0.35rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #1E3A6E', backgroundColor: 'transparent', color: page === 1 ? '#1E3A6E' : '#8899CC', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontFamily: 'inherit' }}>← Prev</button>
-          <span style={{ color: '#8899CC', fontSize: '0.78rem', minWidth: '70px', textAlign: 'center' }}>Page {page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '0.35rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #1E3A6E', backgroundColor: 'transparent', color: page === totalPages ? '#1E3A6E' : '#8899CC', cursor: page === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontFamily: 'inherit' }}>Next →</button>
+      {/* Results count + pagination + per-page */}
+      <div style={{ marginBottom: '0.875rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+          <span style={{ color: '#4A6080', fontSize: '0.75rem' }}>
+            #{startRank}–#{Math.min(startRank + pageSize - 1, filtered.length)} of {filtered.length}
+          </span>
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.5rem', border: '1px solid #1E3A6E', backgroundColor: 'transparent', color: page === 1 ? '#1E3A6E' : '#8899CC', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontFamily: 'inherit' }}>← Prev</button>
+            <span style={{ color: '#8899CC', fontSize: '0.75rem', minWidth: '65px', textAlign: 'center' }}>Page {page}/{totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '0.3rem 0.7rem', borderRadius: '0.5rem', border: '1px solid #1E3A6E', backgroundColor: 'transparent', color: page === totalPages ? '#1E3A6E' : '#8899CC', cursor: page === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.75rem', fontFamily: 'inherit' }}>Next →</button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span style={{ color: '#4A6080', fontSize: '0.7rem' }}>Per page:</span>
+          {([25, 50, 100] as PageSize[]).map(n => (
+            <button key={n} onClick={() => setPageSize(n)} style={{ padding: '0.2rem 0.55rem', borderRadius: '0.4rem', border: '1px solid', borderColor: pageSize === n ? '#8899CC' : '#1E3A6E', backgroundColor: pageSize === n ? 'rgba(136,153,204,0.1)' : 'transparent', color: pageSize === n ? '#F0F4FF' : '#4A6080', cursor: 'pointer', fontSize: '0.7rem', fontFamily: 'inherit' }}>{n}</button>
+          ))}
         </div>
       </div>
 
