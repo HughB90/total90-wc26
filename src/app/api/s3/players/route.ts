@@ -23,7 +23,7 @@ export async function GET(request: Request) {
         query = query.not('id', 'in', `(${exclude.join(',')})`)
       }
 
-      const { data: allPlayers, error } = await query.limit(638) as any
+      const { data: allPlayers, error } = await query.order('s3_value', { ascending: false }).limit(150) as any
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }

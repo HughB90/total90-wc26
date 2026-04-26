@@ -146,7 +146,7 @@ export default function VotingCard() {
         <div style={{ textAlign: 'center', padding: '3rem', color: '#4A6080' }}>Loading players...</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', maxWidth: '800px', margin: '0 auto 1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.75rem', maxWidth: '800px', margin: '0 auto 1.5rem' }}>
             {players.map(p => {
               const selectedVote = votes[p.id]
               const posStyle = posColors[p.position] || posColors.MID
@@ -155,7 +155,7 @@ export default function VotingCard() {
                   backgroundColor: '#0F1C4D',
                   border: `1px solid ${selectedVote ? voteConfig[selectedVote].border : '#1E3A6E'}`,
                   borderRadius: '1rem',
-                  padding: '1.25rem 1rem',
+                  padding: '1rem 0.75rem',
                   textAlign: 'center',
                   transition: 'border-color 0.2s',
                 }}>
@@ -163,14 +163,14 @@ export default function VotingCard() {
                   <div style={{ position: 'relative', display: 'inline-block', marginBottom: '0.75rem' }}>
                     {p.photo_url ? (
                       <img src={p.photo_url} alt={p.short_name || p.name}
-                        style={{ width: '72px', height: '72px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }} />
+                        style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }} />
                     ) : (
-                      <div style={{ width: '72px', height: '72px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontSize: '1.25rem', fontWeight: 700 }}>
+                      <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontSize: '1.25rem', fontWeight: 700 }}>
                         {(p.short_name || p.name).charAt(0)}
                       </div>
                     )}
                     {/* Flag overlay */}
-                    <div style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '26px', height: '26px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
+                    <div style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '22px', height: '22px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
                       <img src={getFlagUrl(p.nationality)} alt={p.nationality}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
