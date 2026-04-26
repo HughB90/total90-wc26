@@ -5,18 +5,18 @@ import { useState, useEffect, useCallback } from 'react'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WC_GROUPS: Record<string, string[]> = {
-  A: ['Mexico', 'Ecuador', 'Honduras', 'Poland'],
-  B: ['Spain', 'Croatia', 'Morocco', 'Chile'],
-  C: ['Argentina', 'Australia', 'Saudi Arabia', 'Peru'],
-  D: ['France', 'USA', 'Paraguay', 'Algeria'],
-  E: ['Germany', 'Japan', 'South Korea', 'New Zealand'],
-  F: ['Brazil', 'Colombia', 'Venezuela', 'Bolivia'],
-  G: ['England', 'Serbia', 'Czechia', 'Slovakia'],
-  H: ['Portugal', 'Belgium', 'Jamaica', 'Bahrain'],
-  I: ['Netherlands', 'Uruguay', 'Costa Rica', 'Panama'],
-  J: ['Italy', 'Canada', 'Ghana', 'Haiti'],
-  K: ['Turkey', 'Chile', 'Egypt', 'Oman'],
-  L: ['Senegal', 'Morocco', 'Ivory Coast', 'Jordan'],
+  A: ['Mexico', 'South Korea', 'South Africa', 'UEFA Playoff D'],
+  B: ['Canada', 'Switzerland', 'Qatar', 'UEFA Playoff A'],
+  C: ['Brazil', 'Morocco', 'Scotland', 'Haiti'],
+  D: ['USA', 'Australia', 'Paraguay', 'UEFA Playoff D'],
+  E: ['Germany', 'Ecuador', 'Ivory Coast', 'Curacao'],
+  F: ['Netherlands', 'Japan', 'Tunisia', 'UEFA Playoff B'],
+  G: ['Belgium', 'Iran', 'Egypt', 'New Zealand'],
+  H: ['Spain', 'Uruguay', 'Saudi Arabia', 'Cape Verde'],
+  I: ['France', 'Senegal', 'Norway', 'FIFA Playoff 2'],
+  J: ['Argentina', 'Austria', 'Algeria', 'Jordan'],
+  K: ['Portugal', 'Colombia', 'Uzbekistan', 'FIFA Playoff 1'],
+  L: ['England', 'Croatia', 'Panama', 'Ghana'],
 }
 
 const GROUP_LETTERS = Object.keys(WC_GROUPS)
