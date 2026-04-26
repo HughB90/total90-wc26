@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 interface VotingPlayer {
   id: string
@@ -53,7 +53,6 @@ export default function VotingCard() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [totalVoted, setTotalVoted] = useState(0)
-  const [initialized, setInitialized] = useState(false)
 
   const getSeenIds = () => {
     try { return JSON.parse(sessionStorage.getItem('s3_seen') || '[]') } catch { return [] }
@@ -76,14 +75,11 @@ export default function VotingCard() {
     }
     if (Array.isArray(data)) setPlayers(data)
     setLoading(false)
-    setInitialized(true)
   }, [])
 
-  if (!initialized && !loading) loadPlayers()
-  if (!initialized) { loadPlayers(); }
 
-  // Call loadPlayers on mount
-  useState(() => { loadPlayers() })
+
+  useEffect(() => { loadPlayers() }, [loadPlayers])
 
   const allVoted = players.length > 0 && players.every(p => votes[p.id])
 
