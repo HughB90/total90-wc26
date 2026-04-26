@@ -5,10 +5,13 @@ import { useEffect, useState } from 'react'
 interface Player {
   id: string
   name: string
+  short_name?: string
   nationality: string
   position: string
   s3_value: number
   age?: number
+  photo_url?: string
+  opta_id?: string
 }
 
 type SortKey = 't90' | 'age'
@@ -133,11 +136,16 @@ export default function S3Page() {
             const tier = t90Tier(p.s3_value)
             const posStyle = posColors[p.position] || posColors.MID
             return (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.75rem', padding: '0.65rem 1rem' }}>
-                <span style={{ color: '#4A6080', fontSize: '0.75rem', fontWeight: 700, width: '32px', flexShrink: 0, textAlign: 'right' }}>#{globalRank}</span>
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.75rem', padding: '0.5rem 1rem' }}>
+                <span style={{ color: '#4A6080', fontSize: '0.7rem', fontWeight: 700, width: '28px', flexShrink: 0, textAlign: 'right' }}>#{globalRank}</span>
+                {p.photo_url ? (
+                  <img src={p.photo_url} alt={p.short_name || p.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #1E3A6E', backgroundColor: '#162040' }} />
+                ) : (
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#162040', border: '1px solid #1E3A6E', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontSize: '0.7rem', fontWeight: 700 }}>{(p.short_name || p.name).charAt(0)}</div>
+                )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                  <div style={{ color: '#8899CC', fontSize: '0.72rem', marginTop: '0.1rem' }}>{p.nationality}{p.age ? ` · Age ${p.age}` : ''}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.short_name || p.name}</div>
+                  <div style={{ color: '#8899CC', fontSize: '0.7rem', marginTop: '0.1rem' }}>{p.nationality}{p.age ? ` · Age ${p.age}` : ''}</div>
                 </div>
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: '0.4rem', backgroundColor: posStyle.bg, color: posStyle.color, flexShrink: 0 }}>{p.position}</span>
                 <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '60px' }}>
