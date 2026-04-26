@@ -106,8 +106,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="noopener noreferrer"
           style={{
             position: 'fixed',
-            bottom: '1.25rem',
-            right: '1.25rem',
+            bottom: '5rem',
+            right: '1rem',
             zIndex: 999,
             display: 'flex',
             alignItems: 'center',

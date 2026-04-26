@@ -162,9 +162,9 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
   }
   const inp: React.CSSProperties = { width: '100%', backgroundColor: '#162040', border: '1px solid #1E3A6E', borderRadius: '0.625rem', padding: '0.7rem 1rem', color: '#F0F4FF', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: C.bg, padding: '1.5rem 1.5rem 6rem' }}>
       <div style={{ width: '100%', maxWidth: '380px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
           <img src="/total90-logo-green.png" alt="" style={{ width: '56px', height: '56px', objectFit: 'contain', display: 'block', margin: '0 auto 0.75rem' }} />
           <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.5rem', margin: '0 0 0.25rem' }}>Bracket Challenge</h1>
           <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>World Cup 2026 · Pick your winners</p>
