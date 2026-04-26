@@ -98,16 +98,16 @@ export default function VotingCard() {
   }
 
   return (
-    <div style={{ padding: '1.75rem 1.25rem', borderBottom: '2px solid #1E3A6E', maxWidth: '480px', margin: '0 auto' }}>
+    <div style={{ padding: '1rem 1rem 0.75rem', borderBottom: '2px solid #1E3A6E', maxWidth: '480px', margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-        <h2 style={{ fontSize: '1.75rem', fontWeight: 900, color: '#FBBF24', margin: '0 0 0.5rem', letterSpacing: '-0.02em' }}>
+      <div style={{ textAlign: 'center', marginBottom: '0.75rem' }}>
+        <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#FBBF24', margin: '0 0 0.35rem', letterSpacing: '-0.02em' }}>
           Your Thoughts?
         </h2>
-        <p style={{ color: '#8899CC', fontSize: '0.85rem', margin: '0 0 0.25rem', lineHeight: 1.5 }}>
+        <p style={{ color: '#8899CC', fontSize: '0.78rem', margin: '0 0 0.2rem', lineHeight: 1.4 }}>
           T90 values are crowdsourced from WC2026 fans like you.
         </p>
-        <p style={{ color: '#8899CC', fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
+        <p style={{ color: '#8899CC', fontSize: '0.76rem', margin: 0, lineHeight: 1.4 }}>
           Rank the three players below.{' '}
           <span style={{ color: '#00E676', fontWeight: 600 }}>Sign</span> the most valuable,{' '}
           <span style={{ color: '#60A5FA', fontWeight: 600 }}>Sell</span> the second,{' '}
@@ -121,7 +121,7 @@ export default function VotingCard() {
         <div style={{ textAlign: 'center', padding: '2.5rem', color: '#4A6080' }}>Loading players...</div>
       ) : (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
             {players.map(p => {
               const selected = votes[p.id]
               const posColor = posColors[p.position]?.color ?? '#8899CC'
@@ -134,18 +134,18 @@ export default function VotingCard() {
                   transition: 'border-color 0.15s',
                 }}>
                   {/* Player info row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.875rem 1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.6rem 0.875rem' }}>
                     {/* Photo */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
                       {p.photo_url ? (
-                        <img src={p.photo_url} alt="" style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }} />
+                        <img src={p.photo_url} alt="" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }} />
                       ) : (
-                        <div style={{ width: '52px', height: '52px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontWeight: 700, fontSize: '1.1rem' }}>
+                        <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontWeight: 700, fontSize: '1.1rem' }}>
                           {(p.short_name || p.name).charAt(0)}
                         </div>
                       )}
                       {/* Flag */}
-                      <div style={{ position: 'absolute', bottom: '-3px', right: '-3px', width: '20px', height: '20px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
+                      <div style={{ position: 'absolute', bottom: '-3px', right: '-3px', width: '17px', height: '17px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
                         <img src={getFlagUrl(p.nationality)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                       </div>
                     </div>
@@ -174,7 +174,7 @@ export default function VotingCard() {
                           const alreadyUsed = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
                           if (!alreadyUsed) setVotes(prev => ({ ...prev, [p.id]: v }))
                         }} style={{
-                          padding: '0.75rem 0.5rem',
+                          padding: '0.55rem 0.25rem',
                           border: 'none',
                           borderRight: i < 2 ? '1px solid #1E3A6E' : 'none',
                           backgroundColor: isSelected ? cfg.dimColor : 'transparent',
@@ -203,7 +203,7 @@ export default function VotingCard() {
 
           {/* Submit */}
           <button onClick={handleSubmit} disabled={!allVoted || submitting} style={{
-            width: '100%', padding: '1rem', borderRadius: '0.875rem', border: 'none',
+            width: '100%', padding: '0.75rem', borderRadius: '0.875rem', border: 'none',
             backgroundColor: allVoted && !submitting ? '#00E676' : '#162040',
             color: allVoted && !submitting ? '#0A0F2E' : '#4A6080',
             fontWeight: 800, fontSize: '1rem', cursor: allVoted && !submitting ? 'pointer' : 'not-allowed',

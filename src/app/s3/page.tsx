@@ -69,7 +69,7 @@ export default function S3Page() {
   return (
     <div>
       <VotingCard />
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1.5rem 2rem' }}>
+      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '1rem 1rem 2rem' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.75rem' }}>
         <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', fontWeight: 900, margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>

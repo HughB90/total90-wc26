@@ -49,29 +49,28 @@ function SiteNav() {
       backgroundColor: 'rgba(10,15,46,0.97)',
       backdropFilter: 'blur(8px)',
       borderBottom: '1px solid #1E3A6E',
-      padding: '0 1.5rem',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      height: '56px',
+      padding: '0.6rem 1rem',
     }}>
-      {/* Logo */}
-      <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none', flexShrink: 0 }}>
-        <img src="/total90-logo-green.png" alt="Total90" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
-        <span style={{ color: '#00E676', fontWeight: 900, fontSize: '1.05rem', letterSpacing: '-0.01em' }}>TOTAL90</span>
-        <span style={{ color: '#8899CC', fontSize: '0.85rem', fontWeight: 400 }}>WC26</span>
-      </Link>
-
-      {/* Nav links */}
-      <div style={{ display: 'flex', gap: '1.75rem', alignItems: 'center' }}>
+      {/* Row 1: Logo centered */}
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+          <img src="/total90-logo-green.png" alt="Total90" style={{ width: '26px', height: '26px', objectFit: 'contain' }} />
+          <span style={{ color: '#00E676', fontWeight: 900, fontSize: '1rem', letterSpacing: '-0.01em' }}>TOTAL90</span>
+          <span style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.9rem' }}>WC26</span>
+        </Link>
+      </div>
+      {/* Row 2: Nav links centered */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', alignItems: 'center' }}>
         {NAV_LINKS.map(({ label, href }) => (
           <Link
             key={href}
             href={href}
             style={{
               color: '#8899CC',
-              fontSize: '0.875rem',
+              fontSize: '0.78rem',
               fontWeight: 500,
               textDecoration: 'none',
-              transition: 'color 0.15s',
+              whiteSpace: 'nowrap',
             }}
           >
             {label}
