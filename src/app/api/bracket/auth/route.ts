@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       const { data: existingByName } = await (supabase
         .from('bracket_users')
         .select('id, display_name, pin_hash')
-        .eq('display_name', display_name)
+        .ilike('display_name', display_name.trim())
         .maybeSingle() as any)
       
       if (!existingByName) {

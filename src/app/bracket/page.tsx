@@ -22,7 +22,7 @@ const WC_GROUPS: Record<string, string[]> = {
 const GROUP_LETTERS = Object.keys(WC_GROUPS)
 
 const COUNTRY_CODES: Record<string, string> = {
-  England: 'gb-eng', France: 'fr', Spain: 'es', Germany: 'de',
+  England: 'gb-eng', Scotland: 'gb-sct', France: 'fr', Spain: 'es', Germany: 'de',
   Brazil: 'br', Argentina: 'ar', Portugal: 'pt', Netherlands: 'nl',
   Belgium: 'be', Italy: 'it', Morocco: 'ma', USA: 'us',
   Mexico: 'mx', Japan: 'jp', Colombia: 'co', Uruguay: 'uy',
@@ -33,10 +33,11 @@ const COUNTRY_CODES: Record<string, string> = {
   Bolivia: 'bo', Jamaica: 'jm', Bahrain: 'bh', 'Costa Rica': 'cr',
   Panama: 'pa', Ghana: 'gh', Haiti: 'ht', Turkey: 'tr',
   Egypt: 'eg', Oman: 'om', 'Ivory Coast': 'ci', Jordan: 'jo',
-  Honduras: 'hn', Chile: 'cl', Peru: 'pe',
+  Honduras: 'hn', Chile: 'cl', Peru: 'pe', Qatar: 'qa', Tunisia: 'tn',
   'South Africa': 'za', 'Czech Republic': 'cz', 'Bosnia and Herzegovina': 'ba',
   Sweden: 'se', Iraq: 'iq', 'DR Congo': 'cd', 'Curaçao': 'cw', Curacao: 'cw',
-  'Cape Verde': 'cv', Uzbekistan: 'uz', Norway: 'no', Iran: 'ir', Scotland: 'gb-sct', Austria: 'at',
+  'Cape Verde': 'cv', Uzbekistan: 'uz', Norway: 'no', Iran: 'ir', Austria: 'at',
+  Nigeria: 'ng', Mali: 'ml', Tanzania: 'tz', Ethiopia: 'et', Zimbabwe: 'zw',
 }
 
 function flagUrl(country: string) {
@@ -1003,8 +1004,8 @@ export default function BracketPage() {
         {activeTab === 'third' && (
           <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} />
         )}
-        {activeTab === 'knockout' && (
-          <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} />
+        {['r32','r16','qf','sf','final'].includes(activeTab) && (
+          <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} activeRound={activeTab} />
         )}
         {activeTab === 'leaderboard' && (
           <LeaderboardTab userId={userId} />
