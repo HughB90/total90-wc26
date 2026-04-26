@@ -399,21 +399,44 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks }: {
               }}>
                 {isChecked && <span style={{ color: '#0A0F2E', fontSize: '0.75rem', fontWeight: 900 }}>✓</span>}
               </div>
-              <div>
-                <div style={{ color: C.gold, fontSize: '0.7rem', fontWeight: 700 }}>Group {group} · 3rd Place</div>
-                <div style={{ color: C.text, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ flex: 1 }}>
+                {/* Top row: 3rd place team prominently */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                  <span style={{ color: '#CD7F32', fontSize: '0.65rem', fontWeight: 700, background: 'rgba(205,127,50,0.15)', border: '1px solid rgba(205,127,50,0.4)', borderRadius: '0.3rem', padding: '0.1rem 0.4rem' }}>3rd</span>
                   {third ? (
-                    <>
-                      <img src={flagUrl(third)} alt={third} width={20} height={14}
-                        style={{ borderRadius: '50%', objectFit: 'cover', width: '20px', height: '20px' }}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <img src={flagUrl(third)} alt={third}
+                        style={{ borderRadius: '50%', objectFit: 'cover', width: '20px', height: '20px', flexShrink: 0 }}
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                       />
-                      {third}
-                    </>
+                      <span style={{ color: C.text, fontSize: '0.875rem', fontWeight: 600 }}>{third}</span>
+                    </div>
                   ) : (
-                    <span style={{ color: C.muted, fontStyle: 'italic' }}>Set group picks first</span>
+                    <span style={{ color: C.muted, fontSize: '0.8rem', fontStyle: 'italic' }}>Set group picks first</span>
                   )}
                 </div>
+                {/* Second row: other teams in context */}
+                {ranked.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {[0, 1, 3].map(idx => {
+                      const label = idx === 0 ? '1st' : idx === 1 ? '2nd' : '4th'
+                      const labelColor = idx === 0 ? C.gold : idx === 1 ? '#C0C0C0' : C.muted
+                      const team = idx < 3 ? ranked[idx] : teams.find(t => !ranked.includes(t))
+                      if (!team) return null
+                      return (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ color: labelColor, fontSize: '0.6rem', fontWeight: 700 }}>{label}</span>
+                          <img src={flagUrl(team)} alt={team}
+                            style={{ borderRadius: '50%', objectFit: 'cover', width: '14px', height: '14px' }}
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                          />
+                          <span style={{ color: C.muted, fontSize: '0.68rem' }}>{team}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div style={{ color: C.muted, fontSize: '0.65rem', marginTop: '0.2rem' }}>Group {group}</div>
               </div>
             </div>
           )
