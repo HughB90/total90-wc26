@@ -11,8 +11,13 @@ export async function POST(request: Request) {
       invite_code?: string
     }
 
-    if (!email || !display_name || !pin) {
-      return NextResponse.json({ error: 'Email, display name, and PIN required' }, { status: 400 })
+    // Sign-in mode: display_name + pin only (no email)
+    // Create mode: email + display_name + pin
+    const isSignIn = !email && !!display_name && !!pin
+    const isCreate = !!email && !!display_name && !!pin
+    
+    if (!isSignIn && !isCreate) {
+      return NextResponse.json({ error: 'Team name and PIN required' }, { status: 400 })
     }
     if (!/^\d{4}$/.test(pin)) {
       return NextResponse.json({ error: 'PIN must be 4 digits' }, { status: 400 })
@@ -25,6 +30,33 @@ export async function POST(request: Request) {
     )
 
     const pinHash = crypto.createHash('sha256').update(pin).digest('hex')
+    
+    // Sign-in mode: find user by display_name
+    if (isSignIn) {
+      const { data: existingByName } = await (supabase
+        .from('bracket_users')
+        .select('id, display_name, pin_hash')
+        .eq('display_name', display_name)
+        .maybeSingle() as any)
+      
+      if (!existingByName) {
+        return NextResponse.json({ error: 'Team name not found. Check spelling or create an account.' }, { status: 404 })
+      }
+      if (existingByName.pin_hash !== pinHash) {
+        return NextResponse.json({ error: 'Incorrect PIN.' }, { status: 401 })
+      }
+      
+      // Handle invite code
+      if (invite_code) {
+        const { data: league } = await (supabase.from('bracket_leagues').select('id').eq('invite_code', invite_code.toUpperCase()).maybeSingle() as any)
+        if (league) {
+          await (supabase.from('bracket_league_members').upsert({ league_id: league.id, user_id: existingByName.id }, { onConflict: 'league_id,user_id' }) as any)
+        }
+      }
+      
+      return NextResponse.json({ ok: true, userId: existingByName.id, displayName: existingByName.display_name })
+    }
+
     const normalizedEmail = email.trim().toLowerCase()
 
     // Check if user exists

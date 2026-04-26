@@ -34,6 +34,9 @@ const COUNTRY_CODES: Record<string, string> = {
   Panama: 'pa', Ghana: 'gh', Haiti: 'ht', Turkey: 'tr',
   Egypt: 'eg', Oman: 'om', 'Ivory Coast': 'ci', Jordan: 'jo',
   Honduras: 'hn', Chile: 'cl', Peru: 'pe',
+  'South Africa': 'za', 'Czech Republic': 'cz', 'Bosnia and Herzegovina': 'ba',
+  Sweden: 'se', Iraq: 'iq', 'DR Congo': 'cd', 'Curaçao': 'cw', Curacao: 'cw',
+  'Cape Verde': 'cv', Uzbekistan: 'uz', Norway: 'no', Iran: 'ir', Scotland: 'gb-sct', Austria: 'at',
 }
 
 function flagUrl(country: string) {
@@ -136,96 +139,52 @@ function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => vo
 
 // ─── Auth form ────────────────────────────────────────────────────────────────
 function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
+  const [tab, setTab] = useState<'signin' | 'create'>('signin')
   const [email, setEmail] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [pin, setPin] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!email || !displayName || !pin) return
-    setLoading(true)
-    setError('')
-    try {
-      const res = await fetch('/api/bracket/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, display_name: displayName, pin, invite_code: inviteCode || undefined }),
-      })
-      const data = await res.json() as { ok?: boolean; userId?: string; displayName?: string; error?: string }
-      if (!data.ok) { setError(data.error ?? 'Authentication failed'); return }
-      localStorage.setItem('bracket_user_id', data.userId!)
-      localStorage.setItem('bracket_display_name', data.displayName!)
-      onAuth(data.userId!, data.displayName!)
-    } catch {
-      setError('Network error — please try again')
-    } finally {
-      setLoading(false)
-    }
+  async function handleSubmit() {
+    if (tab === 'create' && (!email.trim() || !displayName.trim() || pin.length !== 4)) { setError('Fill all fields with a 4-digit PIN.'); return }
+    if (tab === 'signin' && (!displayName.trim() || pin.length !== 4)) { setError('Enter team name and 4-digit PIN.'); return }
+    setError(''); setLoading(true)
+    const body = tab === 'create' ? { email: email.trim(), display_name: displayName.trim(), pin } : { display_name: displayName.trim(), pin }
+    const res = await fetch('/api/bracket/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await res.json()
+    setLoading(false)
+    if (!data.ok) { setError(data.error ?? 'Failed.'); return }
+    localStorage.setItem('bracket_user_id', data.userId)
+    localStorage.setItem('bracket_display_name', data.displayName)
+    onAuth(data.userId, data.displayName)
   }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', backgroundColor: C.card, border: `1px solid ${C.border}`,
-    borderRadius: '0.75rem', padding: '0.65rem 1rem', color: C.text,
-    fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box',
-  }
-
+  const inp: React.CSSProperties = { width: '100%', backgroundColor: '#162040', border: '1px solid #1E3A6E', borderRadius: '0.625rem', padding: '0.7rem 1rem', color: '#F0F4FF', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }
   return (
-    <div style={{ backgroundColor: C.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-      <div style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '1.25rem', padding: '2rem', width: '100%', maxWidth: '400px' }}>
-        <h1 style={{ color: C.gold, fontWeight: 800, fontSize: '1.5rem', margin: '0 0 0.25rem', textAlign: 'center' }}>
-          🏆 Bracket Challenge
-        </h1>
-        <p style={{ color: C.muted, fontSize: '0.85rem', textAlign: 'center', margin: '0 0 1.5rem' }}>
-          Sign in or create an account with your 4-digit PIN
-        </p>
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div>
-            <label style={{ color: C.muted, fontSize: '0.75rem', display: 'block', marginBottom: '0.3rem' }}>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ color: C.muted, fontSize: '0.75rem', display: 'block', marginBottom: '0.3rem' }}>Display Name</label>
-            <input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="GoatFC" required style={inputStyle} />
-          </div>
-          <div>
-            <label style={{ color: C.muted, fontSize: '0.75rem', display: 'block', marginBottom: '0.3rem' }}>4-Digit PIN</label>
-            <input
-              type="password" inputMode="numeric" pattern="\d{4}" maxLength={4}
-              value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="••••" required style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={{ color: C.muted, fontSize: '0.75rem', display: 'block', marginBottom: '0.3rem' }}>Invite Code (optional)</label>
-            <input
-              type="text" value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())}
-              placeholder="ABC123" style={inputStyle} maxLength={6}
-            />
-          </div>
-
-          {error && <p style={{ color: '#ef4444', fontSize: '0.8rem', margin: 0 }}>{error}</p>}
-
-          <button
-            type="submit" disabled={loading}
-            style={{
-              marginTop: '0.5rem', backgroundColor: C.gold, color: '#0A0F2E',
-              fontWeight: 700, fontSize: '0.9rem', padding: '0.7rem',
-              borderRadius: '0.75rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {loading ? 'Entering…' : 'Enter Bracket'}
-          </button>
-        </form>
+    <div style={{ minHeight: '100vh', backgroundColor: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+      <div style={{ width: '100%', maxWidth: '380px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <img src="/total90-logo-green.png" alt="" style={{ width: '56px', height: '56px', objectFit: 'contain', display: 'block', margin: '0 auto 0.75rem' }} />
+          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.5rem', margin: '0 0 0.25rem' }}>Bracket Challenge</h1>
+          <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>World Cup 2026 · Pick your winners</p>
+        </div>
+        <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, marginBottom: '1.5rem' }}>
+          {(['signin', 'create'] as const).map(t => (
+            <button key={t} onClick={() => { setTab(t); setError('') }} style={{ flex: 1, background: 'none', border: 'none', borderBottom: tab === t ? `2px solid ${C.gold}` : '2px solid transparent', color: tab === t ? C.gold : C.muted, fontWeight: tab === t ? 700 : 400, fontSize: '0.875rem', padding: '0.6rem', cursor: 'pointer', fontFamily: 'inherit' }}>{t === 'signin' ? 'Sign In' : 'Create Account'}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          {tab === 'create' && <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Email</label><input style={inp} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} /></div>}
+          <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Team Name</label><input style={inp} placeholder="Your display name" value={displayName} onChange={e => setDisplayName(e.target.value)} /></div>
+          <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>4-Digit PIN</label><input style={{ ...inp, letterSpacing: '0.3em', textAlign: 'center' as const }} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></div>
+          {error && <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>{error}</p>}
+          <button onClick={handleSubmit} disabled={loading} style={{ width: '100%', backgroundColor: loading ? '#162040' : C.gold, color: '#0A0F2E', fontWeight: 800, fontSize: '1rem', padding: '0.875rem', borderRadius: '0.875rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{loading ? 'Loading…' : tab === 'signin' ? 'Sign In →' : 'Create Account →'}</button>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Group Stage Tab ──────────────────────────────────────────────────────────
 function GroupStageTab({ userId, savedPicks }: { userId: string; savedPicks: GroupPicks }) {
   const [picks, setPicks] = useState<GroupPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
