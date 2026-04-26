@@ -13,22 +13,32 @@ export async function POST() {
     if (!xaiKey) return NextResponse.json({ error: 'XAI_API_KEY not set' }, { status: 500 })
 
     const today = new Date().toISOString().split('T')[0]
-    const prompt = `You are a soccer news aggregator for the 2026 FIFA World Cup fantasy app. Today is ${today}.
+    const watchPlayers = `Jude Bellingham, Kylian Mbappé, Lamine Yamal, Florian Wirtz, Vinicius Junior, Bukayo Saka, Cole Palmer, Harry Kane, Julián Álvarez, Bruno Fernandes, Declan Rice, Rodrigo Hernandez (Rodri), Ousmane Dembélé, Theo Hernández, Joshua Kimmich, Lionel Messi, Alexis Mac Allister, Michael Olise, Dani Olmo, Pau Cubarsí, Enzo Fernández, Rodrigo De Paul, Eduardo Camavinga, Dayot Upamecano, João Neves, António Rüdiger, Jonathan Tah, Serge Gnabry, Estevão Willian, Nuno Mendes`
+    
+    const prompt = `You are a real-time soccer news monitor for the 2026 FIFA World Cup. Today is ${today}.
 
-Search X (Twitter) and recent news (2025-2026 ONLY) for the latest World Cup 2026 news about:
-- FIFA World Cup 2026 squad selections, injuries, suspensions (hosted USA/Canada/Mexico, starts June 11 2026)
-- Player form and fitness heading into WC2026
-- Manager/coach decisions affecting WC2026 squads
-- Transfer or injury news that affects WC2026 player availability (Jan 2026 onwards)
-- Qualifying results and final 26-man squad confirmations
+USE YOUR LIVE X (TWITTER) SEARCH to find breaking news from the last 48 hours. This is critical — do NOT generate news from memory or training data.
 
-DO NOT return: club league news unrelated to WC2026, news from before 2025, domestic cups.
+SPECIFICALLY SEARCH X FOR NEWS ABOUT THESE PLAYERS:
+${watchPlayers}
 
-Return EXACTLY 5 news items as a pure JSON array (no markdown, no code blocks):
-[{"headline":"Punchy headline max 80 chars","summary":"2-3 sentences with specific facts and player/country names","category":"injury|transfer|form|suspension|squad|general","players":["Full Name"],"teams":["Country"],"is_breaking":false}]
+PRIORITY STORY TYPES (search X for these):
+- Injury confirmations, fitness updates, training concerns
+- Players ruled out, doubtful, or returning from injury
+- Suspension risks (yellow card accumulation)
+- Late squad call-ups or dropouts
+- Manager press conferences about squad availability
+- Club vs country fitness disputes
 
-Most recent news first.`
+RULES:
+- ONLY report what you find on X from real accounts (journalists, clubs, national teams) in the last 48 hours
+- Include WHO reported it (e.g. "Per Sky Sports Germany...", "The Athletic reports...", "@FabrizioRomano...")
+- If you cannot find 5 recent confirmed stories, report fewer — do NOT make up news
+- Set is_breaking: true only for injury/suspension news affecting WC2026 availability
 
+Return as JSON array, no markdown:
+[{"headline":"<max 80 chars>","summary":"<2-3 sentences with source context>","category":"injury|suspension|squad|transfer|form|general","players":["Full Name"],"teams":["Country"],"is_breaking":false}]
+`
     const grokRes = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
