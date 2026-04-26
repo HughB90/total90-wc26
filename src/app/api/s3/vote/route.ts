@@ -27,7 +27,6 @@ export async function POST(request: Request) {
 
       if (!player) continue
 
-      const t90Delta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
       const updates = {
                 vote_count: (player.vote_count || 0) + 1,
         sign_count: (player.sign_count || 0) + (vote === 'sign' ? 1 : 0),

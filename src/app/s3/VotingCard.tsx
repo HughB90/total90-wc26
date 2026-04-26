@@ -170,9 +170,14 @@ export default function VotingCard() {
                       const isUsedByOther = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
                       return (
                         <button key={v} onClick={() => {
-                          // Each vote type (sign/sell/sack) can only be used once
                           const alreadyUsed = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
-                          if (!alreadyUsed) setVotes(prev => ({ ...prev, [p.id]: v }))
+                          if (isSelected) {
+                            // Re-tap selected → deselect (toggle off)
+                            setVotes(prev => { const n = {...prev}; delete n[p.id]; return n })
+                          } else if (!alreadyUsed) {
+                            // Assign this vote type to this player
+                            setVotes(prev => ({ ...prev, [p.id]: v }))
+                          }
                         }} style={{
                           padding: '0.55rem 0.25rem',
                           border: 'none',
