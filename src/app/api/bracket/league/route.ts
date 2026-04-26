@@ -92,3 +92,68 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url)
+    const userId = url.searchParams.get('userId')
+    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 })
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+
+    // Get leagues user is in
+    const { data: memberships } = await (supabase
+      .from('bracket_league_members')
+      .select('league_id, bracket_leagues(id, name, invite_code)')
+      .eq('user_id', userId) as any)
+
+    if (!memberships?.length) return NextResponse.json({ leagues: [] })
+
+    // For each league get rank info
+    const leagues = await Promise.all((memberships as any[]).map(async (m: any) => {
+      const league = m.bracket_leagues
+      if (!league) return null
+
+      // Get all members' scores for this league
+      const { data: leagueMembers } = await (supabase
+        .from('bracket_league_members')
+        .select('user_id')
+        .eq('league_id', league.id) as any)
+
+      const memberIds = (leagueMembers as any[])?.map((lm: any) => lm.user_id) ?? []
+
+      const { data: entries } = await (supabase
+        .from('bracket_entries')
+        .select('user_id, score')
+        .in('user_id', memberIds) as any)
+
+      // Sum scores per user
+      const scoreMap = new Map<string, number>()
+      for (const e of entries ?? []) {
+        scoreMap.set(e.user_id, (scoreMap.get(e.user_id) ?? 0) + (e.score ?? 0))
+      }
+
+      const sorted = Array.from(scoreMap.entries()).sort((a, b) => b[1] - a[1])
+      const myRank = sorted.findIndex(([uid]) => uid === userId) + 1
+      const myScore = scoreMap.get(userId) ?? 0
+
+      return {
+        id: league.id,
+        name: league.name,
+        inviteCode: league.invite_code,
+        memberCount: memberIds.length,
+        myRank: myRank || memberIds.length,
+        myScore,
+      }
+    }))
+
+    return NextResponse.json({ leagues: leagues.filter(Boolean) })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}

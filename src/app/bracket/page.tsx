@@ -834,6 +834,9 @@ export default function BracketPage() {
   const [knockoutPicks, setKnockoutPicks] = useState<KnockoutPicks>({})
   const [picksLoaded, setPicksLoaded] = useState(false)
   const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
+  const [myLeagues, setMyLeagues] = useState<{ id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[]>([])
+  const [leagueView, setLeagueView] = useState<{ leagueCode: string; leagueName: string } | null>(null)
+  const [leagueRows, setLeagueRows] = useState<{ rank: number; userId: string; displayName: string; score: number }[]>([])
 
   // Hydrate auth from localStorage
   useEffect(() => {
@@ -858,6 +861,26 @@ export default function BracketPage() {
       })
       .catch(() => setPicksLoaded(true))
   }, [userId, picksLoaded])
+
+  // Fetch user's private leagues
+  useEffect(() => {
+    if (!userId) return
+    fetch(`/api/bracket/league?userId=${userId}`)
+      .then(r => r.json())
+      .then((d: { leagues?: { id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[] }) => {
+        setMyLeagues(d.leagues ?? [])
+      })
+      .catch(() => {})
+  }, [userId])
+
+  // Fetch league leaderboard when user clicks a league
+  useEffect(() => {
+    if (!leagueView) return
+    fetch(`/api/bracket/leaderboard?leagueCode=${leagueView.leagueCode}`)
+      .then(r => r.json())
+      .then((d: { rows?: { rank: number; userId: string; displayName: string; score: number }[] }) => setLeagueRows(d.rows ?? []))
+      .catch(() => {})
+  }, [leagueView])
 
   // Fetch my rank and total users
   useEffect(() => {
@@ -943,6 +966,58 @@ export default function BracketPage() {
             </span>
           </div>
         </div>
+
+        {/* Private leagues section */}
+        {myLeagues.length > 0 && !leagueView && (
+          <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.75rem', padding: '0.6rem 1rem', marginBottom: '1rem' }}>
+            <div style={{ color: '#8899CC', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+              Private Leagues ({myLeagues.length})
+            </div>
+            {myLeagues.map(league => (
+              <div key={league.id} onClick={() => setLeagueView({ leagueCode: league.inviteCode, leagueName: league.name })}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', borderTop: '1px solid rgba(30,58,110,0.5)', cursor: 'pointer' }}>
+                <span style={{ color: '#F0F4FF', fontSize: '0.82rem', fontWeight: 600 }}>{league.name}</span>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <span style={{ color: C.gold, fontSize: '0.78rem', fontWeight: 700 }}>{league.myScore} pts</span>
+                  <span style={{ color: '#8899CC', fontSize: '0.72rem' }}>#{league.myRank} of {league.memberCount}</span>
+                  <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>→</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* League detail view */}
+        {leagueView && (
+          <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem' }}>
+              <div>
+                <div style={{ color: C.gold, fontWeight: 700, fontSize: '1rem' }}>{leagueView.leagueName}</div>
+                <div style={{ color: '#4A6080', fontSize: '0.72rem' }}>Code: {leagueView.leagueCode}</div>
+              </div>
+              <button onClick={() => setLeagueView(null)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.5rem', color: '#8899CC', fontSize: '0.75rem', padding: '0.25rem 0.6rem', cursor: 'pointer', fontFamily: 'inherit' }}>← Back</button>
+            </div>
+            {leagueRows.length === 0 ? (
+              <p style={{ color: '#4A6080', fontSize: '0.82rem' }}>Loading...</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {leagueRows.map(row => (
+                  <div key={row.userId} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: row.userId === userId ? 'rgba(251,191,36,0.08)' : '#162040',
+                    border: `1px solid ${row.userId === userId ? 'rgba(251,191,36,0.3)' : '#1E3A6E'}`,
+                    borderRadius: '0.625rem',
+                  }}>
+                    <span style={{ color: '#4A6080', fontSize: '0.72rem', fontWeight: 700, width: '24px', flexShrink: 0 }}>#{row.rank}</span>
+                    <span style={{ flex: 1, color: row.userId === userId ? C.gold : '#F0F4FF', fontSize: '0.85rem', fontWeight: row.userId === userId ? 700 : 400 }}>{row.displayName}</span>
+                    <span style={{ color: C.gold, fontWeight: 700, fontSize: '0.82rem' }}>{row.score} pts</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`, marginBottom: '1.25rem', overflowX: 'auto' }}>
