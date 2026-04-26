@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import VotingCard from './VotingCard'
 
 interface Player {
   id: string
@@ -66,7 +67,9 @@ export default function S3Page() {
   const startRank = (page - 1) * pageSize + 1
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1.5rem 2rem' }}>
+    <div>
+      <VotingCard />
+      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 1.5rem 2rem' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.75rem' }}>
         <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', fontWeight: 900, margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>
@@ -168,6 +171,7 @@ export default function S3Page() {
           <button onClick={() => setPage(totalPages)} disabled={page === totalPages} style={{ padding: '0.4rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #1E3A6E', backgroundColor: 'transparent', color: page === totalPages ? '#1E3A6E' : '#8899CC', cursor: page === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.78rem', fontFamily: 'inherit' }}>Last »</button>
         </div>
       )}
+      </div>
     </div>
   )
 }

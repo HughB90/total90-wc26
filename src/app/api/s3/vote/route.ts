@@ -3,10 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
-    const { playerId, vote, voterFingerprint } = await request.json()
+    const { votes } = await request.json()
+    // votes = [{ playerId, vote: 'sign'|'sell'|'sack' }]
 
-    if (!playerId || !vote || !['sign', 'sell', 'sack'].includes(vote)) {
-      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+    if (!Array.isArray(votes) || votes.length === 0) {
+      return NextResponse.json({ error: 'Invalid payload: votes array required' }, { status: 400 })
     }
 
     const supabase = createClient(
@@ -15,47 +16,30 @@ export async function POST(request: Request) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Insert vote record
-    const { error: insertErr } = await supabase
-      .from('s3_votes')
-      .insert({
-        player_id: playerId,
-        vote,
-        voter_fingerprint: voterFingerprint || 'anon',
-      })
+    for (const { playerId, vote } of votes) {
+      if (!playerId || !vote || !['sign', 'sell', 'sack'].includes(vote)) continue
 
-    if (insertErr) {
-      return NextResponse.json({ error: insertErr.message }, { status: 500 })
+      const { data: player } = await supabase
+        .from('s3_players')
+        .select('s3_value, sign_count, sell_count, sack_count, vote_count')
+        .eq('id', playerId)
+        .single() as any
+
+      if (!player) continue
+
+      const t90Delta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
+      const updates = {
+        s3_value: (player.s3_value || 1000) + t90Delta,
+        vote_count: (player.vote_count || 0) + 1,
+        sign_count: (player.sign_count || 0) + (vote === 'sign' ? 1 : 0),
+        sell_count: (player.sell_count || 0) + (vote === 'sell' ? 1 : 0),
+        sack_count: (player.sack_count || 0) + (vote === 'sack' ? 1 : 0),
+      }
+
+      await supabase.from('s3_players').update(updates).eq('id', playerId) as any
     }
 
-    // Fetch current player
-    const { data: player, error: fetchErr } = await supabase
-      .from('s3_players')
-      .select('s3_value, vote_count')
-      .eq('id', playerId)
-      .single()
-
-    if (fetchErr || !player) {
-      return NextResponse.json({ error: 'Player not found' }, { status: 404 })
-    }
-
-    // Update counts + T90
-    const t90Delta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
-    const updates: Record<string, number> = {
-      s3_value: (player.s3_value || 1000) + t90Delta,
-      vote_count: (player.vote_count || 0) + 1,
-    }
-
-    const { error: updateErr } = await supabase
-      .from('s3_players')
-      .update(updates)
-      .eq('id', playerId)
-
-    if (updateErr) {
-      return NextResponse.json({ error: updateErr.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ ok: true, newT90: updates.s3_value })
+    return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
