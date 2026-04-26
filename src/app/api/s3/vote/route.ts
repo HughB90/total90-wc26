@@ -29,8 +29,7 @@ export async function POST(request: Request) {
 
       const t90Delta = vote === 'sign' ? 10 : vote === 'sack' ? -10 : 0
       const updates = {
-        s3_value: (player.s3_value || 1000) + t90Delta,
-        vote_count: (player.vote_count || 0) + 1,
+                vote_count: (player.vote_count || 0) + 1,
         sign_count: (player.sign_count || 0) + (vote === 'sign' ? 1 : 0),
         sell_count: (player.sell_count || 0) + (vote === 'sell' ? 1 : 0),
         sack_count: (player.sack_count || 0) + (vote === 'sack' ? 1 : 0),

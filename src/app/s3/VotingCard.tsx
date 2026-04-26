@@ -171,8 +171,13 @@ export default function VotingCard() {
                     {(['sign', 'sell', 'sack'] as Vote[]).map((v, i) => {
                       const cfg = voteConfig[v]
                       const isSelected = selected === v
+                      const isUsedByOther = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
                       return (
-                        <button key={v} onClick={() => setVotes(prev => ({ ...prev, [p.id]: v }))} style={{
+                        <button key={v} onClick={() => {
+                          // Each vote type (sign/sell/sack) can only be used once
+                          const alreadyUsed = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
+                          if (!alreadyUsed) setVotes(prev => ({ ...prev, [p.id]: v }))
+                        }} style={{
                           padding: '0.75rem 0.5rem',
                           border: 'none',
                           borderRight: i < 2 ? '1px solid #1E3A6E' : 'none',
