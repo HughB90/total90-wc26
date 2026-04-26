@@ -4,12 +4,34 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Total90 WC26 — World Cup 2026 Hub',
-  description: 'Your World Cup 2026 command center — live news powered by Grok, S³ player ratings, bracket challenge, and live scores.',
+  description: 'Your World Cup 2026 command center — live news, S³ player ratings, bracket challenge & live scores. Powered by Total90 Intelligence.',
   icons: {
     icon: [
       { url: '/favicon-32.png', sizes: '32x32', type: 'image/png' },
       { url: '/favicon.png', type: 'image/png' },
     ],
+    apple: '/apple-touch-icon.png',
+  },
+  openGraph: {
+    title: 'Total90 WC26 — World Cup 2026 Hub',
+    description: 'Live news, S³ player ratings, bracket challenge & scores. Powered by Total90 Intelligence.',
+    url: 'https://wc26.total90.com',
+    siteName: 'Total90 WC26',
+    images: [
+      {
+        url: 'https://wc26.total90.com/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Total90 WC26 — World Cup 2026 Hub',
+      },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Total90 WC26 — World Cup 2026 Hub',
+    description: 'Live news, S³ player ratings, bracket challenge & scores.',
+    images: ['https://wc26.total90.com/og-image.png'],
   },
 }
 
