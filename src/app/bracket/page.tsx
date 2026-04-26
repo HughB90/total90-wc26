@@ -5,17 +5,17 @@ import { useState, useEffect, useCallback } from 'react'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WC_GROUPS: Record<string, string[]> = {
-  A: ['Mexico', 'South Korea', 'South Africa', 'UEFA Playoff D'],
-  B: ['Canada', 'Switzerland', 'Qatar', 'UEFA Playoff A'],
+  A: ['Mexico', 'South Korea', 'South Africa', 'Czech Republic'],
+  B: ['Canada', 'Switzerland', 'Qatar', 'Bosnia and Herzegovina'],
   C: ['Brazil', 'Morocco', 'Scotland', 'Haiti'],
-  D: ['USA', 'Australia', 'Paraguay', 'UEFA Playoff D'],
+  D: ['USA', 'Australia', 'Paraguay', 'Turkey'],
   E: ['Germany', 'Ecuador', 'Ivory Coast', 'Curacao'],
-  F: ['Netherlands', 'Japan', 'Tunisia', 'UEFA Playoff B'],
+  F: ['Netherlands', 'Japan', 'Tunisia', 'Sweden'],
   G: ['Belgium', 'Iran', 'Egypt', 'New Zealand'],
   H: ['Spain', 'Uruguay', 'Saudi Arabia', 'Cape Verde'],
-  I: ['France', 'Senegal', 'Norway', 'FIFA Playoff 2'],
+  I: ['France', 'Senegal', 'Norway', 'Iraq'],
   J: ['Argentina', 'Austria', 'Algeria', 'Jordan'],
-  K: ['Portugal', 'Colombia', 'Uzbekistan', 'FIFA Playoff 1'],
+  K: ['Portugal', 'Colombia', 'Uzbekistan', 'DR Congo'],
   L: ['England', 'Croatia', 'Panama', 'Ghana'],
 }
 
@@ -448,9 +448,10 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks }: {
 }
 
 // ─── Knockout Tab ─────────────────────────────────────────────────────────────
-function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks }: {
+function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32' }: {
   userId: string
   savedPicks: KnockoutPicks
+  activeRound?: string
   groupPicks: GroupPicks
   thirdPicks: ThirdPicks
 }) {
@@ -592,52 +593,51 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks }: {
   return (
     <div>
       <p style={{ color: C.muted, fontSize: '0.8rem', marginBottom: '1rem' }}>
-        Pick the winner of each matchup. R16 unlocks after R32 picks. 🏆 picks cascade through.
+        Pick the winner of each matchup. Later rounds unlock as you make earlier picks.
       </p>
 
-      <SectionHeader title="Round of 32" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        {R32_MATCHUPS.map(m => (
-          <MatchupRow key={m.id} matchId={m.id} opt1={m.s1} opt2={m.s2} label={m.id} />
-        ))}
-      </div>
+      {activeRound === 'r32' && (<>
+        <SectionHeader title="Round of 32 — 16 matches" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {R32_MATCHUPS.map(m => (
+            <MatchupRow key={m.id} matchId={m.id} opt1={m.s1} opt2={m.s2} label={m.id} />
+          ))}
+        </div>
+      </>)}
 
-      <SectionHeader title="Round of 16" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        {r16Rows.map(({ rid, w1, w2 }) => (
-          <MatchupRow key={rid} matchId={rid} opt1={w1} opt2={w2} label={rid.replace('_', ' ')} />
-        ))}
-      </div>
+      {activeRound === 'r16' && (<>
+        <SectionHeader title="Round of 16 — 8 matches" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {r16Rows.map(({ rid, w1, w2 }) => (
+            <MatchupRow key={rid} matchId={rid} opt1={w1} opt2={w2} label={rid.replace('_', ' ')} />
+          ))}
+        </div>
+      </>)}
 
-      <SectionHeader title="Quarter-Finals" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        {qfRows.map(({ qid, w1, w2 }) => (
-          <MatchupRow key={qid} matchId={qid} opt1={w1} opt2={w2} label={qid.replace('_', ' ')} />
-        ))}
-      </div>
+      {activeRound === 'qf' && (<>
+        <SectionHeader title="Quarter-Finals — 4 matches" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {qfRows.map(({ qid, w1, w2 }) => (
+            <MatchupRow key={qid} matchId={qid} opt1={w1} opt2={w2} label={qid.replace('_', ' ')} />
+          ))}
+        </div>
+      </>)}
 
-      <SectionHeader title="Semi-Finals" />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        {sfRows.map(({ sid, w1, w2 }) => (
-          <MatchupRow key={sid} matchId={sid} opt1={w1} opt2={w2} label={sid.replace('_', ' ')} />
-        ))}
-      </div>
+      {activeRound === 'sf' && (<>
+        <SectionHeader title="Semi-Finals — 2 matches" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {sfRows.map(({ sid, w1, w2 }) => (
+            <MatchupRow key={sid} matchId={sid} opt1={w1} opt2={w2} label={sid.replace('_', ' ')} />
+          ))}
+        </div>
+      </>)}
 
-      <SectionHeader title="3rd Place Match" />
-      <MatchupRow
-        matchId="THIRD"
-        opt1={sf1l ?? 'SF1 Loser'}
-        opt2={sf2l ?? 'SF2 Loser'}
-        label="3rd Place"
-      />
-
-      <SectionHeader title="🏆 Final" />
-      <MatchupRow
-        matchId="FINAL"
-        opt1={sf1w ?? 'SF1 Winner'}
-        opt2={sf2w ?? 'SF2 Winner'}
-        label="Final"
-      />
+      {activeRound === 'final' && (<>
+        <SectionHeader title="3rd Place Match" />
+        <MatchupRow matchId="THIRD" opt1={sf1l ?? 'SF1 Loser'} opt2={sf2l ?? 'SF2 Loser'} label="3rd Place" />
+        <SectionHeader title="🏆 Final" />
+        <MatchupRow matchId="FINAL" opt1={sf1w ?? 'SF1 Winner'} opt2={sf2w ?? 'SF2 Winner'} label="Final" />
+      </>)}
 
       <SaveButton status={status} onClick={handleSave} />
     </div>
@@ -815,10 +815,14 @@ function LeaderboardTab({ userId }: { userId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'group', label: '⚽ Group Stage' },
+  { id: 'group', label: 'Groups' },
   { id: 'third', label: '3rd Place' },
-  { id: 'knockout', label: '🏆 Knockout' },
-  { id: 'leaderboard', label: '📊 Leaderboard' },
+  { id: 'r32', label: 'Rd 32' },
+  { id: 'r16', label: 'Rd 16' },
+  { id: 'qf', label: 'QF' },
+  { id: 'sf', label: 'SF' },
+  { id: 'final', label: 'F & 3rd' },
+  { id: 'leaderboard', label: '📊' },
 ]
 
 export default function BracketPage() {
