@@ -833,6 +833,7 @@ export default function BracketPage() {
   const [thirdPicks, setThirdPicks] = useState<ThirdPicks>([])
   const [knockoutPicks, setKnockoutPicks] = useState<KnockoutPicks>({})
   const [picksLoaded, setPicksLoaded] = useState(false)
+  const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
 
   // Hydrate auth from localStorage
   useEffect(() => {
@@ -858,6 +859,21 @@ export default function BracketPage() {
       .catch(() => setPicksLoaded(true))
   }, [userId, picksLoaded])
 
+  // Fetch my rank and total users
+  useEffect(() => {
+    if (!userId) return
+    fetch('/api/bracket/leaderboard')
+      .then(r => r.json())
+      .then((data: { rows?: { userId: string; score: number }[]; total?: number }) => {
+        const rows = data.rows ?? []
+        const total = data.total ?? rows.length
+        const myIdx = rows.findIndex((r: { userId: string }) => r.userId === userId)
+        const myScore = myIdx >= 0 ? (rows[myIdx] as { score: number }).score : 0
+        setMyRank({ rank: myIdx >= 0 ? myIdx + 1 : total + 1, total, score: myScore })
+      })
+      .catch(() => {})
+  }, [userId])
+
   function handleAuth(id: string, name: string) {
     setUserId(id)
     setDisplayName(name)
@@ -881,7 +897,7 @@ export default function BracketPage() {
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1rem 1rem 4rem' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
             <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.4rem', margin: 0 }}>🏆 Bracket Challenge</h1>
             <p style={{ color: C.muted, fontSize: '0.8rem', margin: '0.2rem 0 0' }}>World Cup 2026 · Make your picks</p>
@@ -892,6 +908,39 @@ export default function BracketPage() {
               backgroundColor: 'transparent', border: `1px solid ${C.border}`, borderRadius: '0.5rem',
               color: C.muted, fontSize: '0.75rem', padding: '0.3rem 0.7rem', cursor: 'pointer',
             }}>Log out</button>
+          </div>
+        </div>
+
+        {/* Global standings strip */}
+        <div style={{
+          backgroundColor: '#0F1C4D',
+          border: '1px solid #1E3A6E',
+          borderRadius: '0.75rem',
+          padding: '0.6rem 1rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+        }}>
+          <span style={{ color: '#4A6080', fontSize: '0.75rem' }}>
+            🌍 Global: <span style={{ color: '#8899CC', fontWeight: 600 }}>{myRank ? myRank.total.toLocaleString() : '—'} participants</span>
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ color: '#F0F4FF', fontWeight: 700, fontSize: '0.82rem' }}>{displayName}</span>
+            <span style={{ color: C.gold, fontWeight: 700, fontSize: '0.82rem' }}>{myRank?.score ?? 0} pts</span>
+            <span style={{
+              backgroundColor: myRank && myRank.rank <= 10 ? 'rgba(251,191,36,0.15)' : 'rgba(136,153,204,0.1)',
+              color: myRank && myRank.rank <= 10 ? C.gold : '#8899CC',
+              border: `1px solid ${myRank && myRank.rank <= 10 ? 'rgba(251,191,36,0.3)' : '#1E3A6E'}`,
+              borderRadius: '1rem',
+              padding: '0.15rem 0.6rem',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+            }}>
+              #{myRank ? myRank.rank.toLocaleString() : '—'} of {myRank ? myRank.total.toLocaleString() : '—'}
+            </span>
           </div>
         </div>
 

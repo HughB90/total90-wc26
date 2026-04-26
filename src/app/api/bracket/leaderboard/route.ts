@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
       const rows = aggregateScores(entries ?? [])
-      return NextResponse.json({ ok: true, rows })
+      return NextResponse.json({ ok: true, rows, total: rows.length })
     }
 
     // Global leaderboard — top 50
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     const rows = aggregateScores(entries ?? []).slice(0, 50)
-    return NextResponse.json({ ok: true, rows })
+    return NextResponse.json({ ok: true, rows, total: rows.length })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
