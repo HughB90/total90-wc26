@@ -59,8 +59,8 @@ function SiteNav() {
           <span style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.9rem' }}>WC26</span>
         </Link>
       </div>
-      {/* Row 2: Nav links centered */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', alignItems: 'center' }}>
+      {/* Row 2: Nav links + app link */}
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
         {NAV_LINKS.map(({ label, href }) => (
           <Link
             key={href}
@@ -76,40 +76,16 @@ function SiteNav() {
             {label}
           </Link>
         ))}
+        <a href="https://apps.apple.com/us/app/total90/id6749282785" target="_blank" rel="noopener noreferrer"
+          style={{ color: '#00E676', fontSize: '0.72rem', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', border: '1px solid rgba(0,230,118,0.3)', borderRadius: '1rem', padding: '0.15rem 0.6rem' }}>
+          ⚽ App
+        </a>
       </div>
     </nav>
   )
 }
 
-function AppFloatingButton() {
-  return (
-    <a
-      href="https://apps.apple.com/us/app/total90/id6749282785"
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{
-        position: 'fixed',
-        bottom: '1.25rem',
-        right: '1.25rem',
-        zIndex: 999,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        backgroundColor: '#00E676',
-        color: '#0A0F2E',
-        fontWeight: 800,
-        fontSize: '0.8rem',
-        padding: '0.6rem 1rem',
-        borderRadius: '2rem',
-        textDecoration: 'none',
-        boxShadow: '0 4px 20px rgba(0,230,118,0.35)',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      ⚽ Get the App →
-    </a>
-  )
-}
+
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -122,11 +98,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         backgroundColor: '#0A0F2E',
         color: '#F0F4FF',
         fontFamily: "system-ui, -apple-system, sans-serif",
-        paddingBottom: '5rem', // space for floating button
+
       }}>
         <SiteNav />
         {children}
-        <AppFloatingButton />
       </body>
     </html>
   )
