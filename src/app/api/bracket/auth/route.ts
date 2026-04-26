@@ -43,9 +43,10 @@ async function sendWelcomeEmail(email: string, displayName: string, pin: string)
 
 export async function POST(request: Request) {
   try {
-    const { email, display_name, pin, invite_code } = await request.json() as {
-      email: string
+    const { email, display_name, first_name, pin, invite_code } = await request.json() as {
+      email?: string
       display_name: string
+      first_name?: string
       pin: string
       invite_code?: string
     }
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     // Sign-in mode: display_name + pin only (no email)
     // Create mode: email + display_name + pin
     const isSignIn = !email && !!display_name && !!pin
-    const isCreate = !!email && !!display_name && !!pin
+    const isCreate = !!display_name && !!pin
     
     if (!isSignIn && !isCreate) {
       return NextResponse.json({ error: 'Team name and PIN required' }, { status: 400 })
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, userId: existingByName.id, displayName: existingByName.display_name })
     }
 
-    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedEmail = (email ?? '').trim().toLowerCase()
 
     // Check if user exists
     const { data: existing } = await supabase
@@ -122,6 +123,7 @@ export async function POST(request: Request) {
         .insert({
           email: normalizedEmail,
           display_name: display_name.trim(),
+          first_name: (first_name ?? display_name).trim(),
           pin_hash: pinHash,
         })
         .select('id, display_name')
