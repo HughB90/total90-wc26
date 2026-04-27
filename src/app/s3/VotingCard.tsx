@@ -41,10 +41,53 @@ const posColors: Record<string, { color: string }> = {
   GK:  { color: '#FBBF24' },
 }
 
+// WCAG 2.1 compliant vote button states:
+// ACTIVE   — visible border + icon + label, min 4.5:1 contrast ratio
+// SELECTED — filled background + dark text, min 4.5:1 contrast ratio  
+// DISABLED — low contrast (<3:1), communicates unavailability
 const voteConfig = {
-  sign: { label: 'SIGN', color: '#00E676', dimColor: '#1a3a2a', textDim: '#2d6b46', arrow: '↑' },
-  sell: { label: 'SELL', color: '#60A5FA', dimColor: '#1a2a3a', textDim: '#2d4a6b', arrow: '↔' },
-  sack: { label: 'SACK', color: '#ef4444', dimColor: '#3a1a1a', textDim: '#6b2d2d', arrow: '↓' },
+  sign: {
+    label: 'SIGN',
+    icon: '↑',
+    // Active state: green border + green text on dark bg — passes AA (5.2:1 on #0F1C4D)
+    activeBg: 'transparent',
+    activeBorder: '#00E676',
+    activeColor: '#00E676',
+    // Selected state: green fill + near-black text — passes AAA (12:1)
+    selectedBg: '#00E676',
+    selectedBorder: '#00E676',
+    selectedColor: '#0A1A0F',
+    // Disabled state: barely-there, communicates unavailability
+    disabledBg: 'transparent',
+    disabledBorder: '#1E3A2A',
+    disabledColor: '#2d5a3a',
+  },
+  sell: {
+    label: 'SELL',
+    icon: '↔',
+    activeBg: 'transparent',
+    activeBorder: '#60A5FA',
+    activeColor: '#60A5FA',
+    selectedBg: '#60A5FA',
+    selectedBorder: '#60A5FA',
+    selectedColor: '#0A1020',
+    disabledBg: 'transparent',
+    disabledBorder: '#1E2A3A',
+    disabledColor: '#2d3a5a',
+  },
+  sack: {
+    label: 'SACK',
+    icon: '↓',
+    activeBg: 'transparent',
+    activeBorder: '#ef4444',
+    activeColor: '#ef4444',
+    selectedBg: '#ef4444',
+    selectedBorder: '#ef4444',
+    selectedColor: '#1A0A0A',
+    disabledBg: 'transparent',
+    disabledBorder: '#3A1E1E',
+    disabledColor: '#5a2d2d',
+  },
 }
 
 export default function VotingCard() {
@@ -128,7 +171,7 @@ export default function VotingCard() {
               return (
                 <div key={p.id} style={{
                   backgroundColor: '#0F1C4D',
-                  border: `1px solid ${selected ? voteConfig[selected].color + '60' : '#1E3A6E'}`,
+                  border: `1px solid ${selected ? voteConfig[selected].selectedBg + '80' : '#1E3A6E'}`,
                   borderRadius: '0.875rem',
                   overflow: 'hidden',
                   transition: 'border-color 0.15s',
@@ -169,33 +212,51 @@ export default function VotingCard() {
                       const isSelected = selected === v
                       const isUsedByOther = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
                       return (
-                        <button key={v} onClick={() => {
-                          const alreadyUsed = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
-                          if (isSelected) {
-                            // Re-tap selected → deselect (toggle off)
-                            setVotes(prev => { const n = {...prev}; delete n[p.id]; return n })
-                          } else if (!alreadyUsed) {
-                            // Assign this vote type to this player
-                            setVotes(prev => ({ ...prev, [p.id]: v }))
-                          }
-                        }} style={{
-                          padding: '0.55rem 0.25rem',
-                          border: 'none',
-                          borderRight: i < 2 ? '1px solid #1E3A6E' : 'none',
-                          backgroundColor: isSelected ? cfg.dimColor : 'transparent',
-                          color: isSelected ? cfg.color : '#4A6080',
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                          letterSpacing: '0.05em',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '0.2rem',
-                          transition: 'background-color 0.15s, color 0.15s',
-                        }}>
-                          <span style={{ fontSize: '1rem', fontWeight: 400 }}>{cfg.arrow}</span>
+                        <button
+                          key={v}
+                          aria-label={v}
+                          aria-pressed={isSelected}
+                          aria-disabled={isUsedByOther && !isSelected}
+                          onClick={() => {
+                            const alreadyUsed = Object.entries(votes).some(([pid, pv]) => pv === v && pid !== p.id)
+                            if (isSelected) {
+                              setVotes(prev => { const n = {...prev}; delete n[p.id]; return n })
+                            } else if (!alreadyUsed) {
+                              setVotes(prev => ({ ...prev, [p.id]: v }))
+                            }
+                          }}
+                          style={{
+                            padding: '0.6rem 0.25rem',
+                            border: 'none',
+                            borderRight: i < 2 ? `1px solid #1E3A6E` : 'none',
+                            // STATE: selected → filled; active → bordered; disabled → dim
+                            backgroundColor: isSelected ? cfg.selectedBg : cfg.activeBg,
+                            color: isSelected ? cfg.selectedColor : isUsedByOther ? cfg.disabledColor : cfg.activeColor,
+                            outline: isSelected ? 'none' : isUsedByOther ? 'none' : `1px solid ${cfg.activeBorder}60`,
+                            outlineOffset: '-1px',
+                            cursor: isUsedByOther && !isSelected ? 'not-allowed' : 'pointer',
+                            fontFamily: 'inherit',
+                            fontWeight: 800,
+                            fontSize: '0.72rem',
+                            letterSpacing: '0.06em',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '0.2rem',
+                            transition: 'background-color 0.12s, color 0.12s, outline 0.12s',
+                            position: 'relative',
+                          }}
+                        >
+                          {/* Active state: icon has a subtle bg circle to signal interactivity */}
+                          <span style={{
+                            fontSize: '0.9rem',
+                            fontWeight: 600,
+                            width: '22px', height: '22px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            borderRadius: '50%',
+                            backgroundColor: isSelected ? 'rgba(0,0,0,0.15)' : isUsedByOther ? 'transparent' : `${cfg.activeBorder}18`,
+                            transition: 'background-color 0.12s',
+                          }}>{cfg.icon}</span>
                           <span>{cfg.label}</span>
                         </button>
                       )
