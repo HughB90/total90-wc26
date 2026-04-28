@@ -12,11 +12,12 @@ function randomCode(): string {
 
 export async function POST(request: Request) {
   try {
-    const { userId, action, name, inviteCode } = await request.json() as {
+    const { userId, action, name, inviteCode, leagueId } = await request.json() as {
       userId: string
-      action: 'create' | 'join'
+      action: 'create' | 'join' | 'leave' | 'rename'
       name?: string
       inviteCode?: string
+      leagueId?: string
     }
 
     if (!userId || !action) {
@@ -28,6 +29,21 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
+
+    // Leave league
+    if (action === 'leave') {
+      if (!leagueId) return NextResponse.json({ error: 'leagueId required' }, { status: 400 })
+      await (supabase.from('bracket_league_members').delete().match({ league_id: leagueId, user_id: userId }) as any)
+      return NextResponse.json({ ok: true })
+    }
+
+    // Rename league (creator only)
+    if (action === 'rename') {
+      if (!leagueId || !name) return NextResponse.json({ error: 'leagueId and name required' }, { status: 400 })
+      const { error } = await (supabase.from('bracket_leagues').update({ name: name.trim() }).match({ id: leagueId, creator_id: userId }) as any)
+      if (error) return NextResponse.json({ error: 'Not authorized or league not found' }, { status: 403 })
+      return NextResponse.json({ ok: true })
+    }
 
     if (action === 'create') {
       if (!name) return NextResponse.json({ error: 'name required to create league' }, { status: 400 })

@@ -614,6 +614,177 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
   )
 }
 
+// ─── Leagues Tab ──────────────────────────────────────────────────────────────
+interface MyLeague { id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }
+
+function LeaguesTab({ userId }: { userId: string }) {
+  const [myLeagues, setMyLeagues] = useState<MyLeague[]>([])
+  const [leagueView, setLeagueView] = useState<{ code: string; name: string } | null>(null)
+  const [leagueRows, setLeagueRows] = useState<LeaderboardRow[]>([])
+  const [leagueName, setLeagueName] = useState('')
+  const [createdCode, setCreatedCode] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [joinMsg, setJoinMsg] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const inp: React.CSSProperties = {
+    backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '0.6rem',
+    padding: '0.5rem 0.75rem', color: C.text, fontSize: '0.85rem', outline: 'none',
+    fontFamily: 'inherit',
+  }
+
+  const fetchMyLeagues = async () => {
+    const d = await fetch(`/api/bracket/league?userId=${userId}`).then(r => r.json()).catch(() => ({}))
+    setMyLeagues(d.leagues ?? [])
+  }
+
+  useEffect(() => { fetchMyLeagues() }, [userId])
+
+  useEffect(() => {
+    if (!leagueView) return
+    setLeagueRows([])
+    fetch(`/api/bracket/leaderboard?leagueCode=${leagueView.code}`)
+      .then(r => r.json())
+      .then((d: { rows?: LeaderboardRow[] }) => setLeagueRows(d.rows ?? []))
+      .catch(() => {})
+  }, [leagueView])
+
+  async function handleCreate() {
+    if (!leagueName.trim()) return
+    const d = await fetch('/api/bracket/league', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'create', name: leagueName }),
+    }).then(r => r.json()).catch(() => ({}))
+    if (d.ok && d.league) { setCreatedCode(d.league.invite_code); setLeagueName(''); fetchMyLeagues() }
+  }
+
+  async function handleJoin() {
+    if (!joinCode.trim()) return
+    const d = await fetch('/api/bracket/league', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'join', inviteCode: joinCode }),
+    }).then(r => r.json()).catch(() => ({}))
+    if (d.ok) { setJoinMsg(`Joined "${d.league?.name}"!`); setJoinCode(''); fetchMyLeagues() }
+    else setJoinMsg(d.error ?? 'League not found')
+  }
+
+  async function handleLeave(leagueId: string) {
+    if (!confirm('Leave this league?')) return
+    await fetch('/api/bracket/league', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'leave', leagueId }),
+    }).then(r => r.json()).catch(() => {})
+    fetchMyLeagues()
+  }
+
+  async function handleEditSave(leagueId: string) {
+    if (!editName.trim()) return
+    await fetch('/api/bracket/league', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'rename', leagueId, name: editName }),
+    }).then(r => r.json()).catch(() => {})
+    setEditingId(null); fetchMyLeagues()
+  }
+
+  function copyCode(code: string) {
+    navigator.clipboard.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  }
+
+  // League detail view
+  if (leagueView) return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div>
+          <h3 style={{ color: C.gold, fontWeight: 800, fontSize: '1.1rem', margin: 0 }}>{leagueView.name}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+            <span style={{ color: C.muted, fontSize: '0.72rem' }}>Code: <strong style={{ color: '#8899CC' }}>{leagueView.code}</strong></span>
+            <button onClick={() => copyCode(leagueView.code)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.4rem', color: copied ? C.green : C.muted, fontSize: '0.7rem', padding: '1px 7px', cursor: 'pointer', fontFamily: 'inherit' }}>{copied ? 'Copied!' : 'Copy'}</button>
+          </div>
+        </div>
+        <button onClick={() => setLeagueView(null)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.5rem', color: C.muted, fontSize: '0.75rem', padding: '0.3rem 0.7rem', cursor: 'pointer', fontFamily: 'inherit' }}>← Back</button>
+      </div>
+      {leagueRows.length === 0 ? (
+        <p style={{ color: C.muted }}>Loading…</p>
+      ) : leagueRows.map(row => (
+        <div key={row.userId} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', marginBottom: '0.35rem', backgroundColor: row.userId === userId ? 'rgba(251,191,36,0.08)' : C.card, border: `1px solid ${row.userId === userId ? 'rgba(251,191,36,0.3)' : C.border}`, borderRadius: '0.625rem' }}>
+          <span style={{ color: C.muted, fontSize: '0.72rem', fontWeight: 700, width: '28px', flexShrink: 0 }}>#{row.rank}</span>
+          <span style={{ flex: 1, color: row.userId === userId ? C.gold : C.text, fontWeight: row.userId === userId ? 700 : 400, fontSize: '0.875rem' }}>{row.displayName}</span>
+          <span style={{ color: C.gold, fontWeight: 700, fontSize: '0.82rem' }}>{row.score} pts</span>
+        </div>
+      ))}
+    </div>
+  )
+
+  return (
+    <div>
+      {/* My Leagues list */}
+      {myLeagues.length > 0 && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h4 style={{ color: C.muted, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.75rem' }}>
+            My Leagues ({myLeagues.length})
+          </h4>
+          {myLeagues.map(league => (
+            <div key={league.id} style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '0.875rem', padding: '0.875rem 1rem', marginBottom: '0.5rem' }}>
+              {editingId === league.id ? (
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inp, flex: 1 }} placeholder="New name" />
+                  <button onClick={() => handleEditSave(league.id)} style={{ backgroundColor: C.gold, color: '#0A0F2E', border: 'none', borderRadius: '0.5rem', fontWeight: 700, fontSize: '0.8rem', padding: '0.4rem 0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>Save</button>
+                  <button onClick={() => setEditingId(null)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.5rem', color: C.muted, fontSize: '0.8rem', padding: '0.4rem 0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => setLeagueView({ code: league.inviteCode, name: league.name })}>
+                    <div style={{ color: C.text, fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.25rem' }}>{league.name}</div>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                      <span style={{ color: C.gold, fontSize: '0.8rem', fontWeight: 700 }}>{league.myScore} pts</span>
+                      <span style={{ color: C.muted, fontSize: '0.78rem' }}>#{league.myRank} of {league.memberCount}</span>
+                      <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>Code: {league.inviteCode}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0, marginLeft: '0.75rem' }}>
+                    <button onClick={() => { setEditingId(league.id); setEditName(league.name) }} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.4rem', color: C.muted, fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                    <button onClick={() => handleLeave(league.id)} style={{ background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.4rem', color: '#ef4444', fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Leave</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create + Join */}
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 200px', backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '1rem', padding: '1rem' }}>
+          <h4 style={{ color: C.gold, margin: '0 0 0.6rem', fontSize: '0.85rem' }}>Create League</h4>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <input value={leagueName} onChange={e => setLeagueName(e.target.value)} placeholder="League name" style={{ ...inp, flex: 1 }} />
+            <button onClick={handleCreate} style={{ backgroundColor: C.gold, color: '#0A0F2E', fontWeight: 700, fontSize: '0.8rem', padding: '0.5rem 0.85rem', borderRadius: '0.6rem', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Create</button>
+          </div>
+          {createdCode && (
+            <div style={{ marginTop: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ color: C.muted, fontSize: '0.75rem' }}>Code:</span>
+              <code style={{ color: C.gold, fontWeight: 800, fontSize: '0.95rem' }}>{createdCode}</code>
+              <button onClick={() => copyCode(createdCode)} style={{ backgroundColor: 'transparent', border: `1px solid ${C.border}`, borderRadius: '0.4rem', color: copied ? C.green : C.muted, fontSize: '0.7rem', padding: '2px 8px', cursor: 'pointer', fontFamily: 'inherit' }}>{copied ? 'Copied!' : 'Copy'}</button>
+            </div>
+          )}
+        </div>
+        <div style={{ flex: '1 1 200px', backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '1rem', padding: '1rem' }}>
+          <h4 style={{ color: C.gold, margin: '0 0 0.6rem', fontSize: '0.85rem' }}>Join a League</h4>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="ABC123" maxLength={6} style={{ ...inp, flex: 1 }} />
+            <button onClick={handleJoin} style={{ backgroundColor: C.card, color: C.gold, fontWeight: 700, fontSize: '0.8rem', padding: '0.5rem 0.85rem', borderRadius: '0.6rem', border: `1px solid ${C.gold}`, cursor: 'pointer', fontFamily: 'inherit' }}>Join</button>
+          </div>
+          {joinMsg && <p style={{ color: joinMsg.includes('!') ? C.green : '#ef4444', fontSize: '0.75rem', margin: '0.4rem 0 0' }}>{joinMsg}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // ─── Leaderboard Tab ──────────────────────────────────────────────────────────
 function LeaderboardTab({ userId }: { userId: string }) {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
@@ -785,6 +956,7 @@ function LeaderboardTab({ userId }: { userId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const TABS = [
+  { id: 'leagues', label: '🏅 Leagues' },
   { id: 'group', label: 'Groups' },
   { id: 'third', label: '3rd Place' },
   { id: 'r32', label: 'Rd 32' },
@@ -798,7 +970,7 @@ const TABS = [
 export default function BracketPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
-  const [activeTab, setActiveTab] = useState('group')
+  const [activeTab, setActiveTab] = useState('leagues')
   const [groupPicks, setGroupPicks] = useState<GroupPicks>({})
   const [thirdPicks, setThirdPicks] = useState<ThirdPicks>([])
   const [knockoutPicks, setKnockoutPicks] = useState<KnockoutPicks>({})
@@ -937,58 +1109,6 @@ export default function BracketPage() {
           </div>
         </div>
 
-        {/* Private leagues section */}
-        {myLeagues.length > 0 && !leagueView && (
-          <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.75rem', padding: '0.6rem 1rem', marginBottom: '1rem' }}>
-            <div style={{ color: '#8899CC', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              Private Leagues ({myLeagues.length})
-            </div>
-            {myLeagues.map(league => (
-              <div key={league.id} onClick={() => setLeagueView({ leagueCode: league.inviteCode, leagueName: league.name })}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0', borderTop: '1px solid rgba(30,58,110,0.5)', cursor: 'pointer' }}>
-                <span style={{ color: '#F0F4FF', fontSize: '0.82rem', fontWeight: 600 }}>{league.name}</span>
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  <span style={{ color: C.gold, fontSize: '0.78rem', fontWeight: 700 }}>{league.myScore} pts</span>
-                  <span style={{ color: '#8899CC', fontSize: '0.72rem' }}>#{league.myRank} of {league.memberCount}</span>
-                  <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>→</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* League detail view */}
-        {leagueView && (
-          <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '1rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem' }}>
-              <div>
-                <div style={{ color: C.gold, fontWeight: 700, fontSize: '1rem' }}>{leagueView.leagueName}</div>
-                <div style={{ color: '#4A6080', fontSize: '0.72rem' }}>Code: {leagueView.leagueCode}</div>
-              </div>
-              <button onClick={() => setLeagueView(null)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.5rem', color: '#8899CC', fontSize: '0.75rem', padding: '0.25rem 0.6rem', cursor: 'pointer', fontFamily: 'inherit' }}>← Back</button>
-            </div>
-            {leagueRows.length === 0 ? (
-              <p style={{ color: '#4A6080', fontSize: '0.82rem' }}>Loading...</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {leagueRows.map(row => (
-                  <div key={row.userId} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.5rem 0.75rem',
-                    backgroundColor: row.userId === userId ? 'rgba(251,191,36,0.08)' : '#162040',
-                    border: `1px solid ${row.userId === userId ? 'rgba(251,191,36,0.3)' : '#1E3A6E'}`,
-                    borderRadius: '0.625rem',
-                  }}>
-                    <span style={{ color: '#4A6080', fontSize: '0.72rem', fontWeight: 700, width: '24px', flexShrink: 0 }}>#{row.rank}</span>
-                    <span style={{ flex: 1, color: row.userId === userId ? C.gold : '#F0F4FF', fontSize: '0.85rem', fontWeight: row.userId === userId ? 700 : 400 }}>{row.displayName}</span>
-                    <span style={{ color: C.gold, fontWeight: 700, fontSize: '0.82rem' }}>{row.score} pts</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: `1px solid ${C.border}`, marginBottom: '1.25rem', overflowX: 'auto' }}>
           {TABS.map(tab => (
@@ -1008,6 +1128,9 @@ export default function BracketPage() {
         </div>
 
         {/* Tab content */}
+        {activeTab === 'leagues' && (
+          <LeaguesTab userId={userId} />
+        )}
         {activeTab === 'group' && (
           <GroupStageTab userId={userId} savedPicks={groupPicks} />
         )}
