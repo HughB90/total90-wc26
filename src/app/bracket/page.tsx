@@ -269,7 +269,7 @@ function GroupStageTab({ userId, savedPicks }: { userId: string; savedPicks: Gro
                       }}
                     >
                       <img
-                        src={flagUrl(team)}
+                        src={flagUrl(cleanName(team))}
                         alt={team}
                         width={24} height={16}
                         style={{ borderRadius: '50%', objectFit: 'cover', width: '24px', height: '24px', flexShrink: 0 }}
@@ -451,7 +451,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
         const teams = WC_GROUPS[group]
         const auto4th = teams.find(t => !ranked.includes(t))
         const third = ranked[2] ?? (ranked.length === 3 ? auto4th : null)
-        if (third) return `${third} (3rd · Grp ${group})`
+        if (third) return third  // Return just the country name — no suffix
       }
     }
     return label
@@ -490,6 +490,8 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
     const r2 = resolveLabel(opt2)
     const isPlaceholder1 = r1.startsWith('Winner') || r1 === '?' || r1.startsWith('Best')
     const isPlaceholder2 = r2.startsWith('Winner') || r2 === '?' || r2.startsWith('Best')
+    // Strip any parenthetical suffix like "(3rd · Grp A)" for flag lookup
+    const cleanName = (s: string) => s.replace(/\s*\(.*\)$/, '').trim()
 
     function TeamRow({ team, isPlaceholder, side }: { team: string; isPlaceholder: boolean; side: 1 | 2 }) {
       const isSelected = winner === team
@@ -509,7 +511,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
             <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#162040', border: `1px solid ${C.border}`, flexShrink: 0 }} />
           ) : (
             <img
-              src={flagUrl(team)}
+              src={flagUrl(cleanName(team))}
               alt=""
               style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: `1px solid ${C.border}`, flexShrink: 0, backgroundColor: '#162040' }}
               onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3' }}
