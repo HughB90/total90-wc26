@@ -615,7 +615,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
 }
 
 // ─── Leagues Tab ──────────────────────────────────────────────────────────────
-interface MyLeague { id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }
+interface MyLeague { id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number; isCreator: boolean }
 
 function LeaguesTab({ userId }: { userId: string }) {
   const [myLeagues, setMyLeagues] = useState<MyLeague[]>([])
@@ -669,6 +669,15 @@ function LeaguesTab({ userId }: { userId: string }) {
     }).then(r => r.json()).catch(() => ({}))
     if (d.ok) { setJoinMsg(`Joined "${d.league?.name}"!`); setJoinCode(''); fetchMyLeagues() }
     else setJoinMsg(d.error ?? 'League not found')
+  }
+
+  async function handleDelete(leagueId: string) {
+    if (!confirm('Delete this league? This will remove it for all members.')) return
+    await fetch('/api/bracket/league', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'delete', leagueId }),
+    }).then(r => r.json()).catch(() => {})
+    fetchMyLeagues()
   }
 
   async function handleLeave(leagueId: string) {
@@ -744,9 +753,18 @@ function LeaguesTab({ userId }: { userId: string }) {
                       <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>Code: {league.inviteCode}</span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0, marginLeft: '0.75rem' }}>
-                    <button onClick={() => { setEditingId(league.id); setEditName(league.name) }} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.4rem', color: C.muted, fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
-                    <button onClick={() => handleLeave(league.id)} style={{ background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.4rem', color: '#ef4444', fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Leave</button>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0, marginLeft: '0.75rem', alignItems: 'center' }}>
+                    {league.isCreator && (
+                      <span style={{ backgroundColor: 'rgba(251,191,36,0.15)', color: C.gold, border: '1px solid rgba(251,191,36,0.3)', borderRadius: '0.4rem', fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.45rem', letterSpacing: '0.04em' }}>ADMIN</span>
+                    )}
+                    {league.isCreator && (
+                      <button onClick={() => { setEditingId(league.id); setEditName(league.name) }} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: '0.4rem', color: C.muted, fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                    )}
+                    {league.isCreator ? (
+                      <button onClick={() => handleDelete(league.id)} style={{ background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.4rem', color: '#ef4444', fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                    ) : (
+                      <button onClick={() => handleLeave(league.id)} style={{ background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.4rem', color: '#ef4444', fontSize: '0.7rem', padding: '0.25rem 0.55rem', cursor: 'pointer', fontFamily: 'inherit' }}>Leave</button>
+                    )}
                   </div>
                 </div>
               )}

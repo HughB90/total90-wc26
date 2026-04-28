@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const { userId, action, name, inviteCode, leagueId } = await request.json() as {
       userId: string
-      action: 'create' | 'join' | 'leave' | 'rename'
+      action: 'create' | 'join' | 'leave' | 'rename' | 'delete'
       name?: string
       inviteCode?: string
       leagueId?: string
@@ -29,6 +29,17 @@ export async function POST(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
+
+    // Delete league (creator only — removes all members + league)
+    if (action === 'delete') {
+      if (!leagueId) return NextResponse.json({ error: 'leagueId required' }, { status: 400 })
+      // Verify creator
+      const { data: lg } = await (supabase.from('bracket_leagues').select('creator_id').eq('id', leagueId).maybeSingle() as any)
+      if (!lg || lg.creator_id !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+      await (supabase.from('bracket_league_members').delete().eq('league_id', leagueId) as any)
+      await (supabase.from('bracket_leagues').delete().eq('id', leagueId) as any)
+      return NextResponse.json({ ok: true })
+    }
 
     // Leave league
     if (action === 'leave') {
@@ -125,7 +136,7 @@ export async function GET(request: Request) {
     // Get leagues user is in
     const { data: memberships } = await (supabase
       .from('bracket_league_members')
-      .select('league_id, bracket_leagues(id, name, invite_code)')
+      .select('league_id, bracket_leagues(id, name, invite_code, creator_id)')
       .eq('user_id', userId) as any)
 
     if (!memberships?.length) return NextResponse.json({ leagues: [] })
@@ -165,6 +176,7 @@ export async function GET(request: Request) {
         memberCount: memberIds.length,
         myRank: myRank || memberIds.length,
         myScore,
+        isCreator: league.creator_id === userId,
       }
     }))
 
