@@ -197,7 +197,7 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
   )
 }
 
-function GroupStageTab({ userId, savedPicks }: { userId: string; savedPicks: GroupPicks }) {
+function GroupStageTab({ userId, savedPicks, onSaved }: { userId: string; savedPicks: GroupPicks; onSaved?: () => void }) {
   const [picks, setPicks] = useState<GroupPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
@@ -295,10 +295,11 @@ function GroupStageTab({ userId, savedPicks }: { userId: string; savedPicks: Gro
 }
 
 // ─── 3rd Place Tab ────────────────────────────────────────────────────────────
-function ThirdPlaceTab({ userId, savedPicks, groupPicks }: {
+function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved }: {
   userId: string
   savedPicks: ThirdPicks
   groupPicks: GroupPicks
+  onSaved?: () => void
 }) {
   const [checked, setChecked] = useState<string[]>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
@@ -419,12 +420,13 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks }: {
 }
 
 // ─── Knockout Tab ─────────────────────────────────────────────────────────────
-function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32' }: {
+function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32', onSaved }: {
   userId: string
   savedPicks: KnockoutPicks
   activeRound?: string
   groupPicks: GroupPicks
   thirdPicks: ThirdPicks
+  onSaved?: () => void
 }) {
   const [picks, setPicks] = useState<KnockoutPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
@@ -1182,13 +1184,19 @@ export default function BracketPage() {
           <LeaguesTab userId={userId} />
         )}
         {activeTab === 'group' && (
-          <GroupStageTab userId={userId} savedPicks={groupPicks} />
+          <GroupStageTab userId={userId} savedPicks={groupPicks} onSaved={() => setActiveTab('third')} />
         )}
         {activeTab === 'third' && (
-          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} />
+          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} />
         )}
         {['r32','r16','qf','sf','final'].includes(activeTab) && (
-          <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} activeRound={activeTab} />
+          <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} activeRound={activeTab}
+            onSaved={() => {
+              const order = ['r32','r16','qf','sf','final','leaderboard']
+              const next = order[order.indexOf(activeTab) + 1]
+              if (next) setActiveTab(next)
+            }}
+          />
         )}
         {activeTab === 'leaderboard' && (
           <LeaderboardTab userId={userId} />
