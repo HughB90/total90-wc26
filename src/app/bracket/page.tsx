@@ -488,34 +488,65 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
     const winner = picks[matchId] ?? ''
     const r1 = resolveLabel(opt1)
     const r2 = resolveLabel(opt2)
-    const showDropdown = r1 !== opt1 || r2 !== opt2 || opt1.includes('Qualifier') || opt2.includes('Qualifier') || true
+    const isPlaceholder1 = r1.startsWith('Winner') || r1 === '?' || r1.startsWith('Best')
+    const isPlaceholder2 = r2.startsWith('Winner') || r2 === '?' || r2.startsWith('Best')
+
+    function TeamRow({ team, isPlaceholder, side }: { team: string; isPlaceholder: boolean; side: 1 | 2 }) {
+      const isSelected = winner === team
+      return (
+        <div
+          onClick={() => !isPlaceholder && handlePick(matchId, team)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.625rem',
+            padding: '0.5rem 0.75rem',
+            backgroundColor: isSelected ? 'rgba(251,191,36,0.1)' : 'transparent',
+            cursor: isPlaceholder ? 'default' : 'pointer',
+            borderTop: side === 2 ? `1px solid ${C.border}` : 'none',
+          }}
+        >
+          {/* Flag or placeholder */}
+          {isPlaceholder ? (
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#162040', border: `1px solid ${C.border}`, flexShrink: 0 }} />
+          ) : (
+            <img
+              src={flagUrl(team)}
+              alt=""
+              style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: `1px solid ${C.border}`, flexShrink: 0, backgroundColor: '#162040' }}
+              onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3' }}
+            />
+          )}
+          {/* Team name */}
+          <span style={{
+            flex: 1, fontSize: '0.875rem', fontWeight: isSelected ? 700 : 400,
+            color: isSelected ? C.gold : isPlaceholder ? C.muted : C.text,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {team}
+          </span>
+          {/* Radio */}
+          <div style={{
+            width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
+            backgroundColor: isSelected ? C.gold : 'transparent',
+            border: `2px solid ${isSelected ? C.gold : C.border}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#0A0F2E' }} />}
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div style={{
-        backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '0.75rem',
-        padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+        backgroundColor: C.card, border: `1px solid ${winner ? C.gold + '40' : C.border}`,
+        borderRadius: '0.875rem', overflow: 'hidden',
+        transition: 'border-color 0.15s',
       }}>
-        <span style={{ color: C.muted, fontSize: '0.72rem', minWidth: '70px', flexShrink: 0 }}>{label}</span>
-        <span style={{ color: C.text, fontSize: '0.8rem', flex: 1, minWidth: '120px' }}>
-          <span style={{ color: C.gold, fontWeight: 600 }}>{r1}</span>
-          <span style={{ color: C.muted }}> vs </span>
-          <span style={{ color: C.gold, fontWeight: 600 }}>{r2}</span>
-        </span>
-        {showDropdown && (
-          <select
-            value={winner}
-            onChange={e => handlePick(matchId, e.target.value)}
-            style={{
-              backgroundColor: '#162040', border: `1px solid ${C.border}`, borderRadius: '0.5rem',
-              color: winner ? C.gold : C.muted, fontSize: '0.8rem', padding: '0.35rem 0.6rem',
-              outline: 'none', cursor: 'pointer', minWidth: '140px',
-            }}
-          >
-            <option value="">Pick winner…</option>
-            <option value={r1}>{r1}</option>
-            <option value={r2}>{r2}</option>
-          </select>
-        )}
+        <div style={{ padding: '0.4rem 0.75rem 0', color: C.muted, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {label}
+        </div>
+        <TeamRow team={r1} isPlaceholder={isPlaceholder1} side={1} />
+        <TeamRow team={r2} isPlaceholder={isPlaceholder2} side={2} />
       </div>
     )
   }
@@ -605,7 +636,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
       {activeRound === 'final' && (<>
         <SectionHeader title="3rd Place Match" />
         <MatchupRow matchId="THIRD" opt1={sf1l ?? 'SF1 Loser'} opt2={sf2l ?? 'SF2 Loser'} label="3rd Place" />
-        <SectionHeader title="🏆 Final" />
+        <SectionHeader title="Final" />
         <MatchupRow matchId="FINAL" opt1={sf1w ?? 'SF1 Winner'} opt2={sf2w ?? 'SF2 Winner'} label="Final" />
       </>)}
 
@@ -974,7 +1005,7 @@ function LeaderboardTab({ userId }: { userId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'leagues', label: '🏅 Leagues' },
+  { id: 'leagues', label: 'Leagues' },
   { id: 'group', label: 'Groups' },
   { id: 'third', label: '3rd Place' },
   { id: 'r32', label: 'Rd 32' },
@@ -982,7 +1013,7 @@ const TABS = [
   { id: 'qf', label: 'QF' },
   { id: 'sf', label: 'SF' },
   { id: 'final', label: 'F & 3rd' },
-  { id: 'leaderboard', label: '📊' },
+  { id: 'leaderboard', label: 'Stats' },
 ]
 
 export default function BracketPage() {
