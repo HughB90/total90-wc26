@@ -197,11 +197,27 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
   )
 }
 
-function GroupStageTab({ userId, savedPicks, onSaved }: { userId: string; savedPicks: GroupPicks; onSaved?: () => void }) {
+function GroupStageTab({ userId, savedPicks, onSaved, groupResults = {} }: { userId: string; savedPicks: GroupPicks; onSaved?: () => void; groupResults?: GroupPicks }) {
   const [picks, setPicks] = useState<GroupPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
   useEffect(() => { setPicks(savedPicks) }, [savedPicks])
+
+  const hasResults = Object.keys(groupResults).length > 0
+
+  // Compute results scoring
+  let totalCorrect = 0, totalPts = 0
+  if (hasResults) {
+    for (const group of GROUP_LETTERS) {
+      const userPicks = picks[group] ?? []
+      const results = groupResults[group] ?? []
+      for (let i = 0; i < Math.min(userPicks.length, 3); i++) {
+        const team = userPicks[i]
+        if (results[i] === team) { totalCorrect++; totalPts += 2 }
+        else if (results.slice(0, 3).includes(team)) { totalCorrect++; totalPts += 1 }
+      }
+    }
+  }
 
   function handleTeamClick(group: string, team: string) {
     setPicks(prev => {
@@ -238,6 +254,16 @@ function GroupStageTab({ userId, savedPicks, onSaved }: { userId: string; savedP
       <p style={{ color: C.muted, fontSize: '0.8rem', marginBottom: '1rem' }}>
         Click teams to rank them: 1st → 2nd → 3rd (4th is auto). Click a ranked team to deselect.
       </p>
+      {hasResults && (
+        <div style={{ backgroundColor: 'rgba(0,230,118,0.06)', border: '1px solid rgba(0,230,118,0.2)', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '1rem' }}>
+          <p style={{ color: C.green, fontWeight: 700, fontSize: '0.875rem', margin: 0 }}>
+            📊 Results: {totalCorrect} / 36 teams correct · {totalPts} pts earned
+          </p>
+          <p style={{ color: C.muted, fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+            ✓ green = exact position (2pts) &nbsp;·&nbsp; ~ amber = qualified, wrong position (1pt) &nbsp;·&nbsp; ✗ red = eliminated (0pts)
+          </p>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
         {GROUP_LETTERS.map(group => {
           const teams = WC_GROUPS[group]
@@ -278,6 +304,24 @@ function GroupStageTab({ userId, savedPicks, onSaved }: { userId: string; savedP
                       />
                       <span style={{ color: C.text, fontSize: '0.875rem', flex: 1 }}>{team}</span>
                       {rank >= 0 && <RankPill rank={rank + 1} />}
+                      {hasResults && rank >= 0 && (() => {
+                        const results = groupResults[group] ?? []
+                        if (results[rank] === team) return (
+                          <svg key="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginLeft: '4px' }}>
+                            <circle cx="8" cy="8" r="7" stroke={C.green} strokeWidth="1.5"/>
+                            <path d="M5 8l2 2 4-4" stroke={C.green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )
+                        if (results.slice(0, 3).includes(team)) return (
+                          <span key="icon" style={{ color: C.gold, fontWeight: 900, fontSize: '1rem', flexShrink: 0, marginLeft: '4px', lineHeight: 1 }}>~</span>
+                        )
+                        return (
+                          <svg key="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginLeft: '4px' }}>
+                            <circle cx="8" cy="8" r="7" stroke="#ef4444" strokeWidth="1.5"/>
+                            <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        )
+                      })()}
                       {isAuto4th && (
                         <span style={{ fontSize: '0.65rem', color: C.muted, marginLeft: '6px' }}>4th</span>
                       )}
@@ -295,16 +339,30 @@ function GroupStageTab({ userId, savedPicks, onSaved }: { userId: string; savedP
 }
 
 // ─── 3rd Place Tab ────────────────────────────────────────────────────────────
-function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved }: {
+function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, thirdResults = [] }: {
   userId: string
   savedPicks: ThirdPicks
   groupPicks: GroupPicks
   onSaved?: () => void
+  thirdResults?: string[]
 }) {
   const [checked, setChecked] = useState<string[]>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
   useEffect(() => { setChecked(savedPicks) }, [savedPicks])
+
+  const hasThirdResults = thirdResults.length > 0
+
+  // Compute 3rd place results scoring
+  const thirdCorrectCount = hasThirdResults
+    ? GROUP_LETTERS.filter(group => {
+        const ranked = groupPicks[group] ?? []
+        const teams = WC_GROUPS[group]
+        const auto4th = teams.find((t: string) => !ranked.includes(t))
+        const third = ranked[2] ?? (ranked.length === 3 ? auto4th : null)
+        return third && thirdResults.includes(third) && checked.includes(group)
+      }).length
+    : 0
 
   function toggle(group: string) {
     setChecked(prev => {
@@ -338,6 +396,74 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved }: {
       <p style={{ color: checked.length >= 8 ? C.gold : C.muted, fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>
         {checked.length}/8 selected
       </p>
+
+      {hasThirdResults && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ backgroundColor: 'rgba(0,230,118,0.06)', border: '1px solid rgba(0,230,118,0.2)', borderRadius: '0.75rem', padding: '0.75rem 1rem', marginBottom: '0.75rem' }}>
+            <p style={{ color: C.green, fontWeight: 700, fontSize: '0.875rem', margin: 0 }}>
+              📊 Results: {thirdCorrectCount} / 8 correct · {thirdCorrectCount} pts earned
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {GROUP_LETTERS.map(group => {
+              const ranked = groupPicks[group] ?? []
+              const teams = WC_GROUPS[group]
+              const auto4th = teams.find((t: string) => !ranked.includes(t))
+              const third = ranked[2] ?? (ranked.length === 3 ? auto4th : null) ?? null
+              const qualified = third ? thirdResults.includes(third) : false
+              const userPicked = checked.includes(group)
+
+              let iconEl: React.ReactNode
+              if (qualified && userPicked) iconEl = (
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="9" cy="9" r="8" stroke={C.gold} strokeWidth="1.5"/>
+                  <path d="M5.5 9l2.5 2.5 4.5-5" stroke={C.gold} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )
+              else if (qualified && !userPicked) iconEl = (
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="9" cy="9" r="8" stroke={C.green} strokeWidth="1.5"/>
+                  <path d="M5.5 9l2.5 2.5 4.5-5" stroke={C.green} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )
+              else if (!qualified && userPicked) iconEl = (
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="9" cy="9" r="8" stroke="#ef4444" strokeWidth="1.5"/>
+                  <path d="M6 6l6 6M12 6l-6 6" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              )
+              else iconEl = (
+                <span style={{ color: C.muted, fontSize: '1.1rem', flexShrink: 0, lineHeight: 1, fontWeight: 700, width: '18px', textAlign: 'center' }}>–</span>
+              )
+
+              return (
+                <div key={group} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.6rem 0.875rem',
+                  backgroundColor: qualified && userPicked ? 'rgba(251,191,36,0.08)' : C.card,
+                  border: `1px solid ${qualified && userPicked ? 'rgba(251,191,36,0.25)' : C.border}`,
+                  borderRadius: '0.6rem',
+                }}>
+                  <span style={{ color: C.muted, fontSize: '0.7rem', fontWeight: 700, width: '56px', flexShrink: 0 }}>Group {group}</span>
+                  {third ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+                      <img src={flagUrl(third)} alt={third}
+                        style={{ borderRadius: '50%', objectFit: 'cover', width: '20px', height: '20px', flexShrink: 0 }}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                      <span style={{ color: qualified ? C.text : C.muted, fontSize: '0.85rem' }}>{third}</span>
+                      {!qualified && <span style={{ color: '#4A6080', fontSize: '0.7rem' }}>(eliminated)</span>}
+                    </div>
+                  ) : (
+                    <span style={{ color: C.muted, fontSize: '0.8rem', fontStyle: 'italic', flex: 1 }}>No pick set</span>
+                  )}
+                  {iconEl}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.6rem' }}>
         {GROUP_LETTERS.map(group => {
@@ -1026,6 +1152,8 @@ export default function BracketPage() {
   const [groupPicks, setGroupPicks] = useState<GroupPicks>({})
   const [thirdPicks, setThirdPicks] = useState<ThirdPicks>([])
   const [knockoutPicks, setKnockoutPicks] = useState<KnockoutPicks>({})
+  const [knockoutLocked, setKnockoutLocked] = useState(true)
+  const KNOCKOUT_TABS = ['r32','r16','qf','sf','final']
   const [picksLoaded, setPicksLoaded] = useState(false)
   const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
   const [myLeagues, setMyLeagues] = useState<{ id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[]>([])
@@ -1184,12 +1312,25 @@ export default function BracketPage() {
           <LeaguesTab userId={userId} />
         )}
         {activeTab === 'group' && (
-          <GroupStageTab userId={userId} savedPicks={groupPicks} onSaved={() => setActiveTab('third')} />
+          <GroupStageTab userId={userId} savedPicks={groupPicks} onSaved={() => setActiveTab('third')} groupResults={{}} />
         )}
         {activeTab === 'third' && (
-          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} />
+          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} thirdResults={[]} />
         )}
-        {['r32','r16','qf','sf','final'].includes(activeTab) && (
+        {KNOCKOUT_TABS.includes(activeTab) && knockoutLocked && (
+          <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ display: 'block', margin: '0 auto 1rem' }}>
+              <rect x="5" y="11" width="14" height="10" rx="2" stroke="#8899CC" strokeWidth="1.5"/>
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#8899CC" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <h3 style={{ color: '#8899CC', fontWeight: 700, fontSize: '1rem', margin: '0 0 0.5rem' }}>Knockout Stage Locked</h3>
+            <p style={{ color: '#4A6080', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>
+              Knockout round picks open after the group stage completes on <strong style={{ color: '#8899CC' }}>June 28, 2026</strong>.<br/>
+              Complete your Group Stage and 3rd Place picks first.
+            </p>
+          </div>
+        )}
+        {KNOCKOUT_TABS.includes(activeTab) && !knockoutLocked && (
           <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} activeRound={activeTab}
             onSaved={() => {
               const order = ['r32','r16','qf','sf','final','leaderboard']
