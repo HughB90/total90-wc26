@@ -44,6 +44,7 @@ function flagUrl(country: string) {
   const code = COUNTRY_CODES[country] ?? country.toLowerCase().replace(/\s+/g, '-')
   return `https://flagcdn.com/w40/${code}.png`
 }
+function cleanName(s: string) { return s.replace(/\s*\(.*\)$/, '').trim() }
 
 // R32 bracket: 16 matchups covering 12×1st + 12×2nd + 8×Best3rd = 32 teams
 const R32_MATCHUPS: { id: string; s1: string; s2: string }[] = [
@@ -490,8 +491,6 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
     const r2 = resolveLabel(opt2)
     const isPlaceholder1 = r1.startsWith('Winner') || r1 === '?' || r1.startsWith('Best')
     const isPlaceholder2 = r2.startsWith('Winner') || r2 === '?' || r2.startsWith('Best')
-    // Strip any parenthetical suffix like "(3rd · Grp A)" for flag lookup
-    const cleanName = (s: string) => s.replace(/\s*\(.*\)$/, '').trim()
 
     function TeamRow({ team, isPlaceholder, side }: { team: string; isPlaceholder: boolean; side: 1 | 2 }) {
       const isSelected = winner === team
