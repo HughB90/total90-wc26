@@ -19,6 +19,12 @@ export async function POST(request: Request) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
+    // Verify user exists first
+    const { data: userCheck } = await (supabase.from('bracket_users').select('id').eq('id', userId).maybeSingle() as any)
+    if (!userCheck) {
+      return NextResponse.json({ error: 'SESSION_EXPIRED', message: 'Your session has expired. Please log out and sign in again.' }, { status: 401 })
+    }
+
     // Check if entry exists for this user + phase
     const { data: existing } = await supabase
       .from('bracket_entries')

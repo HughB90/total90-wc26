@@ -242,7 +242,13 @@ function GroupStageTab({ userId, savedPicks, onSaved, groupResults = {} }: { use
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, phase: 'group', picks }),
       })
-      const data = await res.json() as { ok?: boolean }
+      const data = await res.json() as { ok?: boolean; error?: string }
+      if (data.error === 'SESSION_EXPIRED') {
+        localStorage.removeItem('bracket_user_id')
+        localStorage.removeItem('bracket_display_name')
+        window.location.reload()
+        return
+      }
       setStatus(data.ok ? 'saved' : 'error')
     } catch {
       setStatus('error')
