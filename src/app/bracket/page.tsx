@@ -68,10 +68,10 @@ const R32_MATCHUPS: { id: string; s1: string; s2: string }[] = [
 
 // R16: pairs of R32 winners
 const R16_PAIRS: [string, string][] = [
-  ['M1', 'M2'], ['M3', 'M4'],
-  ['M5', 'M6'], ['M7', 'M8'],
-  ['M9', 'M10'], ['M11', 'M12'],
-  ['M13', 'M14'], ['M15', 'M16'],
+  ['M73', 'M74'], ['M75', 'M76'],
+  ['M77', 'M78'], ['M79', 'M80'],
+  ['M81', 'M82'], ['M83', 'M84'],
+  ['M85', 'M86'], ['M87', 'M88'],
 ]
 
 const R16_IDS = R16_PAIRS.map((_, i) => `R16_${i + 1}`)
