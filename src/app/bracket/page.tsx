@@ -141,7 +141,7 @@ function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => vo
 
 // ─── Auth form ────────────────────────────────────────────────────────────────
 function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
-  const [tab, setTab] = useState<'signin' | 'create'>('create')
+  const [tab, setTab] = useState<'signin' | 'create'>('signin')
   const [firstName, setFirstName] = useState('')
   const [teamName, setTeamName] = useState('')
   const [email, setEmail] = useState('')
