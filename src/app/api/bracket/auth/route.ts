@@ -72,12 +72,14 @@ export async function POST(request: Request) {
 
     const pinHash = crypto.createHash('sha256').update(pin).digest('hex')
     
-    // Sign-in mode: find user by display_name
+    // Sign-in mode: find user by first_name
     if (isSignIn) {
+      const signinName = (first_name ?? display_name ?? '').trim()
       const { data: existingByName } = await (supabase
         .from('bracket_users')
         .select('id, display_name, pin_hash')
-        .ilike('display_name', display_name.trim())
+        .ilike('first_name', signinName)
+        .limit(1)
         .maybeSingle() as any)
       
       if (!existingByName) {
