@@ -154,8 +154,8 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
     if (tab === 'signin' && (!firstName.trim() || pin.length !== 4)) { setError('Enter your first name and PIN.'); return }
     setError(''); setLoading(true)
     const body = tab === 'create'
-      ? { first_name: firstName.trim(), display_name: teamName.trim(), email: email.trim() || undefined, pin }
-      : { first_name: firstName.trim(), display_name: firstName.trim(), pin }
+      ? { action: 'create', first_name: firstName.trim(), display_name: teamName.trim(), email: email.trim() || undefined, pin }
+      : { action: 'signin', first_name: firstName.trim(), display_name: firstName.trim(), pin }
     const res = await fetch('/api/bracket/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json()
     setLoading(false)

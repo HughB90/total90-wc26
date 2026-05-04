@@ -43,18 +43,19 @@ async function sendWelcomeEmail(email: string, displayName: string, pin: string)
 
 export async function POST(request: Request) {
   try {
-    const { email, display_name, first_name, pin, invite_code } = await request.json() as {
+    const { email, display_name, first_name, pin, invite_code, action } = await request.json() as {
       email?: string
       display_name: string
       first_name?: string
       pin: string
       invite_code?: string
+      action?: 'create' | 'signin'
     }
 
     // Sign-in mode: display_name + pin only (no email)
     // Create mode: email + display_name + pin
-    const isSignIn = !email && !!display_name && !!pin
-    const isCreate = !!display_name && !!pin
+    const isSignIn = action === 'signin' || (!action && !email && !!display_name && !!pin)
+    const isCreate = action === 'create' || (!action && !!email && !!display_name && !!pin)
     
     if (!isSignIn && !isCreate) {
       return NextResponse.json({ error: 'Team name and PIN required' }, { status: 400 })
