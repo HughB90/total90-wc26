@@ -155,7 +155,7 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
     setError(''); setLoading(true)
     const body = tab === 'create'
       ? { action: 'create', first_name: firstName.trim(), display_name: teamName.trim(), email: email.trim() || undefined, pin }
-      : { action: 'signin', first_name: firstName.trim(), display_name: firstName.trim(), pin }
+      : { action: 'signin', display_name: firstName.trim(), pin }
     const res = await fetch('/api/bracket/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json()
     setLoading(false)
@@ -180,8 +180,8 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
           <div>
-            <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>First Name</label>
-            <input style={inp} placeholder="Your first name" value={firstName} onChange={e => setFirstName(e.target.value)} />
+            <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>{tab === 'signin' ? 'Team Name' : 'First Name'}</label>
+            <input style={inp} placeholder={tab === 'signin' ? 'Your team name' : 'Your first name'} value={firstName} onChange={e => setFirstName(e.target.value)} />
           </div>
           {tab === 'create' && <>
             <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Team Name</label><input style={inp} placeholder="e.g. Rapaziada FC" value={teamName} onChange={e => setTeamName(e.target.value)} /></div>
