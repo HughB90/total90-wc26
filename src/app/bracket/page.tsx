@@ -1148,7 +1148,7 @@ const TABS = [
   { id: 'qf', label: 'QF' },
   { id: 'sf', label: 'SF' },
   { id: 'final', label: 'F & 3rd' },
-  { id: 'leaderboard', label: 'Stats' },
+  { id: 'leaderboard', label: 'Rules' },
 ]
 
 export default function BracketPage() {
@@ -1329,10 +1329,23 @@ export default function BracketPage() {
               <rect x="5" y="11" width="14" height="10" rx="2" stroke="#8899CC" strokeWidth="1.5"/>
               <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#8899CC" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            <h3 style={{ color: '#8899CC', fontWeight: 700, fontSize: '1rem', margin: '0 0 0.5rem' }}>Knockout Stage Locked</h3>
-            <p style={{ color: '#4A6080', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>
-              Knockout round picks open after the group stage completes on <strong style={{ color: '#8899CC' }}>June 28, 2026</strong>.<br/>
-              Complete your Group Stage and 3rd Place picks first.
+            <h3 style={{ color: '#8899CC', fontWeight: 700, fontSize: '1rem', margin: '0 0 0.75rem' }}>Knockout Stage Locked</h3>
+            <p style={{ color: '#F0F4FF', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 0.75rem' }}>
+              Opens June 28, 2026 — after the group stage ends.
+            </p>
+            <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '1rem 1.25rem', maxWidth: '420px', margin: '0 auto', textAlign: 'left' }}>
+              <p style={{ color: '#8899CC', fontSize: '0.82rem', lineHeight: 1.7, margin: 0 }}>
+                <strong style={{ color: '#FBBF24' }}>Why locked?</strong> The 2026 World Cup introduces a Round of 32 with a new bracket format.
+                With 48 teams and 12 groups, FIFA uses a pre-defined placement matrix of <strong style={{ color: '#FBBF24' }}>495 possible scenarios</strong> to determine
+                which 3rd-place teams go where in the bracket — and that's only finalized once <strong style={{ color: '#F0F4FF' }}>all group stage games are complete</strong>.
+              </p>
+              <p style={{ color: '#8899CC', fontSize: '0.82rem', lineHeight: 1.7, margin: '0.75rem 0 0' }}>
+                Until then, we don&apos;t know who plays who in R32. Locking the knockout bracket ensures everyone starts
+                their knockout picks on a level playing field with the same information — the actual confirmed matchups.
+              </p>
+            </div>
+            <p style={{ color: '#4A6080', fontSize: '0.78rem', margin: '1rem 0 0' }}>
+              Meanwhile, complete your <strong style={{ color: '#8899CC' }}>Group Stage</strong> and <strong style={{ color: '#8899CC' }}>3rd Place</strong> picks — those are open now.
             </p>
           </div>
         )}
@@ -1346,7 +1359,36 @@ export default function BracketPage() {
           />
         )}
         {activeTab === 'leaderboard' && (
-          <LeaderboardTab userId={userId} />
+          <>
+            {/* Scoring Rules section */}
+            <div style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem' }}>
+              <h3 style={{ color: C.gold, fontWeight: 800, fontSize: '1rem', margin: '0 0 1rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>How Scoring Works</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                {[
+                  { phase: 'Group Stage', rules: ['Pick 1st, 2nd, 3rd from each group', '2 pts — exact position', '1 pt — team qualifies (any position)'] },
+                  { phase: '3rd Place Picks', rules: ['Pick which 8 of 12 third-place teams advance', '+1 pt per correct qualifier'] },
+                  { phase: 'Knockout Rounds (R32 → Final)', rules: ['Pick the winner of each match', 'Fibonacci scoring: R32 = 2pts · R16 = 3pts · QF = 5pts · SF = 8pts · 3rd Place = 8pts · Final = 13pts'] },
+                ].map(({ phase, rules }) => (
+                  <div key={phase}>
+                    <div style={{ color: '#F0F4FF', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.35rem' }}>{phase}</div>
+                    {rules.map(r => (
+                      <div key={r} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginBottom: '0.2rem' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: '2px' }}><path d="M5 12l5 5L20 7" stroke="#00E676" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        <span style={{ color: C.muted, fontSize: '0.82rem', lineHeight: 1.5 }}>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderTop: `1px solid ${C.border}`, marginTop: '1rem', paddingTop: '1rem' }}>
+                <div style={{ color: '#F0F4FF', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.35rem' }}>Tiebreakers</div>
+                <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.6 }}>
+                  1. Most exact score picks · 2. Most points in Final · 3. SF · 4. QF · 5. R16 · 6. Group Stage
+                </p>
+              </div>
+            </div>
+            <LeaderboardTab userId={userId} />
+          </>
         )}
       </div>
     </div>
