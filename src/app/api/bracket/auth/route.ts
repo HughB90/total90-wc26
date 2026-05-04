@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         .maybeSingle() as any)
       
       if (!existingByName) {
-        return NextResponse.json({ error: 'Team name not found. Check spelling or create an account.' }, { status: 404 })
+        return NextResponse.json({ error: 'First name not found. Check spelling or create an account.' }, { status: 404 })
       }
       if (existingByName.pin_hash !== pinHash) {
         return NextResponse.json({ error: 'Incorrect PIN.' }, { status: 401 })
