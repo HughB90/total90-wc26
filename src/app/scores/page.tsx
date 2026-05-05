@@ -35,7 +35,7 @@ const COUNTRY_CODES: Record<string, string> = {
 
 function flagUrl(country: string) {
   const code = COUNTRY_CODES[country] ?? country.toLowerCase().replace(/\s+/g, '-')
-  return `https://flagcdn.com/w40/${code}.png`
+  return `https://flagcdn.com/w160/${code}.png`
 }
 
 // ─── Match data ───────────────────────────────────────────────────────────────

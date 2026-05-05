@@ -31,7 +31,7 @@ const COUNTRY_CODES: Record<string, string> = {
 
 function getFlagUrl(n: string) {
   const code = COUNTRY_CODES[n] ?? n.toLowerCase().replace(/\s+/g, '-')
-  return `https://flagcdn.com/w40/${code}.png`
+  return `https://flagcdn.com/w160/${code}.png`
 }
 
 const posColors: Record<string, { color: string }> = {
