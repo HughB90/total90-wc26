@@ -1,7 +1,20 @@
+import type React from 'react'
 import Link from 'next/link'
 import { Newspaper, BarChart3, Trophy, Activity } from 'lucide-react'
 
-const cards = [
+type CardItem = {
+  Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>
+  color: string
+  accentBg: string
+  accentBorder: string
+  title: string
+  desc: string
+  href: string
+  active: boolean
+  tag?: string
+}
+
+const cards: CardItem[] = [
   {
     Icon: Newspaper,
     color: '#00E676',
