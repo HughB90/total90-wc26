@@ -54,14 +54,20 @@ interface Match {
 }
 
 const MATCHES: Match[] = [
-  { id: 'GA1', group: 'A', date: '2026-06-11', time: 'TBD CT', home: 'Mexico', away: 'Ecuador', venue: 'SoFi Stadium, Los Angeles', score: null, status: 'fixture' },
-  { id: 'GA2', group: 'A', date: '2026-06-11', time: 'TBD CT', home: 'Uruguay', away: 'Bolivia', venue: 'Gillette Stadium, Boston', score: null, status: 'fixture' },
-  { id: 'GB1', group: 'B', date: '2026-06-12', time: 'TBD CT', home: 'Canada', away: 'Bosnia and Herzegovina', venue: 'MetLife Stadium, New York', score: null, status: 'fixture' },
-  { id: 'GB2', group: 'B', date: '2026-06-12', time: 'TBD CT', home: 'Switzerland', away: 'Qatar', venue: 'AT&T Stadium, Dallas', score: null, status: 'fixture' },
-  { id: 'GC1', group: 'C', date: '2026-06-13', time: 'TBD CT', home: 'Brazil', away: 'Haiti', venue: 'Hard Rock Stadium, Miami', score: null, status: 'fixture' },
-  { id: 'GC2', group: 'C', date: '2026-06-13', time: 'TBD CT', home: 'Morocco', away: 'Scotland', venue: "Levi's Stadium, San Francisco", score: null, status: 'fixture' },
-  { id: 'GD1', group: 'D', date: '2026-06-14', time: 'TBD CT', home: 'USA', away: 'Turkey', venue: 'Mercedes-Benz Stadium, Atlanta', score: null, status: 'fixture' },
-  { id: 'GD2', group: 'D', date: '2026-06-14', time: 'TBD CT', home: 'Australia', away: 'Paraguay', venue: 'Lumen Field, Seattle', score: null, status: 'fixture' },
+  // Group A — June 11
+  { id: 'GA1', group: 'A', date: '2026-06-11', time: '2:00 PM CT', home: 'Mexico', away: 'South Africa', venue: 'Estadio Azteca, Mexico City', score: null, status: 'fixture' },
+  { id: 'GA2', group: 'A', date: '2026-06-11', time: '9:00 PM CT', home: 'South Korea', away: 'Czechia', venue: 'Estadio Akron, Zapopan', score: null, status: 'fixture' },
+  // Group B — June 12
+  { id: 'GB1', group: 'B', date: '2026-06-12', time: '2:00 PM CT', home: 'Canada', away: 'Bosnia and Herzegovina', venue: 'BMO Field, Toronto', score: null, status: 'fixture' },
+  // Group D — June 12
+  { id: 'GD1', group: 'D', date: '2026-06-12', time: '8:00 PM CT', home: 'USA', away: 'Paraguay', venue: 'SoFi Stadium, Los Angeles', score: null, status: 'fixture' },
+  // Group B — June 13
+  { id: 'GB2', group: 'B', date: '2026-06-13', time: '2:00 PM CT', home: 'Qatar', away: 'Switzerland', venue: "Levi's Stadium, Santa Clara", score: null, status: 'fixture' },
+  // Group C — June 13
+  { id: 'GC1', group: 'C', date: '2026-06-13', time: '5:00 PM CT', home: 'Brazil', away: 'Morocco', venue: 'MetLife Stadium, New York', score: null, status: 'fixture' },
+  { id: 'GC2', group: 'C', date: '2026-06-13', time: '8:00 PM CT', home: 'Haiti', away: 'Scotland', venue: 'Gillette Stadium, Boston', score: null, status: 'fixture' },
+  // Group D — June 14
+  { id: 'GD2', group: 'D', date: '2026-06-14', time: '11:00 PM CT (Jun 13 local)', home: 'Australia', away: 'Turkey', venue: 'BC Place, Vancouver', score: null, status: 'fixture' },
 ]
 
 function formatDate(dateStr: string): string {
