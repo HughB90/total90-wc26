@@ -30,8 +30,7 @@ const cards = [
     title: 'Bracket',
     desc: 'Pick your group winners and knockout bracket',
     href: '/bracket',
-    active: false,
-    tag: 'Coming Soon',
+    active: true,
   },
   {
     Icon: Activity,
@@ -41,8 +40,7 @@ const cards = [
     title: 'Scores',
     desc: 'Live World Cup 2026 match results',
     href: '/scores',
-    active: false,
-    tag: 'Coming Soon',
+    active: true,
   },
 ]
 
