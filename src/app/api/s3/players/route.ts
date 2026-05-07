@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     // Default: return leaderboard
     const { data, error } = await supabase
       .from('s3_players')
-      .select('id, name, short_name, nationality, position, s3_value, age, photo_url, is_active')
+      .select('id, name, short_name, nationality, position, s3_value, age, photo_url, is_active, sign_count, sell_count, sack_count, vote_count, market_value, club')
       .order('s3_value', { ascending: false }) as any
 
     if (error) {
