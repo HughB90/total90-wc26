@@ -47,7 +47,7 @@ const COUNTRY_CODES: Record<string, string> = {
   Panama: 'pa',
   Ghana: 'gh',
   Haiti: 'ht',
-  Turkey: 'tr',
+  Turkey: 'tr', 'Türkiye': 'tr',
   Egypt: 'eg',
   'Ivory Coast': 'ci',
   Jordan: 'jo',

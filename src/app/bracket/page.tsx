@@ -31,7 +31,7 @@ const COUNTRY_CODES: Record<string, string> = {
   Poland: 'pl', Czechia: 'cz', Slovakia: 'sk', 'Saudi Arabia': 'sa',
   Paraguay: 'py', Algeria: 'dz', 'New Zealand': 'nz', Venezuela: 've',
   Bolivia: 'bo', Jamaica: 'jm', Bahrain: 'bh', 'Costa Rica': 'cr',
-  Panama: 'pa', Ghana: 'gh', Haiti: 'ht', Turkey: 'tr',
+  Panama: 'pa', Ghana: 'gh', Haiti: 'ht', Turkey: 'tr', 'Türkiye': 'tr',
   Egypt: 'eg', Oman: 'om', 'Ivory Coast': 'ci', Jordan: 'jo',
   Honduras: 'hn', Chile: 'cl', Peru: 'pe', Qatar: 'qa', Tunisia: 'tn',
   'South Africa': 'za', 'Czech Republic': 'cz', 'Bosnia and Herzegovina': 'ba',
