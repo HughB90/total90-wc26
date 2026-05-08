@@ -684,35 +684,32 @@ export default function S3Page() {
                 <button onClick={() => setSelectedPlayer(null)} style={{ background: 'none', border: '1px solid #1E3A6E', color: '#8899CC', cursor: 'pointer', borderRadius: '0.5rem', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontFamily: 'inherit' }} aria-label="Close">×</button>
               </div>
 
-              {/* Player header */}
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1.25rem' }}>
+              {/* Player header — photo left, bio right */}
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', paddingBottom: '1rem', borderBottom: '1px solid #1E3A6E', marginBottom: '1rem' }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   {p.photo_url ? (
-                    <img src={p.photo_url} alt={p.short_name || p.name} style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', backgroundColor: '#162040' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                    <img src={p.photo_url} alt={p.short_name || p.name} style={{ width: '88px', height: '88px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', backgroundColor: '#162040', display: 'block' }} onError={e => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }} />
                   ) : (
-                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', color: '#4A6080', fontWeight: 700 }}>{(p.short_name || p.name).charAt(0)}</div>
+                    <div style={{ width: '88px', height: '88px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', color: '#4A6080', fontWeight: 700 }}>{(p.short_name || p.name).charAt(0)}</div>
                   )}
-                  <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
-                    <img src={getFlagUrl(p.nationality)} alt={p.nationality} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  <div style={{ position: 'absolute', bottom: '-2px', right: '-2px', width: '26px', height: '26px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
+                    <img src={getFlagUrl(p.nationality)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                   </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 900, fontSize: '1.2rem', color: '#F0F4FF', marginBottom: '0.2rem' }}>{p.short_name || p.name}</div>
-                  <div style={{ color: '#8899CC', fontSize: '0.82rem', marginBottom: '0.15rem' }}>
-                    {p.nationality}{' · '}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, fontSize: '1.25rem', color: '#F0F4FF', marginBottom: '0.25rem', lineHeight: 1.2 }}>{p.name}</div>
+                  <div style={{ color: '#8899CC', fontSize: '0.82rem', marginBottom: '0.2rem' }}>
+                    {p.nationality}
+                    {' · '}
                     <span style={{ color: posColors[p.position]?.color ?? '#8899CC', fontWeight: 700 }}>{p.position}</span>
                   </div>
-                  {p.club && (
-                    <div style={{ color: '#F0F4FF', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.1rem' }}>{p.club}</div>
-                  )}
-                  {p.age && (
-                    <div style={{ color: '#8899CC', fontSize: '0.75rem' }}>Age {p.age}</div>
-                  )}
+                  {p.club && <div style={{ color: '#F0F4FF', fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.15rem' }}>{p.club}</div>}
+                  {p.age && <div style={{ color: '#8899CC', fontSize: '0.75rem' }}>Age {p.age}</div>}
                 </div>
               </div>
 
               {/* T90 Score */}
-              <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.875rem 1rem', marginBottom: '0.75rem' }}>
+              <div style={{ paddingBottom: '1rem', borderBottom: '1px solid #1E3A6E', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <span style={{ color: '#8899CC', fontSize: '0.78rem', fontWeight: 600 }}>T90 Score</span>
                   <span style={{ color: tier.color, fontWeight: 800, fontSize: '1.05rem' }}>{p.s3_value} · {tier.label}</span>
@@ -750,7 +747,7 @@ export default function S3Page() {
               )}
 
               {/* Community Votes */}
-              <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.875rem 1rem', marginBottom: '0.75rem' }}>
+              <div style={{ paddingBottom: '1rem', borderBottom: '1px solid #1E3A6E', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <span style={{ color: '#8899CC', fontSize: '0.78rem', fontWeight: 600 }}>Community Votes</span>
                   <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>{vc.toLocaleString()} total</span>
@@ -774,7 +771,7 @@ export default function S3Page() {
 
               {/* Market value */}
               {mv && (
-                <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.6rem 1rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <span style={{ color: '#8899CC', fontSize: '0.78rem' }}>Market Value</span>
                   <span style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.9rem' }}>{mv}</span>
                 </div>
@@ -789,7 +786,7 @@ export default function S3Page() {
                   return t !== wc
                 })
                 return (
-                  <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.6rem 1rem', marginBottom: '0.75rem' }}>
+                  <div style={{ paddingTop: '0.5rem', paddingBottom: '1rem', borderBottom: '1px solid #1E3A6E', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' as const }}>
                       <span style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.78rem', flexShrink: 0 }}>🌍 WC Group {wcGroup.letter}</span>
                       <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>·</span>
