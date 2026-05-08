@@ -1,8 +1,25 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Simple in-memory rate limiter (resets on cold start, good enough for edge protection)
+const voteRateLimit = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT = 100 // max votes per IP per hour
+const WINDOW_MS = 60 * 60 * 1000
+
 export async function POST(request: Request) {
   try {
+    // Rate limit by IP
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown'
+    const now = Date.now()
+    const entry = voteRateLimit.get(ip)
+    if (entry && now < entry.resetAt) {
+      if (entry.count >= RATE_LIMIT) {
+        return NextResponse.json({ error: 'Too many votes. Try again later.' }, { status: 429 })
+      }
+      entry.count++
+    } else {
+      voteRateLimit.set(ip, { count: 1, resetAt: now + WINDOW_MS })
+    }
     const { votes } = await request.json()
     // votes = [{ playerId, vote: 'sign'|'sell'|'sack' }]
 
