@@ -139,6 +139,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         fontFamily: "system-ui, -apple-system, sans-serif",
 
       }}>
+        <AppLaunchBanner />
         <SiteNav />
         {children}
         {/* Floating app button - always visible */}
@@ -167,6 +168,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           ⚽ App
         </a>
+      <Analytics />
+      <SpeedInsights />
       </body>
     </html>
   )
