@@ -100,6 +100,7 @@ function formatMarketValue(v?: number | null): string | null {
 }
 
 const SS_SEEN_KEY = 's3_seen'
+const SS_OVERLAY_SHOWN = 's3_overlay_shown'
 const SS_DETAIL_VOTES_KEY = 's3_detail_votes'
 const ROW_HEIGHT = 60 // px estimate per player row
 
@@ -205,6 +206,8 @@ export default function S3Page() {
   const tryShowOverlay = useCallback(() => {
     if (overlayShownRef.current) return
     if (submitCooldownRef.current) return
+    // Only show once per session
+    if (typeof window !== 'undefined' && sessionStorage.getItem(SS_OVERLAY_SHOWN)) return
     if (playersRef.current.length === 0) return
     overlayShownRef.current = true
     refreshOverlayPlayers(playersRef.current)
@@ -258,6 +261,7 @@ export default function S3Page() {
 
   // ── Overlay submit ────────────────────────────────────────────────
   const handleOverlaySubmit = async () => {
+    if (typeof window !== 'undefined') sessionStorage.setItem(SS_OVERLAY_SHOWN, '1')
     if (overlayPlayers.length === 0) return
     if (!overlayPlayers.every(p => overlayVotes[p.id])) return
 
@@ -295,6 +299,7 @@ export default function S3Page() {
   // ── Overlay close (X button) ──────────────────────────────────────
   const handleOverlayClose = () => {
     setShowOverlay(false)
+    if (typeof window !== 'undefined') sessionStorage.setItem(SS_OVERLAY_SHOWN, '1')
     dismissScrollYRef.current = window.scrollY
     // overlayShownRef stays true — re-show is handled by scroll distance
   }

@@ -86,6 +86,46 @@ function SiteNav() {
 
 
 
+function AppLaunchBanner() {
+  return (
+    <div
+      id="app-launch-banner"
+      style={{
+        backgroundColor: '#0F1C4D',
+        borderBottom: '1px solid rgba(251,191,36,0.3)',
+        padding: '0.45rem 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.75rem',
+        position: 'relative',
+      }}
+    >
+      <span style={{ fontSize: '0.9rem' }}>📱</span>
+      <span style={{ color: '#8899CC', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+        Total90 Fantasy App
+      </span>
+      <span style={{ color: '#FBBF24', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+        launching June 1st
+      </span>
+      <a
+        href="https://apps.apple.com/us/app/total90/id6749282785"
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: '#00E676',
+          fontWeight: 700,
+          fontSize: '0.75rem',
+          textDecoration: 'none',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Download free on iOS →
+      </a>
+    </div>
+  )
+}
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
