@@ -90,7 +90,7 @@ const voteConfig = {
   },
 }
 
-export default function VotingCard() {
+export default function VotingCard({ onVoted }: { onVoted?: (count: number) => void } = {}) {
   const [players, setPlayers] = useState<VotingPlayer[]>([])
   const [votes, setVotes] = useState<Record<string, Vote>>({})
   const [loading, setLoading] = useState(true)
@@ -131,6 +131,7 @@ export default function VotingCard() {
     setSubmitting(true)
     addSeenIds(players.map(p => p.id))
     setTotalVoted(t => t + players.length)
+    onVoted?.(players.length)
     await fetch('/api/s3/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
