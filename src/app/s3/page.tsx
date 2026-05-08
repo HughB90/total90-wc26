@@ -19,12 +19,49 @@ interface Player {
   vote_count?: number
   market_value?: number
   club?: string
+  ea_overall?: number
+  ea_attacking?: number
+  ea_passing?: number
+  ea_physical?: number
+  ea_mental?: number
+  ea_defending?: number
 }
 
 type Vote = 'sign' | 'sell' | 'sack'
 type SortKey = 't90' | 'age'
 type PosFilter = 'All' | 'FWD' | 'MID' | 'DEF' | 'GK'
 type PageSize = 25 | 50 | 100
+
+const WC_GROUPS: Record<string, string[]> = {
+  A: ['Mexico', 'South Korea', 'South Africa', 'Czech Republic'],
+  B: ['Canada', 'Switzerland', 'Qatar', 'Bosnia and Herzegovina'],
+  C: ['Brazil', 'Morocco', 'Scotland', 'Haiti'],
+  D: ['USA', 'Australia', 'Paraguay', 'Turkey'],
+  E: ['Germany', 'Ecuador', 'Ivory Coast', 'Curacao'],
+  F: ['Netherlands', 'Japan', 'Tunisia', 'Sweden'],
+  G: ['Belgium', 'Iran', 'Egypt', 'New Zealand'],
+  H: ['Spain', 'Uruguay', 'Saudi Arabia', 'Cape Verde'],
+  I: ['France', 'Senegal', 'Norway', 'Iraq'],
+  J: ['Argentina', 'Austria', 'Algeria', 'Jordan'],
+  K: ['Portugal', 'Colombia', 'Uzbekistan', 'DR Congo'],
+  L: ['England', 'Croatia', 'Panama', 'Ghana'],
+}
+
+// Map player nationality strings → WC_GROUPS team name (where they differ)
+const NATIONALITY_TO_WC: Record<string, string> = {
+  "Côte d'Ivoire": 'Ivory Coast',
+  'Türkiye': 'Turkey',
+  'Czechia': 'Czech Republic',
+  'Cabo Verde': 'Cape Verde',
+}
+
+function getWCGroup(nationality: string): { letter: string; teams: string[] } | null {
+  const lookup = NATIONALITY_TO_WC[nationality] ?? nationality
+  for (const [letter, teams] of Object.entries(WC_GROUPS)) {
+    if (teams.includes(lookup)) return { letter, teams }
+  }
+  return null
+}
 
 const COUNTRY_CODES: Record<string, string> = {
   'England': 'gb-eng', 'France': 'fr', 'Spain': 'es', 'Germany': 'de',
@@ -660,15 +697,17 @@ export default function S3Page() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontWeight: 900, fontSize: '1.2rem', color: '#F0F4FF', marginBottom: '0.25rem' }}>{p.short_name || p.name}</div>
+                  <div style={{ fontWeight: 900, fontSize: '1.2rem', color: '#F0F4FF', marginBottom: '0.2rem' }}>{p.short_name || p.name}</div>
                   <div style={{ color: '#8899CC', fontSize: '0.82rem', marginBottom: '0.15rem' }}>
+                    {p.nationality}{' · '}
                     <span style={{ color: posColors[p.position]?.color ?? '#8899CC', fontWeight: 700 }}>{p.position}</span>
-                    {' · '}{p.nationality}
                   </div>
-                  <div style={{ color: '#8899CC', fontSize: '0.78rem' }}>
-                    {p.age ? `Age ${p.age}` : ''}
-                    {p.club ? `${p.age ? ' · ' : ''}${p.club}` : ''}
-                  </div>
+                  {p.club && (
+                    <div style={{ color: '#F0F4FF', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.1rem' }}>{p.club}</div>
+                  )}
+                  {p.age && (
+                    <div style={{ color: '#8899CC', fontSize: '0.75rem' }}>Age {p.age}</div>
+                  )}
                 </div>
               </div>
 
@@ -682,6 +721,33 @@ export default function S3Page() {
                   <div style={{ height: '100%', width: `${Math.min(100, (p.s3_value / 130) * 100)}%`, backgroundColor: tier.color, borderRadius: '4px', transition: 'width 0.4s ease' }} />
                 </div>
               </div>
+
+              {/* EA Stat Bars — shown only when ea_overall data is available */}
+              {p.ea_overall != null && p.ea_overall > 0 && (
+                <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.875rem 1rem', marginBottom: '0.75rem' }}>
+                  <div style={{ borderBottom: '1px solid #1E3A6E', paddingBottom: '0.5rem', marginBottom: '0.625rem' }}>
+                    <span style={{ color: '#8899CC', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>EA FC Attributes</span>
+                  </div>
+                  {(
+                    [
+                      ['Attacking', p.ea_attacking],
+                      ['Passing',   p.ea_passing],
+                      ['Physical',  p.ea_physical],
+                      ['Mental',    p.ea_mental],
+                      ['Defending', p.ea_defending],
+                    ] as [string, number | undefined][]
+                  ).filter(([, v]) => v != null).map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.45rem' }}>
+                      <span style={{ color: '#8899CC', fontSize: '0.72rem', width: '68px', flexShrink: 0 }}>{label}</span>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#1E3A6E', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${val}%`, backgroundColor: '#00E676', borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                      </div>
+                      <span style={{ color: '#F0F4FF', fontSize: '0.72rem', fontWeight: 700, width: '24px', textAlign: 'right' as const }}>{val}</span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: '1px solid #1E3A6E', marginTop: '0.25rem' }} />
+                </div>
+              )}
 
               {/* Community Votes */}
               <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.875rem 1rem', marginBottom: '0.75rem' }}>
@@ -714,38 +780,37 @@ export default function S3Page() {
                 </div>
               )}
 
-              {/* Vote buttons or voted state */}
-              {detailFlash ? (
-                <div style={{ textAlign: 'center', padding: '0.875rem', borderRadius: '0.875rem', backgroundColor: `${voteConfig[detailFlash].selectedBg}22`, color: voteConfig[detailFlash].barColor, fontWeight: 700, fontSize: '1rem', border: `1px solid ${voteConfig[detailFlash].barColor}44` }}>
-                  ✓ {detailFlash.charAt(0).toUpperCase() + detailFlash.slice(1)} recorded!
-                </div>
-              ) : alreadyVoted ? (
-                <div style={{ backgroundColor: `${voteConfig[alreadyVoted].selectedBg}15`, border: `1px solid ${voteConfig[alreadyVoted].barColor}44`, borderRadius: '0.875rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#8899CC', fontSize: '0.8rem' }}>Your vote</span>
-                  <span style={{ color: voteConfig[alreadyVoted].barColor, fontWeight: 800, fontSize: '0.9rem' }}>
-                    {voteConfig[alreadyVoted].icon} {alreadyVoted.toUpperCase()}
-                  </span>
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                  {(['sign', 'sell', 'sack'] as Vote[]).map(v => {
-                    const cfg = voteConfig[v]
-                    return (
-                      <button
-                        key={v}
-                        onClick={() => handleDetailVote(v)}
-                        disabled={detailSubmitting}
-                        style={{ padding: '0.7rem 0.5rem', borderRadius: '0.75rem', border: `1px solid ${cfg.activeBorder}`, backgroundColor: cfg.activeBg, color: cfg.activeColor, cursor: detailSubmitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { (e.currentTarget.style.backgroundColor = cfg.activeBorder + '22') }}
-                        onMouseLeave={e => { (e.currentTarget.style.backgroundColor = cfg.activeBg) }}
-                      >
-                        <span style={{ fontSize: '1.1rem' }}>{cfg.icon}</span>
-                        <span>{cfg.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
+              {/* WC Group info */}
+              {(() => {
+                const wcGroup = getWCGroup(p.nationality)
+                if (!wcGroup) return null
+                const otherTeams = wcGroup.teams.filter(t => {
+                  const wc = NATIONALITY_TO_WC[p.nationality] ?? p.nationality
+                  return t !== wc
+                })
+                return (
+                  <div style={{ backgroundColor: '#0F1C4D', border: '1px solid #1E3A6E', borderRadius: '0.875rem', padding: '0.6rem 1rem', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' as const }}>
+                      <span style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.78rem', flexShrink: 0 }}>🌍 WC Group {wcGroup.letter}</span>
+                      <span style={{ color: '#4A6080', fontSize: '0.72rem' }}>·</span>
+                      <span style={{ color: '#8899CC', fontSize: '0.72rem' }}>
+                        <strong style={{ color: '#F0F4FF' }}>{p.nationality}</strong>{' vs '}{otherTeams.join(', ')}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* App launch CTA — replaces vote buttons */}
+              <div style={{ backgroundColor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '0.875rem', padding: '1rem', textAlign: 'center' as const, marginTop: '0.75rem' }}>
+                <p style={{ color: '#FBBF24', fontWeight: 800, fontSize: '1rem', margin: '0 0 0.35rem' }}>📱 Total90 Fantasy App</p>
+                <p style={{ color: '#8899CC', fontSize: '0.82rem', margin: '0 0 0.75rem' }}>S³ ratings, trade calculator & more</p>
+                <p style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem', margin: '0 0 0.75rem' }}>Launching June 1, 2026</p>
+                <a href="https://apps.apple.com/us/app/total90/id6749282785" target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'inline-block', backgroundColor: '#00E676', color: '#0A0F2E', fontWeight: 800, fontSize: '0.9rem', padding: '0.65rem 1.5rem', borderRadius: '0.75rem', textDecoration: 'none' }}>
+                  Download Free on iOS →
+                </a>
+              </div>
             </div>
           </div>
         )
