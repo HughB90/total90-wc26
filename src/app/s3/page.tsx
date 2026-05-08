@@ -339,8 +339,8 @@ export default function S3Page() {
       {/* Slide-up animation */}
       <style>{`
         @keyframes slideUp {
-          from { transform: translateY(100%); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
+          from { transform: translateY(-30px); opacity: 0; }
+          to   { transform: translateY(0);     opacity: 1; }
         }
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -468,13 +468,13 @@ export default function S3Page() {
       {/* ── Pop-up voting overlay ──────────────────────────────────── */}
       {showOverlay && overlayPlayers.length > 0 && (
         <div
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'fadeIn 0.2s ease' }}
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '5vh', animation: 'fadeIn 0.2s ease' }}
           onClick={e => { if (e.target === e.currentTarget) handleOverlayClose() }}
         >
           <div style={{
             backgroundColor: '#0A0F2E',
             border: '1px solid #1E3A6E',
-            borderRadius: '1.25rem 1.25rem 0 0',
+            borderRadius: '1.25rem',
             padding: '1.25rem 1rem 1.5rem',
             width: '100%',
             maxWidth: '500px',
