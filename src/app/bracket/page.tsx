@@ -185,7 +185,11 @@ function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
           </div>
           {tab === 'create' && <>
             <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Team Name</label><input style={inp} placeholder="e.g. Rapaziada FC" value={teamName} onChange={e => setTeamName(e.target.value)} /></div>
-            <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Email <span style={{ color: '#4A6080' }}>(optional — for login reminders)</span></label><input style={inp} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} /></div>
+            <div>
+              <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Email <span style={{ color: C.gold }}>(recommended — get a Total90 Sessions invite + future updates)</span></label>
+              <input style={inp} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+              {!email && <p style={{ color: '#4A6080', fontSize: '0.72rem', margin: '0.35rem 0 0' }}>Without an email, you can&apos;t recover a forgotten PIN.</p>}
+            </div>
           </>}
           <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>4-Digit PIN</label><input style={{ ...inp, letterSpacing: '0.3em', textAlign: 'center' as const }} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></div>
           {tab === 'signin' && <p style={{ color: '#4A6080', fontSize: '0.75rem', margin: 0 }}>Use the first name you registered with.</p>}
@@ -1159,7 +1163,16 @@ export default function BracketPage() {
   const [thirdPicks, setThirdPicks] = useState<ThirdPicks>([])
   const [knockoutPicks, setKnockoutPicks] = useState<KnockoutPicks>({})
   const [knockoutLocked, setKnockoutLocked] = useState(true)
+  const [adminUnlock, setAdminUnlock] = useState(false)
   const KNOCKOUT_TABS = ['r32','r16','qf','sf','final']
+
+  // Dev unlock — ?unlock=1 in the URL forces knockout tabs visible.
+  // Picks save normally; results reflect dev state. Useful for QA + admin recompute smoke tests.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    setAdminUnlock(url.searchParams.get('unlock') === '1')
+  }, [])
   const [picksLoaded, setPicksLoaded] = useState(false)
   const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
   const [myLeagues, setMyLeagues] = useState<{ id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[]>([])
@@ -1247,6 +1260,21 @@ export default function BracketPage() {
     <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1rem 1rem 4rem' }}>
 
+        {adminUnlock && (
+          <div style={{
+            backgroundColor: 'rgba(251,191,36,0.15)',
+            border: '1px solid rgba(251,191,36,0.5)',
+            color: '#FBBF24',
+            borderRadius: '0.75rem',
+            padding: '0.55rem 0.85rem',
+            marginBottom: '0.75rem',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+          }}>
+            🔓 Admin unlock active — knockout tabs visible. Picks save but reflect dev state.
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
@@ -1323,7 +1351,7 @@ export default function BracketPage() {
         {activeTab === 'third' && (
           <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} thirdResults={[]} />
         )}
-        {KNOCKOUT_TABS.includes(activeTab) && knockoutLocked && (
+        {KNOCKOUT_TABS.includes(activeTab) && knockoutLocked && !adminUnlock && (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ display: 'block', margin: '0 auto 1rem' }}>
               <rect x="5" y="11" width="14" height="10" rx="2" stroke="#8899CC" strokeWidth="1.5"/>
@@ -1349,7 +1377,7 @@ export default function BracketPage() {
             </p>
           </div>
         )}
-        {KNOCKOUT_TABS.includes(activeTab) && !knockoutLocked && (
+        {KNOCKOUT_TABS.includes(activeTab) && (!knockoutLocked || adminUnlock) && (
           <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} activeRound={activeTab}
             onSaved={() => {
               const order = ['r32','r16','qf','sf','final','leaderboard']

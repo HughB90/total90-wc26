@@ -27,3 +27,6 @@ ALTER TABLE bracket_users ADD COLUMN IF NOT EXISTS first_name TEXT;
 ALTER TABLE league_registrations 
   ADD COLUMN IF NOT EXISTS registration_type TEXT NOT NULL DEFAULT 'full',
   ADD COLUMN IF NOT EXISTS ringer_available_matchdays INTEGER[] DEFAULT '{}';
+
+-- 2026-05-10 — add knockout_results key for the scoring engine
+INSERT INTO bracket_config (key, value) VALUES ('knockout_results', '{}') ON CONFLICT (key) DO NOTHING;
