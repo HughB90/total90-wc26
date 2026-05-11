@@ -140,6 +140,10 @@ const SS_SEEN_KEY = 's3_seen'
 const SS_OVERLAY_SHOWN = 's3_overlay_shown'
 const SS_DETAIL_VOTES_KEY = 's3_detail_votes'
 const ROW_HEIGHT = 60 // px estimate per player row
+// Show the prompt overlay once the user has scrolled past roughly the
+// 15-20th row of the list. Set in the middle of that range so it lands
+// consistently regardless of exact row heights.
+const OVERLAY_TRIGGER_ROW = 17
 
 function getSeenIds(): string[] {
   if (typeof window === 'undefined') return []
@@ -196,10 +200,8 @@ export default function S3Page() {
   // ── Refs ──────────────────────────────────────────────────────────
   const playerListRef = useRef<HTMLDivElement>(null)
   const overlayShownRef = useRef(false)          // has the overlay been shown yet this session?
-  const dismissScrollYRef = useRef<number | null>(null) // scroll Y when X-closed
-  const submitCooldownRef = useRef(false)        // in 10-sec post-submit cooldown
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // (timers, cooldowns, dismiss-scroll-Y were removed May 11 2026 — the
+  // overlay now fires exactly once per session, no re-shows.)
   const playersRef = useRef<Player[]>([])        // mirror for use in scroll handler
 
   // ── Load players ──────────────────────────────────────────────────
@@ -239,66 +241,45 @@ export default function S3Page() {
     setOverlayVotes({})
   }, [])
 
-  // ── Show overlay (if not suppressed) ─────────────────────────────
+  // ── Show overlay (once per session) ───────────────────────────────
+  // The overlay fires once per session and is suppressed for the rest of
+  // the session whether the user submits or X-closes it. The marker is
+  // written to sessionStorage the moment it shows, not on submit, so the
+  // X-close path can't trigger a re-show via scroll.
   const tryShowOverlay = useCallback(() => {
     if (overlayShownRef.current) return
-    if (submitCooldownRef.current) return
-    // Only show once per session
     if (typeof window !== 'undefined' && sessionStorage.getItem(SS_OVERLAY_SHOWN)) return
     if (playersRef.current.length === 0) return
     overlayShownRef.current = true
+    if (typeof window !== 'undefined') sessionStorage.setItem(SS_OVERLAY_SHOWN, '1')
     refreshOverlayPlayers(playersRef.current)
     setShowOverlay(true)
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
   }, [refreshOverlayPlayers])
 
-  // ── 5-second timer trigger ────────────────────────────────────────
-  useEffect(() => {
-    if (loading) return
-    timerRef.current = setTimeout(() => {
-      tryShowOverlay()
-    }, 5000)
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [loading, tryShowOverlay])
-
   // ── Scroll trigger ────────────────────────────────────────────────
+  // Single trigger: user has scrolled past row ~17 of the player list.
+  // Earlier behaviour (5-second timer, row-3 trigger, X-close re-show) was
+  // pulled May 11 2026 — too aggressive, the overlay was popping repeatedly.
   useEffect(() => {
     const handleScroll = () => {
+      if (overlayShownRef.current) return
       const list = playerListRef.current
       if (!list) return
-
       const listTop = list.getBoundingClientRect().top + window.scrollY
-
-      // Initial trigger: scrolled past 3 rows from the top of the player list
-      if (!overlayShownRef.current && !submitCooldownRef.current) {
-        const triggerY = listTop + ROW_HEIGHT * 3
-        if (window.scrollY > triggerY) {
-          tryShowOverlay()
-          return
-        }
-      }
-
-      // Re-show after X-close: scrolled 10 more rows
-      if (
-        !showOverlay &&
-        overlayShownRef.current &&
-        dismissScrollYRef.current !== null &&
-        !submitCooldownRef.current &&
-        window.scrollY > dismissScrollYRef.current + ROW_HEIGHT * 10
-      ) {
-        dismissScrollYRef.current = null
-        refreshOverlayPlayers(playersRef.current)
-        setShowOverlay(true)
+      const triggerY = listTop + ROW_HEIGHT * OVERLAY_TRIGGER_ROW
+      if (window.scrollY > triggerY) {
+        tryShowOverlay()
       }
     }
 
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
-  }, [showOverlay, tryShowOverlay, refreshOverlayPlayers])
+  }, [tryShowOverlay])
 
   // ── Overlay submit ────────────────────────────────────────────────
+  // SS_OVERLAY_SHOWN is already set by tryShowOverlay() the moment it opens,
+  // so submit only needs to handle the data + UI side.
   const handleOverlaySubmit = async () => {
-    if (typeof window !== 'undefined') sessionStorage.setItem(SS_OVERLAY_SHOWN, '1')
     if (overlayPlayers.length === 0) return
     if (!overlayPlayers.every(p => overlayVotes[p.id])) return
 
@@ -321,24 +302,16 @@ export default function S3Page() {
     setTimeout(() => {
       setOverlayFlash(false)
       setShowOverlay(false)
-      overlayShownRef.current = false   // allow re-show after cooldown
-      // Post-submit: 10-second cooldown before re-showing
-      submitCooldownRef.current = true
-      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current)
-      cooldownTimerRef.current = setTimeout(() => {
-        submitCooldownRef.current = false
-        // Pre-load next batch for next trigger
-        refreshOverlayPlayers(playersRef.current)
-      }, 10000)
+      // overlayShownRef stays true and SS_OVERLAY_SHOWN remains set, so the
+      // overlay won't re-appear this session.
     }, 1500)
   }
 
   // ── Overlay close (X button) ──────────────────────────────────────
+  // No re-show after X-close — SS_OVERLAY_SHOWN was set when the overlay first
+  // appeared, so this is just hiding it.
   const handleOverlayClose = () => {
     setShowOverlay(false)
-    if (typeof window !== 'undefined') sessionStorage.setItem(SS_OVERLAY_SHOWN, '1')
-    dismissScrollYRef.current = window.scrollY
-    // overlayShownRef stays true — re-show is handled by scroll distance
   }
 
   // ── Detail modal vote ─────────────────────────────────────────────

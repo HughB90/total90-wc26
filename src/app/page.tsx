@@ -21,9 +21,10 @@ const cards: CardItem[] = [
     accentBg: 'rgba(0,230,118,0.08)',
     accentBorder: 'rgba(0,230,118,0.25)',
     title: 'News',
-    desc: 'Live World Cup 2026 intel powered by Grok AI',
+    desc: 'Coming soon — sharpening the Grok-powered feed.',
     href: '/news',
-    active: true,
+    active: false,
+    tag: 'soon',
   },
   {
     Icon: BarChart3,
