@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Header from '@/components/Header'
+import AuthModal from '@/components/AuthModal'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -123,12 +125,21 @@ function RankPill({ rank }: { rank: number }) {
 }
 
 // ─── Save button ──────────────────────────────────────────────────────────────
-function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => void }) {
+function SaveButton({ status, onClick, userId, onAuthRequired }: { status: SaveStatus; onClick: () => void; userId: string | null; onAuthRequired?: () => void }) {
   const label = status === 'saving' ? 'Saving…' : status === 'saved' ? '✓ Saved' : status === 'error' ? 'Error — Retry' : 'Save Picks'
   const bg = status === 'saved' ? C.green : status === 'error' ? '#ef4444' : C.gold
+  
+  const handleClick = () => {
+    if (!userId && onAuthRequired) {
+      onAuthRequired()
+      return
+    }
+    onClick()
+  }
+  
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       disabled={status === 'saving'}
       style={{
         marginTop: '1.25rem', backgroundColor: bg, color: '#0A0F2E', fontWeight: 700,
@@ -140,68 +151,9 @@ function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => vo
 }
 
 // ─── Auth form ────────────────────────────────────────────────────────────────
-function AuthForm({ onAuth }: { onAuth: (id: string, name: string) => void }) {
-  const [tab, setTab] = useState<'signin' | 'create'>('signin')
-  const [firstName, setFirstName] = useState('')
-  const [teamName, setTeamName] = useState('')
-  const [email, setEmail] = useState('')
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  async function handleSubmit() {
-    if (tab === 'create' && (!firstName.trim() || !teamName.trim() || pin.length !== 4)) { setError('Fill all fields with a 4-digit PIN.'); return }
-    if (tab === 'signin' && (!firstName.trim() || pin.length !== 4)) { setError('Enter your first name and PIN.'); return }
-    setError(''); setLoading(true)
-    const body = tab === 'create'
-      ? { action: 'create', first_name: firstName.trim(), display_name: teamName.trim(), email: email.trim() || undefined, pin }
-      : { action: 'signin', first_name: firstName.trim(), pin }
-    const res = await fetch('/api/bracket/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const data = await res.json()
-    setLoading(false)
-    if (!data.ok) { setError(data.error ?? 'Failed.'); return }
-    localStorage.setItem('bracket_user_id', data.userId)
-    localStorage.setItem('bracket_display_name', data.displayName)
-    onAuth(data.userId, data.displayName)
-  }
-  const inp: React.CSSProperties = { width: '100%', backgroundColor: '#162040', border: '1px solid #1E3A6E', borderRadius: '0.625rem', padding: '0.7rem 1rem', color: '#F0F4FF', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: C.bg, padding: '1.5rem 1.5rem 6rem' }}>
-      <div style={{ width: '100%', maxWidth: '380px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingTop: '1rem' }}>
-          <img src="/total90-logo-green.png" alt="" style={{ width: '56px', height: '56px', objectFit: 'contain', display: 'block', margin: '0 auto 0.75rem' }} />
-          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.5rem', margin: '0 0 0.25rem' }}>Bracket Challenge</h1>
-          <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>World Cup 2026 · Pick your winners</p>
-        </div>
-        <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, marginBottom: '1.5rem' }}>
-          {(['signin', 'create'] as const).map(t => (
-            <button key={t} onClick={() => { setTab(t); setError('') }} style={{ flex: 1, background: 'none', border: 'none', borderBottom: tab === t ? `2px solid ${C.gold}` : '2px solid transparent', color: tab === t ? C.gold : C.muted, fontWeight: tab === t ? 700 : 400, fontSize: '0.875rem', padding: '0.6rem', cursor: 'pointer', fontFamily: 'inherit' }}>{t === 'signin' ? 'Sign In' : 'Create Account'}</button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-          <div>
-            <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>First Name</label>
-            <input style={inp} placeholder="Your first name" value={firstName} onChange={e => setFirstName(e.target.value)} />
-          </div>
-          {tab === 'create' && <>
-            <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Team Name</label><input style={inp} placeholder="e.g. Rapaziada FC" value={teamName} onChange={e => setTeamName(e.target.value)} /></div>
-            <div>
-              <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>Email <span style={{ color: C.gold }}>(recommended — get a Total90 Sessions invite + future updates)</span></label>
-              <input style={inp} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
-              {!email && <p style={{ color: '#4A6080', fontSize: '0.72rem', margin: '0.35rem 0 0' }}>Without an email, you can&apos;t recover a forgotten PIN.</p>}
-            </div>
-          </>}
-          <div><label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>4-Digit PIN</label><input style={{ ...inp, letterSpacing: '0.3em', textAlign: 'center' as const }} type="password" inputMode="numeric" maxLength={4} placeholder="••••" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></div>
-          {tab === 'signin' && <p style={{ color: '#4A6080', fontSize: '0.75rem', margin: 0 }}>Use the first name you registered with.</p>}
-          {error && <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>{error}</p>}
-          <button onClick={handleSubmit} disabled={loading} style={{ width: '100%', backgroundColor: loading ? '#162040' : C.gold, color: '#0A0F2E', fontWeight: 800, fontSize: '1rem', padding: '0.875rem', borderRadius: '0.875rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{loading ? 'Loading…' : tab === 'signin' ? 'Sign In →' : 'Create Account →'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
-function GroupStageTab({ userId, savedPicks, onSaved, groupResults = {} }: { userId: string; savedPicks: GroupPicks; onSaved?: () => void; groupResults?: GroupPicks }) {
+function GroupStageTab({ userId, savedPicks, onSaved, onAuthRequired, groupResults = {} }: { userId: string | null; savedPicks: GroupPicks; onSaved?: () => void; onAuthRequired?: () => void; groupResults?: GroupPicks }) {
   const [picks, setPicks] = useState<GroupPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
@@ -343,17 +295,18 @@ function GroupStageTab({ userId, savedPicks, onSaved, groupResults = {} }: { use
           )
         })}
       </div>
-      <SaveButton status={status} onClick={handleSave} />
+      <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />
     </div>
   )
 }
 
 // ─── 3rd Place Tab ────────────────────────────────────────────────────────────
-function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, thirdResults = [] }: {
-  userId: string
+function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onAuthRequired, thirdResults = [] }: {
+  userId: string | null
   savedPicks: ThirdPicks
   groupPicks: GroupPicks
   onSaved?: () => void
+  onAuthRequired?: () => void
   thirdResults?: string[]
 }) {
   const [checked, setChecked] = useState<string[]>(savedPicks)
@@ -550,19 +503,20 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, thirdResults =
           )
         })}
       </div>
-      <SaveButton status={status} onClick={handleSave} />
+      <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />
     </div>
   )
 }
 
 // ─── Knockout Tab ─────────────────────────────────────────────────────────────
-function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32', onSaved }: {
-  userId: string
+function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32', onSaved, onAuthRequired }: {
+  userId: string | null
   savedPicks: KnockoutPicks
   activeRound?: string
   groupPicks: GroupPicks
   thirdPicks: ThirdPicks
   onSaved?: () => void
+  onAuthRequired?: () => void
 }) {
   const [picks, setPicks] = useState<KnockoutPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
@@ -779,7 +733,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
         <MatchupRow matchId="FINAL" opt1={sf1w ?? 'SF1 Winner'} opt2={sf2w ?? 'SF2 Winner'} label="Final" />
       </>)}
 
-      <SaveButton status={status} onClick={handleSave} />
+      <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />
     </div>
   )
 }
@@ -787,7 +741,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
 // ─── Leagues Tab ──────────────────────────────────────────────────────────────
 interface MyLeague { id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number; isCreator: boolean }
 
-function LeaguesTab({ userId }: { userId: string }) {
+function LeaguesTab({ userId, onAuthRequired }: { userId: string | null; onAuthRequired?: () => void }) {
   const [myLeagues, setMyLeagues] = useState<MyLeague[]>([])
   const [leagueView, setLeagueView] = useState<{ code: string; name: string } | null>(null)
   const [leagueRows, setLeagueRows] = useState<LeaderboardRow[]>([])
@@ -823,6 +777,10 @@ function LeaguesTab({ userId }: { userId: string }) {
   }, [leagueView])
 
   async function handleCreate() {
+    if (!userId && onAuthRequired) {
+      onAuthRequired()
+      return
+    }
     if (!leagueName.trim()) return
     const d = await fetch('/api/bracket/league', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -832,6 +790,10 @@ function LeaguesTab({ userId }: { userId: string }) {
   }
 
   async function handleJoin() {
+    if (!userId && onAuthRequired) {
+      onAuthRequired()
+      return
+    }
     if (!joinCode.trim()) return
     const d = await fetch('/api/bracket/league', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1178,6 +1140,7 @@ export default function BracketPage() {
   const [myLeagues, setMyLeagues] = useState<{ id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[]>([])
   const [leagueView, setLeagueView] = useState<{ leagueCode: string; leagueName: string } | null>(null)
   const [leagueRows, setLeagueRows] = useState<{ rank: number; userId: string; displayName: string; score: number }[]>([])
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   // Hydrate auth from localStorage
   useEffect(() => {
@@ -1241,6 +1204,7 @@ export default function BracketPage() {
   function handleAuth(id: string, name: string) {
     setUserId(id)
     setDisplayName(name)
+    setShowAuthModal(false)
   }
 
   function handleLogout() {
@@ -1254,10 +1218,22 @@ export default function BracketPage() {
     setKnockoutPicks({})
   }
 
-  if (!userId) return <AuthForm onAuth={handleAuth} />
+  const handleAuthRequired = () => {
+    setShowAuthModal(true)
+  }
 
   return (
     <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <Header 
+        displayName={userId ? displayName : null} 
+        onSignIn={handleAuthRequired} 
+        onSignOut={handleLogout} 
+      />
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)} 
+        onAuth={handleAuth} 
+      />
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1rem 1rem 4rem' }}>
 
         {adminUnlock && (
@@ -1275,19 +1251,10 @@ export default function BracketPage() {
           </div>
         )}
 
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div>
-            <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.4rem', margin: 0 }}>🏆 Bracket Challenge</h1>
-            <p style={{ color: C.muted, fontSize: '0.8rem', margin: '0.2rem 0 0' }}>World Cup 2026 · Make your picks</p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{ color: C.green, fontSize: '0.8rem', fontWeight: 600 }}>👤 {displayName}</span>
-            <button onClick={handleLogout} style={{
-              backgroundColor: 'transparent', border: `1px solid ${C.border}`, borderRadius: '0.5rem',
-              color: C.muted, fontSize: '0.75rem', padding: '0.3rem 0.7rem', cursor: 'pointer',
-            }}>Log out</button>
-          </div>
+        {/* Page Header */}
+        <div style={{ marginBottom: '0.75rem' }}>
+          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.4rem', margin: 0 }}>🏆 Bracket Challenge</h1>
+          <p style={{ color: C.muted, fontSize: '0.8rem', margin: '0.2rem 0 0' }}>World Cup 2026 · Make your picks</p>
         </div>
 
         {/* Global standings strip */}
@@ -1343,13 +1310,13 @@ export default function BracketPage() {
 
         {/* Tab content */}
         {activeTab === 'leagues' && (
-          <LeaguesTab userId={userId} />
+          <LeaguesTab userId={userId} onAuthRequired={handleAuthRequired} />
         )}
         {activeTab === 'group' && (
-          <GroupStageTab userId={userId} savedPicks={groupPicks} onSaved={() => setActiveTab('third')} groupResults={{}} />
+          <GroupStageTab userId={userId} savedPicks={groupPicks} onSaved={() => setActiveTab('third')} onAuthRequired={handleAuthRequired} groupResults={{}} />
         )}
         {activeTab === 'third' && (
-          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} thirdResults={[]} />
+          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} onAuthRequired={handleAuthRequired} thirdResults={[]} />
         )}
         {KNOCKOUT_TABS.includes(activeTab) && knockoutLocked && !adminUnlock && (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
@@ -1384,6 +1351,7 @@ export default function BracketPage() {
               const next = order[order.indexOf(activeTab) + 1]
               if (next) setActiveTab(next)
             }}
+            onAuthRequired={handleAuthRequired}
           />
         )}
         {activeTab === 'leaderboard' && (
