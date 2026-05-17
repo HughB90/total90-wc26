@@ -936,7 +936,7 @@ function LeaguesTab({ userId, onAuthRequired }: { userId: string | null; onAuthR
 
 
 // ─── Leaderboard Tab ──────────────────────────────────────────────────────────
-function LeaderboardTab({ userId }: { userId: string }) {
+function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onAuthRequired?: () => void }) {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   const [leagueName, setLeagueName] = useState('')
@@ -964,6 +964,10 @@ function LeaderboardTab({ userId }: { userId: string }) {
   useEffect(() => { fetchLeaderboard() }, [fetchLeaderboard])
 
   async function handleCreate() {
+    if (!userId && onAuthRequired) {
+      onAuthRequired()
+      return
+    }
     if (!leagueName.trim()) return
     try {
       const res = await fetch('/api/bracket/league', {
@@ -980,6 +984,10 @@ function LeaderboardTab({ userId }: { userId: string }) {
   }
 
   async function handleJoin() {
+    if (!userId && onAuthRequired) {
+      onAuthRequired()
+      return
+    }
     if (!joinCode.trim()) return
     try {
       const res = await fetch('/api/bracket/league', {
