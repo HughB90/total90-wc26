@@ -1,6 +1,6 @@
 import type React from 'react'
 import Link from 'next/link'
-import { Newspaper, BarChart3, Trophy, Activity } from 'lucide-react'
+import { Newspaper, BarChart3, Trophy, Activity, Briefcase, Smartphone } from 'lucide-react'
 
 type CardItem = {
   Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>
@@ -54,6 +54,27 @@ const cards: CardItem[] = [
     title: 'Scores',
     desc: 'Live World Cup 2026 match results',
     href: '/scores',
+    active: true,
+  },
+  {
+    Icon: Briefcase,
+    color: '#F472B6',
+    accentBg: 'rgba(244,114,182,0.08)',
+    accentBorder: 'rgba(244,114,182,0.25)',
+    title: 'Steal or No Steal',
+    desc: 'Build a 5-man WC roster from mystery cases — what\u2019s your squad worth?',
+    href: '/steal',
+    active: false,
+    tag: 'soon',
+  },
+  {
+    Icon: Smartphone,
+    color: '#34D399',
+    accentBg: 'rgba(52,211,153,0.08)',
+    accentBorder: 'rgba(52,211,153,0.25)',
+    title: 'Mobile App',
+    desc: 'Total90 on iOS \u2014 download from the App Store',
+    href: 'https://apps.apple.com/us/app/total90/id6749282785',
     active: true,
   },
 ]
@@ -155,9 +176,11 @@ export default function HomePage() {
               </div>
             )
 
-            return active
-              ? <Link key={title} href={href} style={{ textDecoration: 'none', display: 'block' }}>{cardContent}</Link>
-              : <div key={title}>{cardContent}</div>
+            const isExternal = href.startsWith('http')
+            if (!active) return <div key={title}>{cardContent}</div>
+            return isExternal
+              ? <a key={title} href={href} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'block' }}>{cardContent}</a>
+              : <Link key={title} href={href} style={{ textDecoration: 'none', display: 'block' }}>{cardContent}</Link>
           })}
         </div>
 
