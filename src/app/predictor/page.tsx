@@ -15,6 +15,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import AuthHeader from '@/components/AuthHeader'
 
 const C = {
   bg: '#0A0F2E',
@@ -99,6 +100,8 @@ export default function PredictorLanding() {
   }
 
   return (
+    <>
+    <AuthHeader />
     <main style={{ maxWidth: 760, margin: '0 auto', padding: '2.5rem 1.25rem 5rem' }}>
       {/* Hero */}
       <div style={{ textAlign: 'center', marginBottom: '2.25rem' }}>
@@ -206,6 +209,7 @@ export default function PredictorLanding() {
         </div>
       )}
     </main>
+    </>
   )
 }
 

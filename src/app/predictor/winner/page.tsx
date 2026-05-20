@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { flagUrl } from '@/lib/predictor-flags'
+import AuthHeader from '@/components/AuthHeader'
 
 const C = {
   bg: '#0A0F2E',
@@ -112,6 +113,8 @@ export default function WinnerPickPage() {
   const dirty = selected && selected !== savedPick
 
   return (
+    <>
+    <AuthHeader />
     <main style={{ maxWidth: 780, margin: '0 auto', padding: '1.5rem 1rem 6rem' }}>
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
@@ -246,6 +249,7 @@ export default function WinnerPickPage() {
         }}>{msg.text}</div>
       )}
     </main>
+    </>
   )
 }
 

@@ -12,6 +12,7 @@
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { flagUrl } from '@/lib/predictor-flags'
+import AuthHeader from '@/components/AuthHeader'
 
 const C = {
   bg: '#0A0F2E',
@@ -193,6 +194,8 @@ export default function RoundPicksPage({
   }
 
   return (
+    <>
+    <AuthHeader />
     <main style={{ maxWidth: 780, margin: '0 auto', padding: '1.5rem 1rem 7rem' }}>
       <div style={{ marginBottom: '1rem' }}>
         <Link href="/predictor" style={{ color: C.muted, fontSize: '0.8rem', textDecoration: 'none' }}>← Back to Predictor</Link>
@@ -319,6 +322,7 @@ export default function RoundPicksPage({
         }}>{msg.text}</div>
       )}
     </main>
+    </>
   )
 }
 
