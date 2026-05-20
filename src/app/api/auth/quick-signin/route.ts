@@ -17,14 +17,7 @@ const supabase = createClient(
 )
 
 export async function POST(req: NextRequest) {
-  // Feature flag check
-  if (process.env.MULTI_PROFILE_ENABLED !== 'true') {
-    return NextResponse.json(
-      { error: 'Multi-profile auth not enabled' },
-      { status: 503 }
-    )
-  }
-
+  // NOTE: legacy endpoint. Canonical surface is /api/auth/signin-tier2.
   try {
     const body = await req.json()
     const { first_name, pin } = body

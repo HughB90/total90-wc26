@@ -21,14 +21,6 @@ const MAX_PROFILES_PER_ACCOUNT = 6
  * GET — List all profiles for current account
  */
 export async function GET(req: NextRequest) {
-  // Feature flag check
-  if (process.env.MULTI_PROFILE_ENABLED !== 'true') {
-    return NextResponse.json(
-      { error: 'Multi-profile auth not enabled' },
-      { status: 503 }
-    )
-  }
-
   try {
     // Require account session
     const { accountId } = await getSession()
@@ -74,14 +66,6 @@ export async function GET(req: NextRequest) {
  * POST — Create new profile (requires account session)
  */
 export async function POST(req: NextRequest) {
-  // Feature flag check
-  if (process.env.MULTI_PROFILE_ENABLED !== 'true') {
-    return NextResponse.json(
-      { error: 'Multi-profile auth not enabled' },
-      { status: 503 }
-    )
-  }
-
   try {
     // Require account session
     const { accountId } = await getSession()

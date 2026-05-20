@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import VotingCard from './VotingCard'
+import AuthHeader from '@/components/AuthHeader'
 
 interface Player {
   id: string
@@ -364,6 +365,7 @@ export default function S3Page() {
       `}</style>
 
       <div>
+        <AuthHeader />
         <VotingCard />
         <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '1rem 1rem 2rem' }}>
 

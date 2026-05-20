@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import AuthHeader from '@/components/AuthHeader'
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -515,6 +516,8 @@ export default function ScoresPage() {
         }
         select option { background-color: #0F1C4D; color: #F0F4FF; }
       `}</style>
+
+      <AuthHeader />
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem 5rem' }}>
 
