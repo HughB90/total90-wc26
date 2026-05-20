@@ -34,24 +34,24 @@ export async function POST(request: Request) {
     if (action === 'delete') {
       if (!leagueId) return NextResponse.json({ error: 'leagueId required' }, { status: 400 })
       // Verify creator
-      const { data: lg } = await (supabase.from('bracket_leagues').select('creator_id').eq('id', leagueId).maybeSingle() as any)
+      const { data: lg } = await (supabase.from('wc26_leagues').select('creator_id').eq('id', leagueId).maybeSingle() as any)
       if (!lg || lg.creator_id !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
-      await (supabase.from('bracket_league_members').delete().eq('league_id', leagueId) as any)
-      await (supabase.from('bracket_leagues').delete().eq('id', leagueId) as any)
+      await (supabase.from('wc26_league_members').delete().eq('league_id', leagueId) as any)
+      await (supabase.from('wc26_leagues').delete().eq('id', leagueId) as any)
       return NextResponse.json({ ok: true })
     }
 
     // Leave league
     if (action === 'leave') {
       if (!leagueId) return NextResponse.json({ error: 'leagueId required' }, { status: 400 })
-      await (supabase.from('bracket_league_members').delete().match({ league_id: leagueId, user_id: userId }) as any)
+      await (supabase.from('wc26_league_members').delete().match({ league_id: leagueId, user_id: userId }) as any)
       return NextResponse.json({ ok: true })
     }
 
     // Rename league (creator only)
     if (action === 'rename') {
       if (!leagueId || !name) return NextResponse.json({ error: 'leagueId and name required' }, { status: 400 })
-      const { error } = await (supabase.from('bracket_leagues').update({ name: name.trim() }).match({ id: leagueId, creator_id: userId }) as any)
+      const { error } = await (supabase.from('wc26_leagues').update({ name: name.trim() }).match({ id: leagueId, creator_id: userId }) as any)
       if (error) return NextResponse.json({ error: 'Not authorized or league not found' }, { status: 403 })
       return NextResponse.json({ ok: true })
     }
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       let attempts = 0
       while (attempts < 5) {
         const { data: existing } = await supabase
-          .from('bracket_leagues')
+          .from('wc26_leagues')
           .select('id')
           .eq('invite_code', code)
           .single()
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       }
 
       const { data: league, error } = await supabase
-        .from('bracket_leagues')
+        .from('wc26_leagues')
         .insert({ name: name.trim(), invite_code: code, creator_id: userId })
         .select('id, invite_code, name')
         .single()
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
 
       // Add creator as member
       await supabase
-        .from('bracket_league_members')
+        .from('wc26_league_members')
         .insert({ league_id: league.id, user_id: userId })
 
       return NextResponse.json({ ok: true, league })
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       if (!inviteCode) return NextResponse.json({ error: 'inviteCode required to join' }, { status: 400 })
 
       const { data: league } = await supabase
-        .from('bracket_leagues')
+        .from('wc26_leagues')
         .select('id, name, invite_code')
         .eq('invite_code', inviteCode.toUpperCase())
         .single()
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       }
 
       const { error } = await supabase
-        .from('bracket_league_members')
+        .from('wc26_league_members')
         .upsert({ league_id: league.id, user_id: userId }, { onConflict: 'league_id,user_id' })
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -135,20 +135,20 @@ export async function GET(request: Request) {
 
     // Get leagues user is in
     const { data: memberships } = await (supabase
-      .from('bracket_league_members')
-      .select('league_id, bracket_leagues(id, name, invite_code, creator_id)')
+      .from('wc26_league_members')
+      .select('league_id, wc26_leagues(id, name, invite_code, creator_id)')
       .eq('user_id', userId) as any)
 
     if (!memberships?.length) return NextResponse.json({ leagues: [] })
 
     // For each league get rank info
     const leagues = await Promise.all((memberships as any[]).map(async (m: any) => {
-      const league = m.bracket_leagues
+      const league = m.wc26_leagues
       if (!league) return null
 
       // Get all members' scores for this league
       const { data: leagueMembers } = await (supabase
-        .from('bracket_league_members')
+        .from('wc26_league_members')
         .select('user_id')
         .eq('league_id', league.id) as any)
 

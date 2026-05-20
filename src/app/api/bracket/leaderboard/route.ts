@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     if (leagueCode) {
       const { data: league } = await supabase
-        .from('bracket_leagues')
+        .from('wc26_leagues')
         .select('id')
         .eq('invite_code', leagueCode.toUpperCase())
         .single()
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       }
 
       const { data: members } = await supabase
-        .from('bracket_league_members')
+        .from('wc26_league_members')
         .select('user_id')
         .eq('league_id', league.id)
 

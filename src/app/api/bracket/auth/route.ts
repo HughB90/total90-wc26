@@ -129,9 +129,9 @@ export async function POST(request: Request) {
       
       // Handle invite code
       if (invite_code) {
-        const { data: league } = await (supabase.from('bracket_leagues').select('id').eq('invite_code', invite_code.toUpperCase()).maybeSingle() as any)
+        const { data: league } = await (supabase.from('wc26_leagues').select('id').eq('invite_code', invite_code.toUpperCase()).maybeSingle() as any)
         if (league) {
-          await (supabase.from('bracket_league_members').upsert({ league_id: league.id, user_id: existingByName.id }, { onConflict: 'league_id,user_id' }) as any)
+          await (supabase.from('wc26_league_members').upsert({ league_id: league.id, user_id: existingByName.id }, { onConflict: 'league_id,user_id' }) as any)
         }
       }
       
@@ -183,14 +183,14 @@ export async function POST(request: Request) {
     // Handle invite code
     if (invite_code) {
       const { data: league } = await supabase
-        .from('bracket_leagues')
+        .from('wc26_leagues')
         .select('id')
         .eq('invite_code', invite_code.toUpperCase())
         .single()
 
       if (league) {
         await supabase
-          .from('bracket_league_members')
+          .from('wc26_league_members')
           .upsert({ league_id: league.id, user_id: userId }, { onConflict: 'league_id,user_id' })
       }
     }
