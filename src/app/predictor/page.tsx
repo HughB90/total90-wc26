@@ -91,13 +91,11 @@ export default function PredictorLanding() {
   const winnerLocked = now.getTime() >= new Date(WINNER_LOCK_ISO).getTime()
   const countdown = formatCountdown(new Date(WINNER_LOCK_ISO).getTime() - now.getTime())
 
-  function handleAnonClick(e: React.MouseEvent) {
-    if (!data?.authed) {
-      e.preventDefault()
-      alert('Sign in to play the Predictor. We\'ll send you to the Bracket sign-in for now — same account works for both.')
-      window.location.href = '/bracket'
-    }
-  }
+  // Removed the anon-gate alert. AuthHeader handles sign-in inline now and
+  // the inner predictor pages enforce auth server-side. Treating the auth
+  // probe as the gate caused false negatives when the /api/auth/me probe
+  // returned anon for any reason (CDN cache, slow cookie hydration, etc.).
+  const handleAnonClick = undefined
 
   return (
     <>
