@@ -6,12 +6,20 @@
  * Lands here after Tier 3 login (account session, no profile session)
  */
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 function safeNext(next: string | null): string {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return '/'
   return next
+}
+
+export default function ProfilePickerPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfilePickerInner />
+    </Suspense>
+  )
 }
 
 interface Profile {
@@ -22,7 +30,7 @@ interface Profile {
   is_owner: boolean
 }
 
-export default function ProfilePickerPage() {
+function ProfilePickerInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get('next'))

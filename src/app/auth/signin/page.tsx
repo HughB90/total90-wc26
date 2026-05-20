@@ -5,7 +5,7 @@
  * Feature flag: MULTI_PROFILE_ENABLED
  */
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 function safeNext(next: string | null): string {
@@ -14,6 +14,14 @@ function safeNext(next: string | null): string {
 }
 
 export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInInner />
+    </Suspense>
+  )
+}
+
+function SignInInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get('next'))
