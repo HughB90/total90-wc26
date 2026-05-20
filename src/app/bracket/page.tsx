@@ -95,7 +95,17 @@ type GroupPicks = Record<string, string[]>   // group → [1st, 2nd, 3rd, (4th a
 type ThirdPicks = string[]                    // checked group letters (max 8)
 type KnockoutPicks = Record<string, string>  // matchId → chosen team label
 
-type LeaderboardRow = { rank: number; userId: string; displayName: string; score: number }
+type LeaderboardRow = {
+  rank: number
+  userId: string
+  profileId?: string | null
+  displayName: string
+  /** Pass 5: profiles.manager_name. Falls back to displayName when missing. */
+  managerName?: string
+  /** Pass 5: profiles.first_name */
+  firstName?: string | null
+  score: number
+}
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 // ─── Colour tokens ────────────────────────────────────────────────────────────
@@ -852,7 +862,12 @@ function LeaguesTab({ userId, onAuthRequired }: { userId: string | null; onAuthR
       ) : leagueRows.map(row => (
         <div key={row.userId} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', marginBottom: '0.35rem', backgroundColor: row.userId === userId ? 'rgba(251,191,36,0.08)' : C.card, border: `1px solid ${row.userId === userId ? 'rgba(251,191,36,0.3)' : C.border}`, borderRadius: '0.625rem' }}>
           <span style={{ color: C.muted, fontSize: '0.72rem', fontWeight: 700, width: '28px', flexShrink: 0 }}>#{row.rank}</span>
-          <span style={{ flex: 1, color: row.userId === userId ? C.gold : C.text, fontWeight: row.userId === userId ? 700 : 400, fontSize: '0.875rem' }}>{row.displayName}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: row.userId === userId ? C.gold : C.text, fontWeight: row.userId === userId ? 700 : 600, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.managerName ?? row.displayName}</div>
+            {row.firstName && (
+              <div style={{ color: C.muted, fontSize: '0.7rem' }}>{row.firstName}</div>
+            )}
+          </div>
           <span style={{ color: C.gold, fontWeight: 700, fontSize: '0.82rem' }}>{row.score} pts</span>
         </div>
       ))}
@@ -1081,7 +1096,7 @@ function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onA
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr>
-                {['Rank', 'Name', 'Score'].map(h => (
+                {['Rank', 'Manager', 'Name', 'Score'].map(h => (
                   <th key={h} style={{
                     textAlign: 'left', padding: '0.5rem 0.75rem', color: C.muted,
                     fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -1096,8 +1111,11 @@ function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onA
                   <td style={{ padding: '0.6rem 0.75rem', color: row.rank <= 3 ? C.gold : C.muted, fontWeight: 700 }}>
                     {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
                   </td>
-                  <td style={{ padding: '0.6rem 0.75rem', color: row.userId === userId ? C.green : C.text, fontWeight: row.userId === userId ? 700 : 400 }}>
-                    {row.displayName} {row.userId === userId && <span style={{ color: C.muted, fontSize: '0.7rem' }}>(you)</span>}
+                  <td style={{ padding: '0.6rem 0.75rem', color: row.userId === userId ? C.green : C.text, fontWeight: row.userId === userId ? 700 : 600 }}>
+                    {row.managerName ?? row.displayName} {row.userId === userId && <span style={{ color: C.muted, fontSize: '0.7rem' }}>(you)</span>}
+                  </td>
+                  <td style={{ padding: '0.6rem 0.75rem', color: C.muted, fontWeight: 400 }}>
+                    {row.firstName ?? '—'}
                   </td>
                   <td style={{ padding: '0.6rem 0.75rem', color: C.gold, fontWeight: 700 }}>
                     {row.score}
@@ -1147,7 +1165,7 @@ export default function BracketPage() {
   const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
   const [myLeagues, setMyLeagues] = useState<{ id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[]>([])
   const [leagueView, setLeagueView] = useState<{ leagueCode: string; leagueName: string } | null>(null)
-  const [leagueRows, setLeagueRows] = useState<{ rank: number; userId: string; displayName: string; score: number }[]>([])
+  const [leagueRows, setLeagueRows] = useState<LeaderboardRow[]>([])
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   // Hydrate auth from localStorage
@@ -1190,7 +1208,7 @@ export default function BracketPage() {
     if (!leagueView) return
     fetch(`/api/bracket/leaderboard?leagueCode=${leagueView.leagueCode}`)
       .then(r => r.json())
-      .then((d: { rows?: { rank: number; userId: string; displayName: string; score: number }[] }) => setLeagueRows(d.rows ?? []))
+      .then((d: { rows?: LeaderboardRow[] }) => setLeagueRows(d.rows ?? []))
       .catch(() => {})
   }, [leagueView])
 
@@ -1216,6 +1234,8 @@ export default function BracketPage() {
   }
 
   function handleLogout() {
+    // Clear new signed-cookie session AND legacy localStorage
+    fetch('/api/auth/signout', { method: 'POST', credentials: 'include' }).catch(() => {})
     localStorage.removeItem('bracket_user_id')
     localStorage.removeItem('bracket_display_name')
     setUserId(null)

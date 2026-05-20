@@ -2,6 +2,44 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { Resend } from 'resend'
+import { setAccountSession, setProfileSession } from '@/lib/auth-cookies'
+
+// DEPRECATED: legacy bracket auth endpoint. The canonical surface is
+// /api/auth/signin-tier1, /signin-tier2, /signin-tier3, /create-account.
+// This route stays alive during transition; on a successful lookup it also
+// upgrades the client to the new signed-cookie session so subsequent calls
+// hit the new model. Remove once all clients have rotated (~2 weeks).
+
+async function upgradeLegacyClient(supabase: any, bracketUserId: string) {
+  // Find the account+profile that corresponds to this bracket_users row.
+  // Migration created profiles 1:1 from bracket_users, keyed by (email, first_name).
+  const { data: bu } = await supabase
+    .from('bracket_users')
+    .select('email, first_name')
+    .eq('id', bracketUserId)
+    .maybeSingle()
+  if (!bu || !bu.email) return
+  const { data: account } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('email', bu.email.toLowerCase().trim())
+    .maybeSingle()
+  if (!account) return
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('account_id', account.id)
+    .ilike('first_name', bu.first_name ?? '')
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (!profile) return
+  try {
+    await setAccountSession(account.id)
+    await setProfileSession(profile.id)
+  } catch {
+    // AUTH_COOKIE_SECRET missing in older envs — fail silently, don't break legacy login.
+  }
+}
 
 async function sendWelcomeEmail(email: string, displayName: string, pin: string) {
   const apiKey = process.env.RESEND_API_KEY
@@ -97,6 +135,7 @@ export async function POST(request: Request) {
         }
       }
       
+      await upgradeLegacyClient(supabase, existingByName.id)
       return NextResponse.json({ ok: true, userId: existingByName.id, displayName: existingByName.display_name })
     }
 
@@ -156,6 +195,7 @@ export async function POST(request: Request) {
       }
     }
 
+    await upgradeLegacyClient(supabase, userId)
     return NextResponse.json({ ok: true, userId, displayName: resolvedName })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
