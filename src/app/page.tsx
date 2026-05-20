@@ -1,6 +1,6 @@
 import type React from 'react'
 import Link from 'next/link'
-import { Newspaper, BarChart3, Trophy, Activity, Briefcase, Smartphone } from 'lucide-react'
+import { Newspaper, BarChart3, Trophy, Activity, Briefcase, Smartphone, Target } from 'lucide-react'
 
 type CardItem = {
   Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>
@@ -45,6 +45,17 @@ const cards: CardItem[] = [
     desc: 'Pick your group winners and knockout bracket',
     href: '/bracket',
     active: true,
+  },
+  {
+    Icon: Target,
+    color: '#FF6B6B',
+    accentBg: 'rgba(255,107,107,0.08)',
+    accentBorder: 'rgba(255,107,107,0.25)',
+    title: 'Score Predictor',
+    desc: 'Predict every match. Star your bangers. 8 stars, 104 matches.',
+    href: '/predictor',
+    active: true,
+    tag: 'new',
   },
   {
     Icon: Activity,

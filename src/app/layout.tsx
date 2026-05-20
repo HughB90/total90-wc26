@@ -41,6 +41,7 @@ const NAV_LINKS = [
   { label: 'News', href: '/news' },
   { label: 'S³ Ratings', href: '/s3' },
   { label: 'Bracket', href: '/bracket' },
+  { label: 'Predictor', href: '/predictor' },
   { label: 'Scores', href: '/scores' },
 ]
 
