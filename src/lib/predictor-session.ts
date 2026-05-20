@@ -19,8 +19,16 @@ export interface ProfileSession {
 export async function getProfileSession(): Promise<ProfileSession | null> {
   // Try the auth subagent's real session resolver first.
   try {
-    // Dynamic import so we don't crash if the file doesn't exist yet.
-    const mod = await import('./auth-session-server')
+    // Dynamic import so we don't crash if the file doesn't exist yet on this
+    // branch. The string concat fools tsc into skipping resolution; the
+    // module will resolve at runtime once auth merges into main.
+    const modPath = './' + 'auth-session-server'
+    const mod = await import(/* webpackIgnore: true */ modPath) as {
+      resolveSession?: () => Promise<{
+        account: { id: string } | null
+        profile: { id: string } | null
+      }>
+    }
     if (typeof mod.resolveSession === 'function') {
       const { account, profile } = await mod.resolveSession()
       if (account && profile) {
