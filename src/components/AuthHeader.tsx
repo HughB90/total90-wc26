@@ -1,9 +1,14 @@
 'use client'
 
 /**
- * Self-hydrating auth header bar for pages that don't manage auth state
- * themselves (s3 / scores / news / predictor). Calls /api/auth/me on mount,
- * shows "Sign in" when anon, profile dropdown when authed.
+ * Self-hydrating auth header bar used across every WC26 tab
+ * (bracket / predictor / news / s3 / scores).
+ *
+ * Hydration: GET /api/auth/me on mount (no-store).
+ * Authed dropdown contains:
+ *   - List of sibling profiles on the same account (click to switch)
+ *   - "+ Add a profile" inline form (first_name + manager_name + PIN)
+ *   - Sign out
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -12,9 +17,12 @@ import AuthModal from './AuthModal'
 const C = {
   card: '#0F1C4D',
   border: '#1E3A6E',
+  borderSoft: '#162040',
   gold: '#FBBF24',
+  green: '#00E676',
   text: '#F0F4FF',
   muted: '#8899CC',
+  red: '#F87171',
 }
 
 interface MeResponse {
@@ -28,10 +36,26 @@ interface MeResponse {
   } | null
 }
 
+interface SiblingProfile {
+  id: string
+  first_name: string
+  manager_name: string
+  display_name: string | null
+  is_owner: boolean
+}
+
 export default function AuthHeader() {
   const [me, setMe] = useState<MeResponse | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [siblings, setSiblings] = useState<SiblingProfile[] | null>(null)
+  const [siblingsLoading, setSiblingsLoading] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addFirstName, setAddFirstName] = useState('')
+  const [addManager, setAddManager] = useState('')
+  const [addPin, setAddPin] = useState('')
+  const [addError, setAddError] = useState('')
+  const [addBusy, setAddBusy] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -47,6 +71,17 @@ export default function AuthHeader() {
     refresh()
   }, [refresh])
 
+  // Lazy-load sibling profiles only when the menu opens for the first time.
+  useEffect(() => {
+    if (!menuOpen || !me?.account || siblings || siblingsLoading) return
+    setSiblingsLoading(true)
+    fetch('/api/auth/profiles', { credentials: 'include', cache: 'no-store' })
+      .then(r => r.json())
+      .then((d: { profiles?: SiblingProfile[] }) => setSiblings(d.profiles ?? []))
+      .catch(() => setSiblings([]))
+      .finally(() => setSiblingsLoading(false))
+  }, [menuOpen, me?.account, siblings, siblingsLoading])
+
   const handleAuth = () => {
     refresh()
   }
@@ -59,10 +94,79 @@ export default function AuthHeader() {
       localStorage.removeItem('bracket_display_name')
     } catch {}
     setMe({ account: null, profile: null })
+    setSiblings(null)
+    // Force a reload so per-page auth state (bracket userId, predictor probes) resets cleanly.
+    if (typeof window !== 'undefined') window.location.reload()
+  }
+
+  const switchProfile = async (profile_id: string) => {
+    if (profile_id === me?.profile?.id) {
+      setMenuOpen(false)
+      return
+    }
+    const res = await fetch('/api/auth/pick-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ profile_id }),
+    })
+    if (!res.ok) return
+    // Hard reload so every tab (bracket, predictor, etc.) re-reads the new profile session.
+    if (typeof window !== 'undefined') window.location.reload()
+  }
+
+  const submitAdd = async () => {
+    setAddError('')
+    if (!addFirstName.trim() || !addManager.trim() || addPin.length !== 4) {
+      setAddError('First name, team name, and a 4-digit PIN are required.')
+      return
+    }
+    setAddBusy(true)
+    try {
+      const res = await fetch('/api/auth/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          first_name: addFirstName.trim(),
+          manager_name: addManager.trim(),
+          pin: addPin,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAddError(data.error ?? 'Could not create profile.')
+        setAddBusy(false)
+        return
+      }
+      // Append to local list, reset form, close add panel.
+      setSiblings(prev => prev ? [...prev, data.profile] : [data.profile])
+      setAddFirstName('')
+      setAddManager('')
+      setAddPin('')
+      setAddOpen(false)
+      setAddBusy(false)
+    } catch {
+      setAddError('Network error. Try again.')
+      setAddBusy(false)
+    }
   }
 
   const displayName =
     me?.profile?.display_name || me?.profile?.manager_name || me?.profile?.first_name || ''
+
+  // Close menu when clicking outside.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && t.closest('[data-authheader-menu]')) return
+      setMenuOpen(false)
+      setAddOpen(false)
+    }
+    window.addEventListener('mousedown', onClick)
+    return () => window.removeEventListener('mousedown', onClick)
+  }, [menuOpen])
 
   return (
     <>
@@ -85,7 +189,7 @@ export default function AuthHeader() {
           }}
         >
           <a
-            href="/bracket"
+            href="/"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -102,7 +206,7 @@ export default function AuthHeader() {
               World Cup 2026
             </span>
           </a>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }} data-authheader-menu>
             {me?.profile ? (
               <>
                 <button
@@ -130,19 +234,159 @@ export default function AuthHeader() {
                       backgroundColor: C.card,
                       border: `1px solid ${C.border}`,
                       borderRadius: '0.625rem',
-                      padding: '0.5rem',
-                      minWidth: 160,
+                      padding: '0.4rem',
+                      minWidth: 260,
                       zIndex: 100,
                       boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                     }}
                   >
+                    {/* Profile list */}
+                    <div style={{ padding: '0.35rem 0.55rem 0.25rem', color: C.muted, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Profiles on this account
+                    </div>
+                    {siblingsLoading && !siblings && (
+                      <div style={{ padding: '0.5rem 0.55rem', color: C.muted, fontSize: '0.82rem' }}>Loading…</div>
+                    )}
+                    {siblings?.map(p => {
+                      const active = p.id === me.profile?.id
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => switchProfile(p.id)}
+                          style={{
+                            background: active ? C.borderSoft : 'none',
+                            border: 'none',
+                            color: C.text,
+                            fontSize: '0.85rem',
+                            padding: '0.55rem 0.6rem',
+                            width: '100%',
+                            textAlign: 'left',
+                            cursor: active ? 'default' : 'pointer',
+                            borderRadius: '0.4rem',
+                            fontFamily: 'inherit',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '0.5rem',
+                          }}
+                          disabled={active}
+                        >
+                          <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
+                            <span style={{ fontWeight: 700 }}>{p.manager_name}</span>
+                            <span style={{ color: C.muted, fontSize: '0.72rem' }}>
+                              {p.display_name || p.first_name}{p.is_owner ? ' · Owner' : ''}
+                            </span>
+                          </span>
+                          {active && <span style={{ color: C.green, fontSize: '0.72rem', fontWeight: 700 }}>•</span>}
+                        </button>
+                      )
+                    })}
+
+                    {/* Add profile */}
+                    {!addOpen ? (
+                      <button
+                        onClick={() => setAddOpen(true)}
+                        style={{
+                          background: 'none',
+                          border: `1px dashed ${C.border}`,
+                          color: C.gold,
+                          fontSize: '0.82rem',
+                          padding: '0.5rem 0.6rem',
+                          width: '100%',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          borderRadius: '0.4rem',
+                          fontFamily: 'inherit',
+                          marginTop: '0.25rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        + Add a profile
+                      </button>
+                    ) : (
+                      <div
+                        style={{
+                          border: `1px solid ${C.border}`,
+                          borderRadius: '0.5rem',
+                          padding: '0.55rem',
+                          marginTop: '0.25rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.4rem',
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          placeholder="First name (e.g. Lucas)"
+                          value={addFirstName}
+                          onChange={e => setAddFirstName(e.target.value)}
+                          style={inp}
+                        />
+                        <input
+                          placeholder="Team name (e.g. Lucas's Lions)"
+                          value={addManager}
+                          onChange={e => setAddManager(e.target.value)}
+                          style={inp}
+                        />
+                        <input
+                          placeholder="4-digit PIN"
+                          inputMode="numeric"
+                          type="password"
+                          maxLength={4}
+                          value={addPin}
+                          onChange={e => setAddPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+                          style={{ ...inp, letterSpacing: '0.3em', textAlign: 'center' }}
+                        />
+                        {addError && (
+                          <p style={{ color: C.red, fontSize: '0.74rem', margin: 0 }}>{addError}</p>
+                        )}
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            onClick={submitAdd}
+                            disabled={addBusy}
+                            style={{
+                              flex: 1,
+                              backgroundColor: addBusy ? C.borderSoft : C.gold,
+                              color: '#0A0F2E',
+                              fontWeight: 800,
+                              fontSize: '0.78rem',
+                              padding: '0.5rem',
+                              borderRadius: '0.4rem',
+                              border: 'none',
+                              cursor: addBusy ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {addBusy ? 'Adding…' : 'Add profile'}
+                          </button>
+                          <button
+                            onClick={() => { setAddOpen(false); setAddError('') }}
+                            style={{
+                              backgroundColor: 'transparent',
+                              color: C.muted,
+                              border: `1px solid ${C.border}`,
+                              borderRadius: '0.4rem',
+                              padding: '0.5rem 0.7rem',
+                              fontSize: '0.78rem',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ height: 1, background: C.border, margin: '0.5rem 0.2rem' }} />
+
                     <button
                       onClick={handleSignOut}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: C.text,
-                        fontSize: '0.85rem',
+                        color: C.muted,
+                        fontSize: '0.82rem',
                         padding: '0.5rem 0.6rem',
                         width: '100%',
                         textAlign: 'left',
@@ -181,4 +425,17 @@ export default function AuthHeader() {
       <AuthModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onAuth={handleAuth} />
     </>
   )
+}
+
+const inp: React.CSSProperties = {
+  width: '100%',
+  backgroundColor: '#162040',
+  border: '1px solid #1E3A6E',
+  borderRadius: '0.45rem',
+  padding: '0.5rem 0.6rem',
+  color: '#F0F4FF',
+  fontSize: '0.82rem',
+  outline: 'none',
+  boxSizing: 'border-box',
+  fontFamily: 'inherit',
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import Header from '@/components/Header'
+import AuthHeader from '@/components/AuthHeader'
 import AuthModal from '@/components/AuthModal'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1286,11 +1286,7 @@ export default function BracketPage() {
 
   return (
     <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <Header 
-        displayName={userId ? displayName : null} 
-        onSignIn={handleAuthRequired} 
-        onSignOut={handleLogout} 
-      />
+      <AuthHeader />
       <AuthModal 
         isOpen={showAuthModal} 
         onClose={() => setShowAuthModal(false)} 
