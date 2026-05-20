@@ -6,10 +6,17 @@
  */
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+
+function safeNext(next: string | null): string {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/'
+  return next
+}
 
 export default function SignInPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const next = safeNext(searchParams.get('next'))
   const [email, setEmail] = useState('')
   const [firstName, setFirstName] = useState('')
   const [pin, setPin] = useState('')
@@ -39,8 +46,8 @@ export default function SignInPage() {
         return
       }
 
-      // Success — redirect to bracket or wherever they came from
-      router.push('/bracket')
+      // Success — back to hub (or wherever they came from via ?next=)
+      router.push(next)
       router.refresh()
 
     } catch (err: any) {

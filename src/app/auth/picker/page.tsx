@@ -7,7 +7,12 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+
+function safeNext(next: string | null): string {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/'
+  return next
+}
 
 interface Profile {
   id: string
@@ -19,6 +24,8 @@ interface Profile {
 
 export default function ProfilePickerPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const next = safeNext(searchParams.get('next'))
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -75,8 +82,8 @@ export default function ProfilePickerPage() {
         return
       }
 
-      // Success — redirect to bracket
-      router.push('/bracket')
+      // Success — back to hub (or ?next= deep link)
+      router.push(next)
       router.refresh()
 
     } catch (err) {

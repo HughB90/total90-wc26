@@ -37,8 +37,9 @@ export default function AccountSignInPage() {
         return
       }
 
-      // Success — redirect to profile picker
-      router.push('/auth/picker')
+      // Success — redirect to profile picker (preserve ?next= for after pick)
+      const nextParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null
+      router.push(nextParam ? `/auth/picker?next=${encodeURIComponent(nextParam)}` : '/auth/picker')
       router.refresh()
 
     } catch (err: any) {
