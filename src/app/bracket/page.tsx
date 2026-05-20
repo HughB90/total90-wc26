@@ -1168,11 +1168,45 @@ export default function BracketPage() {
   const [leagueRows, setLeagueRows] = useState<LeaderboardRow[]>([])
   const [showAuthModal, setShowAuthModal] = useState(false)
 
-  // Hydrate auth from localStorage
+  // Hydrate auth from the canonical signed-cookie session.
+  // Falls back to localStorage for a single render so the UI doesn't flash
+  // "Sign in" for already-authed users, but the cookie is the source of truth.
   useEffect(() => {
-    const id = localStorage.getItem('bracket_user_id')
-    const name = localStorage.getItem('bracket_display_name')
-    if (id) { setUserId(id); setDisplayName(name ?? '') }
+    const lsId = localStorage.getItem('bracket_user_id')
+    const lsName = localStorage.getItem('bracket_display_name')
+    if (lsId) { setUserId(lsId); setDisplayName(lsName ?? '') }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+        if (!res.ok) throw new Error('me failed')
+        const data = await res.json() as {
+          profile?: { id: string; manager_name?: string; display_name?: string | null; first_name?: string } | null
+        }
+        if (cancelled) return
+        if (data.profile?.id) {
+          const name = data.profile.display_name || data.profile.manager_name || data.profile.first_name || ''
+          setUserId(data.profile.id)
+          setDisplayName(name)
+          try {
+            localStorage.setItem('bracket_user_id', data.profile.id)
+            localStorage.setItem('bracket_display_name', name)
+          } catch {}
+        } else if (lsId) {
+          // localStorage said authed but cookie session is gone — clear the stale state.
+          try {
+            localStorage.removeItem('bracket_user_id')
+            localStorage.removeItem('bracket_display_name')
+          } catch {}
+          setUserId(null)
+          setDisplayName('')
+        }
+      } catch {
+        // network error — leave localStorage-hydrated state alone
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   // Load existing picks once authenticated
