@@ -54,7 +54,7 @@ export default function PredictorLanding() {
       // If that 200s, we treat the user as authed.
       let authed = false
       try {
-        const r = await fetch('/api/auth/me', { credentials: 'include' })
+        const r = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
         if (r.ok) {
           const j = await r.json().catch(() => null)
           authed = Boolean(j?.profile_id || j?.profile?.id)
@@ -65,7 +65,7 @@ export default function PredictorLanding() {
       let winnerPickTeam: string | null = null
       if (authed) {
         try {
-          const r = await fetch('/api/predictor/winner', { credentials: 'include' })
+          const r = await fetch('/api/predictor/winner', { credentials: 'include', cache: 'no-store' })
           const j = await r.json().catch(() => null)
           winnerPickTeam = j?.pick?.team_code ?? null
         } catch { /* */ }
@@ -75,7 +75,7 @@ export default function PredictorLanding() {
       let r1Submitted = 0
       let r1Locked = false
       try {
-        const r = await fetch('/api/predictor/round/group_r1', { credentials: 'include' })
+        const r = await fetch('/api/predictor/round/group_r1', { credentials: 'include', cache: 'no-store' })
         const j = await r.json().catch(() => null)
         r1Submitted = Array.isArray(j?.my_picks) ? j.my_picks.length : 0
         r1Locked = Boolean(j?.locked)
