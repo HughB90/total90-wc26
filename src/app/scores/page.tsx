@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import AuthHeader from '@/components/AuthHeader'
+import { selectStyle } from '@/lib/select-style'
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -458,24 +459,7 @@ function MatchCard({ match }: { match: Match }) {
   )
 }
 
-// ─── Select style helper ──────────────────────────────────────────────────────
-const selectStyle: React.CSSProperties = {
-  backgroundColor: '#0F1C4D',
-  color: C.text,
-  border: `1px solid ${C.border}`,
-  borderRadius: '0.5rem',
-  padding: '0.45rem 2rem 0.45rem 0.75rem',
-  fontSize: '0.82rem',
-  fontWeight: 600,
-  fontFamily: 'inherit',
-  cursor: 'pointer',
-  appearance: 'none',
-  WebkitAppearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%238899CC' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat',
-  backgroundPosition: 'right 0.6rem center',
-  outline: 'none',
-}
+// Select style helper moved to `src/lib/select-style.ts` (imported above).
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ScoresPage() {
