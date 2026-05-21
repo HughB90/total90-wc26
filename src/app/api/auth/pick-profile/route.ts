@@ -1,22 +1,15 @@
 /**
- * POST /api/auth/pick-profile — choose a profile after Tier 3 login.
+ * POST /api/auth/pick-profile — choose a profile after Supabase Auth sign-in.
  *
- * Requires: t90_account_id cookie.
+ * Requires: an active Supabase Auth session (the `sb-*` cookies).
  * Body: { profile_id }
- * On success: sets t90_profile_id cookie.
+ * On success: sets the `t90_profile_id` hint cookie.
  * Returns: { profile }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { getSession, setProfileSession } from '@/lib/auth-cookies'
-
-const sb = () =>
-  createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
+import { createServerSupabase, createAdminSupabase } from '@/lib/supabase-server'
+import { setProfileCookie } from '@/lib/auth-cookies'
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,16 +18,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing profile_id' }, { status: 400 })
     }
 
-    const { accountId } = await getSession()
-    if (!accountId) {
-      return NextResponse.json({ error: 'No account session.' }, { status: 401 })
+    const supa = await createServerSupabase()
+    const { data: userData } = await supa.auth.getUser()
+    const userId = userData?.user?.id
+    if (!userId) {
+      return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
     }
 
-    const { data: profile } = await sb()
+    const admin = createAdminSupabase()
+    const { data: profile } = await admin
       .from('profiles')
       .select('id, first_name, manager_name, display_name, is_owner, account_id')
       .eq('id', profile_id)
-      .eq('account_id', accountId)
+      .eq('account_id', userId)
       .is('deleted_at', null)
       .maybeSingle()
 
@@ -45,7 +41,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    await setProfileSession(profile.id)
+    await setProfileCookie(profile.id)
     return NextResponse.json({
       profile: {
         id: profile.id,

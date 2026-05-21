@@ -11,7 +11,7 @@ const C = {
   muted: '#8899CC',
 }
 
-type Mode = 'signin' | 'create' | 'password'
+type Mode = 'signin' | 'create' | 'reset'
 
 export interface AuthFormProfile {
   id: string
@@ -24,7 +24,7 @@ export interface AuthFormProfile {
 interface AuthFormProps {
   /** Called when the user is fully authed (account + profile). */
   onAuth: (profile: AuthFormProfile) => void
-  /** Called after a Tier 3 password login when a profile picker is needed. */
+  /** Called after a sign-in when more than one profile exists. */
   onProfilePickerNeeded?: (profiles: AuthFormProfile[]) => void
   isModal?: boolean
   defaultMode?: Mode
@@ -41,37 +41,84 @@ export default function AuthForm({
   const [managerName, setManagerName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [pin, setPin] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
   const [loading, setLoading] = useState(false)
+
+  function persistLegacy(profile: AuthFormProfile) {
+    try {
+      localStorage.setItem('bracket_user_id', profile.id)
+      localStorage.setItem(
+        'bracket_display_name',
+        profile.display_name || profile.manager_name || profile.first_name
+      )
+    } catch {}
+  }
 
   async function handleSubmit() {
     setError('')
+    setInfo('')
+
     if (mode === 'signin') {
-      if (!email.trim() || !firstName.trim() || pin.length !== 4) {
-        setError('Email, first name, and a 4-digit PIN are required.')
+      if (!email.trim() || !password) {
+        setError('Email and password are required.')
         return
       }
       setLoading(true)
-      const res = await fetch('/api/auth/signin-tier1', {
+      const res = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), first_name: firstName.trim(), pin }),
+        body: JSON.stringify({ email: email.trim(), password }),
       })
       const data = await res.json()
       setLoading(false)
-      if (!res.ok || !data.profile) {
+      if (!res.ok) {
         setError(data.error ?? 'Sign-in failed.')
         return
       }
-      persistLegacy(data.profile)
-      onAuth(data.profile)
+      // Server auto-picks if there's only one profile.
+      if (data.profile) {
+        persistLegacy(data.profile)
+        onAuth(data.profile)
+        return
+      }
+      const profiles = (data.profiles ?? []) as AuthFormProfile[]
+      if (profiles.length === 0) {
+        setError('No profiles found on this account. Contact support.')
+        return
+      }
+      if (onProfilePickerNeeded) {
+        onProfilePickerNeeded(profiles)
+      } else {
+        // No picker callback — pick the first one.
+        const pickRes = await fetch('/api/auth/pick-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_id: profiles[0].id }),
+        })
+        const pickData = await pickRes.json()
+        if (pickRes.ok && pickData.profile) {
+          persistLegacy(pickData.profile)
+          onAuth(pickData.profile)
+        } else {
+          setError(pickData.error ?? 'Could not pick profile.')
+        }
+      }
       return
     }
 
     if (mode === 'create') {
-      if (!email.trim() || !firstName.trim() || !managerName.trim() || pin.length !== 4) {
-        setError('Email, first name, team (manager) name, and 4-digit PIN are required.')
+      if (
+        !email.trim() ||
+        !password ||
+        !firstName.trim() ||
+        !managerName.trim()
+      ) {
+        setError('Email, password, first name, and team name are required.')
+        return
+      }
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters.')
         return
       }
       setLoading(true)
@@ -80,8 +127,8 @@ export default function AuthForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim(),
+          password,
           first_name: firstName.trim(),
-          pin,
           manager_name: managerName.trim(),
         }),
       })
@@ -89,7 +136,7 @@ export default function AuthForm({
       setLoading(false)
       if (!res.ok || !data.profile) {
         if (data.code === 'ACCOUNT_EXISTS') {
-          setError('This email already has an account. Switch to "Sign in" and use your PIN.')
+          setError('That email already has an account. Sign in instead.')
           setMode('signin')
           return
         }
@@ -101,61 +148,24 @@ export default function AuthForm({
       return
     }
 
-    if (mode === 'password') {
-      if (!email.trim() || !password) {
-        setError('Email and password required.')
+    if (mode === 'reset') {
+      if (!email.trim()) {
+        setError('Enter your email to receive a reset link.')
         return
       }
       setLoading(true)
-      const res = await fetch('/api/auth/signin-tier3', {
+      await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: email.trim() }),
       })
-      const data = await res.json()
       setLoading(false)
-      if (!res.ok) {
-        if (data.code === 'PASSWORD_PENDING') {
-          setError(
-            'Password not set yet. Use "Sign in" with your first name + PIN, then add a password in Account Settings.'
-          )
-          setMode('signin')
-          return
-        }
-        setError(data.error ?? 'Login failed.')
-        return
-      }
-      const profiles = (data.profiles ?? []) as AuthFormProfile[]
-      if (onProfilePickerNeeded) {
-        onProfilePickerNeeded(profiles)
-        return
-      }
-      // Fallback: pick the first profile automatically (e.g. when used outside a flow with a picker)
-      if (profiles.length === 1) {
-        const pickRes = await fetch('/api/auth/pick-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile_id: profiles[0].id }),
-        })
-        const pickData = await pickRes.json()
-        if (pickRes.ok && pickData.profile) {
-          persistLegacy(pickData.profile)
-          onAuth(pickData.profile)
-          return
-        }
-      }
-      setError('Signed in — choose a profile to continue.')
+      // Always report success to avoid leaking whether the email exists.
+      setInfo(
+        'If that email is registered, a reset link is on its way. Check your inbox.'
+      )
       return
     }
-  }
-
-  // Keep the legacy localStorage keys in sync so the existing bracket page
-  // (which still reads them) doesn't immediately log the user out.
-  function persistLegacy(profile: AuthFormProfile) {
-    try {
-      localStorage.setItem('bracket_user_id', profile.id)
-      localStorage.setItem('bracket_display_name', profile.display_name || profile.manager_name || profile.first_name)
-    } catch {}
   }
 
   const inp: React.CSSProperties = {
@@ -187,29 +197,61 @@ export default function AuthForm({
   return (
     <div style={containerStyle}>
       <div style={innerStyle}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem', paddingTop: isModal ? 0 : '1rem' }}>
+        <div
+          style={{
+            textAlign: 'center',
+            marginBottom: '1.5rem',
+            paddingTop: isModal ? 0 : '1rem',
+          }}
+        >
           <img
             src="/total90-logo-green.png"
             alt=""
-            style={{ width: '56px', height: '56px', objectFit: 'contain', display: 'block', margin: '0 auto 0.75rem' }}
+            style={{
+              width: '56px',
+              height: '56px',
+              objectFit: 'contain',
+              display: 'block',
+              margin: '0 auto 0.75rem',
+            }}
           />
-          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.5rem', margin: '0 0 0.25rem' }}>
+          <h1
+            style={{
+              color: C.gold,
+              fontWeight: 900,
+              fontSize: '1.5rem',
+              margin: '0 0 0.25rem',
+            }}
+          >
             Bracket Challenge
           </h1>
-          <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>World Cup 2026 · Pick your winners</p>
+          <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
+            World Cup 2026 · Pick your winners
+          </p>
         </div>
 
-        {mode !== 'password' && (
-          <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, marginBottom: '1.5rem' }}>
-            {tabs.map(t => (
+        {mode !== 'reset' && (
+          <div
+            style={{
+              display: 'flex',
+              borderBottom: `1px solid ${C.border}`,
+              marginBottom: '1.5rem',
+            }}
+          >
+            {tabs.map((t) => (
               <button
                 key={t.id}
-                onClick={() => { setMode(t.id); setError('') }}
+                onClick={() => {
+                  setMode(t.id)
+                  setError('')
+                  setInfo('')
+                }}
                 style={{
                   flex: 1,
                   background: 'none',
                   border: 'none',
-                  borderBottom: mode === t.id ? `2px solid ${C.gold}` : '2px solid transparent',
+                  borderBottom:
+                    mode === t.id ? `2px solid ${C.gold}` : '2px solid transparent',
                   color: mode === t.id ? C.gold : C.muted,
                   fontWeight: mode === t.id ? 700 : 400,
                   fontSize: '0.875rem',
@@ -224,15 +266,29 @@ export default function AuthForm({
           </div>
         )}
 
-        {mode === 'password' && (
-          <p style={{ color: C.muted, fontSize: '0.85rem', textAlign: 'center', margin: '0 0 1rem' }}>
-            Parent sign-in (email + password)
+        {mode === 'reset' && (
+          <p
+            style={{
+              color: C.muted,
+              fontSize: '0.85rem',
+              textAlign: 'center',
+              margin: '0 0 1rem',
+            }}
+          >
+            Enter your email — we&apos;ll send you a reset link.
           </p>
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
           <div>
-            <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>
+            <label
+              style={{
+                color: C.muted,
+                fontSize: '0.78rem',
+                display: 'block',
+                marginBottom: '0.4rem',
+              }}
+            >
               Email
             </label>
             <input
@@ -241,76 +297,104 @@ export default function AuthForm({
               autoComplete="email"
               placeholder="you@example.com"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 
-          {mode !== 'password' && (
-            <div>
-              <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>
-                First Name
-              </label>
-              <input
-                style={inp}
-                placeholder="Your first name"
-                value={firstName}
-                onChange={e => setFirstName(e.target.value)}
-              />
-            </div>
-          )}
-
           {mode === 'create' && (
+            <>
+              <div>
+                <label
+                  style={{
+                    color: C.muted,
+                    fontSize: '0.78rem',
+                    display: 'block',
+                    marginBottom: '0.4rem',
+                  }}
+                >
+                  First Name
+                </label>
+                <input
+                  style={inp}
+                  placeholder="Your first name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    color: C.muted,
+                    fontSize: '0.78rem',
+                    display: 'block',
+                    marginBottom: '0.4rem',
+                  }}
+                >
+                  Team / Manager Name
+                </label>
+                <input
+                  style={inp}
+                  placeholder="e.g. Rapaziada FC"
+                  value={managerName}
+                  onChange={(e) => setManagerName(e.target.value)}
+                />
+                <p
+                  style={{
+                    color: '#4A6080',
+                    fontSize: '0.72rem',
+                    margin: '0.35rem 0 0',
+                  }}
+                >
+                  Shows on the leaderboard.
+                </p>
+              </div>
+            </>
+          )}
+
+          {mode !== 'reset' && (
             <div>
-              <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>
-                Team / Manager Name
+              <label
+                style={{
+                  color: C.muted,
+                  fontSize: '0.78rem',
+                  display: 'block',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                Password
               </label>
               <input
                 style={inp}
-                placeholder="e.g. Rapaziada FC"
-                value={managerName}
-                onChange={e => setManagerName(e.target.value)}
-              />
-              <p style={{ color: '#4A6080', fontSize: '0.72rem', margin: '0.35rem 0 0' }}>
-                Shows on the leaderboard.
-              </p>
-            </div>
-          )}
-
-          {mode !== 'password' && (
-            <div>
-              <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>
-                4-Digit PIN
-              </label>
-              <input
-                style={{ ...inp, letterSpacing: '0.3em', textAlign: 'center' as const }}
                 type="password"
-                inputMode="numeric"
                 autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
-                maxLength={4}
-                placeholder="••••"
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
-              />
-            </div>
-          )}
-
-          {mode === 'password' && (
-            <div>
-              <label style={{ color: C.muted, fontSize: '0.78rem', display: 'block', marginBottom: '0.4rem' }}>
-                Account Password
-              </label>
-              <input
-                style={inp}
-                type="password"
-                autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value)}
               />
+              {mode === 'create' && (
+                <p
+                  style={{
+                    color: '#4A6080',
+                    fontSize: '0.72rem',
+                    margin: '0.35rem 0 0',
+                  }}
+                >
+                  8+ characters.
+                </p>
+              )}
             </div>
           )}
 
-          {error && <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>{error}</p>}
+          {error && (
+            <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>
+              {error}
+            </p>
+          )}
+          {info && (
+            <p style={{ color: '#34d399', fontSize: '0.82rem', margin: 0 }}>
+              {info}
+            </p>
+          )}
 
           <button
             onClick={handleSubmit}
@@ -334,14 +418,18 @@ export default function AuthForm({
                 ? 'Sign In →'
                 : mode === 'create'
                   ? 'Create Account →'
-                  : 'Sign In →'}
+                  : 'Send Reset Link →'}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: '0.25rem' }}>
-            {mode !== 'password' ? (
+            {mode === 'signin' && (
               <button
                 type="button"
-                onClick={() => { setMode('password'); setError('') }}
+                onClick={() => {
+                  setMode('reset')
+                  setError('')
+                  setInfo('')
+                }}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -352,12 +440,17 @@ export default function AuthForm({
                   fontFamily: 'inherit',
                 }}
               >
-                Parent? Use email + password instead
+                Forgot password?
               </button>
-            ) : (
+            )}
+            {mode === 'reset' && (
               <button
                 type="button"
-                onClick={() => { setMode('signin'); setError('') }}
+                onClick={() => {
+                  setMode('signin')
+                  setError('')
+                  setInfo('')
+                }}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -368,7 +461,7 @@ export default function AuthForm({
                   fontFamily: 'inherit',
                 }}
               >
-                ← Back to PIN sign-in
+                ← Back to sign-in
               </button>
             )}
           </div>

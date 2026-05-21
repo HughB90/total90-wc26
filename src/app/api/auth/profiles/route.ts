@@ -1,93 +1,71 @@
 /**
- * GET /api/auth/profiles — List all profiles for current account
- * POST /api/auth/profiles — Create new profile (requires account session)
- * 
- * Feature flag: MULTI_PROFILE_ENABLED
+ * GET  /api/auth/profiles — list all profiles for the current Supabase user
+ * POST /api/auth/profiles — create a new child profile under the current user
+ *
+ * Auth: requires a Supabase Auth session (the `sb-*` cookies).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { getSession } from '@/lib/auth-cookies'
+import { createServerSupabase, createAdminSupabase } from '@/lib/supabase-server'
 import { hashPin, isValidPin } from '@/lib/auth-crypto'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 const MAX_PROFILES_PER_ACCOUNT = 6
 
-/**
- * GET — List all profiles for current account
- */
-export async function GET(req: NextRequest) {
+async function getUserId(): Promise<string | null> {
+  const supa = await createServerSupabase()
+  const { data } = await supa.auth.getUser()
+  return data?.user?.id ?? null
+}
+
+export async function GET() {
   try {
-    // Require account session
-    const { accountId } = await getSession()
-    
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      )
+    const userId = await getUserId()
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Fetch profiles for this account
-    const { data: profiles, error } = await supabase
+    const admin = createAdminSupabase()
+    const { data: profiles, error } = await admin
       .from('profiles')
       .select('id, first_name, manager_name, display_name, is_owner, created_at')
-      .eq('account_id', accountId)
+      .eq('account_id', userId)
       .is('deleted_at', null)
-      .order('is_owner', { ascending: false })  // Owner first
+      .order('is_owner', { ascending: false })
       .order('created_at', { ascending: true })
 
     if (error) {
       console.error('Error fetching profiles:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch profiles' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Failed to fetch profiles' }, { status: 500 })
     }
 
-    return NextResponse.json({
-      profiles: profiles || []
-    })
-
-  } catch (err: any) {
-    console.error('Error in GET /api/auth/profiles:', err)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ profiles: profiles ?? [] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-/**
- * POST — Create new profile (requires account session)
- */
 export async function POST(req: NextRequest) {
   try {
-    // Require account session
-    const { accountId } = await getSession()
-    
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      )
+    const userId = await getUserId()
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const body = await req.json()
-    const { first_name, pin, manager_name, display_name } = body
+    const { first_name, pin, manager_name, display_name } = body as {
+      first_name?: string
+      pin?: string
+      manager_name?: string
+      display_name?: string
+    }
 
-    // Validation
     if (!first_name || !pin || !manager_name) {
       return NextResponse.json(
         { error: 'Missing required fields: first_name, pin, manager_name' },
         { status: 400 }
       )
     }
-
     if (!isValidPin(pin)) {
       return NextResponse.json(
         { error: 'PIN must be exactly 4 digits' },
@@ -95,21 +73,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Check profile count limit
-    const { count, error: countError } = await supabase
+    const admin = createAdminSupabase()
+
+    // Count guard
+    const { count, error: countError } = await admin
       .from('profiles')
       .select('id', { count: 'exact', head: true })
-      .eq('account_id', accountId)
+      .eq('account_id', userId)
       .is('deleted_at', null)
 
     if (countError) {
-      console.error('Error counting profiles:', countError)
       return NextResponse.json(
         { error: 'Failed to check profile limit' },
         { status: 500 }
       )
     }
-
     if (count && count >= MAX_PROFILES_PER_ACCOUNT) {
       return NextResponse.json(
         { error: `Maximum ${MAX_PROFILES_PER_ACCOUNT} profiles per account` },
@@ -117,13 +95,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Check for collision: (account_id, first_name, pin_hash) must be unique
+    // Collision rule: (account_id, first_name, pin_hash) must be unique
     const pinHash = hashPin(pin)
-    
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing } = await admin
       .from('profiles')
       .select('id')
-      .eq('account_id', accountId)
+      .eq('account_id', userId)
       .ilike('first_name', first_name.trim())
       .eq('pin_hash', pinHash)
       .is('deleted_at', null)
@@ -136,18 +113,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Create profile
-    const { data: newProfile, error: createError } = await supabase
+    const { data: newProfile, error: createError } = await admin
       .from('profiles')
       .insert({
-        account_id: accountId,
+        account_id: userId,
         first_name: first_name.trim(),
         pin_hash: pinHash,
         manager_name: manager_name.trim(),
         display_name: display_name?.trim() || null,
-        is_owner: false,  // Only migration creates owner profiles
+        is_owner: false,
       })
-      .select('id, first_name, manager_name, display_name')
+      .select('id, first_name, manager_name, display_name, is_owner')
       .single()
 
     if (createError) {
@@ -158,15 +134,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    return NextResponse.json({
-      profile: newProfile
-    }, { status: 201 })
-
-  } catch (err: any) {
-    console.error('Error in POST /api/auth/profiles:', err)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ profile: newProfile }, { status: 201 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

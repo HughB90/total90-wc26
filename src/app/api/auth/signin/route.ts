@@ -1,97 +1,70 @@
 /**
- * POST /api/auth/signin — Tier 1 login (email + first_name + PIN)
- * 
- * Feature flag: MULTI_PROFILE_ENABLED
- * Returns: { accountId, profileId, managerName, displayName }
+ * POST /api/auth/signin — Supabase Auth email + password sign-in.
+ *
+ * Body: { email, password }
+ * On success:
+ *   - Supabase SSR cookies (`sb-*`) are written by @supabase/ssr.
+ *   - We clear any stale t90_profile_id hint cookie so the picker shows.
+ * Returns: { profiles: [...] } so the client can render the profile picker.
+ *
+ * If the account has exactly one profile, we auto-select it and also return
+ *   { profile, profiles: [the one] }
+ * so the caller can skip the picker UI.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { setAccountSession, setProfileSession } from '@/lib/auth-cookies'
-import { verifyPin, isValidPin } from '@/lib/auth-crypto'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createServerSupabase, createAdminSupabase } from '@/lib/supabase-server'
+import { setProfileCookie, clearProfileSession } from '@/lib/auth-cookies'
 
 export async function POST(req: NextRequest) {
-  // NOTE: legacy endpoint, kept alive for the orphan /auth/signin page.
-  // Canonical surface is /api/auth/signin-tier1. Same behaviour.
   try {
-    const body = await req.json()
-    const { email, first_name, pin } = body
-
-    // Validation
-    if (!email || !first_name || !pin) {
+    const { email, password } = (await req.json()) as { email?: string; password?: string }
+    if (!email || !password) {
       return NextResponse.json(
-        { error: 'Missing required fields: email, first_name, pin' },
+        { error: 'Email and password are required.' },
         { status: 400 }
       )
     }
 
-    if (!isValidPin(pin)) {
-      return NextResponse.json(
-        { error: 'PIN must be exactly 4 digits' },
-        { status: 400 }
-      )
-    }
-
-    // 1. Lookup account by email
-    const { data: account, error: accountError } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('email', email.toLowerCase().trim())
-      .single()
-
-    if (accountError || !account) {
-      return NextResponse.json(
-        { error: 'Account not found' },
-        { status: 401 }
-      )
-    }
-
-    // 2. Lookup profile by (account_id, first_name, pin_hash)
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, manager_name, display_name, pin_hash')
-      .eq('account_id', account.id)
-      .ilike('first_name', first_name.trim())
-      .is('deleted_at', null)
-      .single()
-
-    if (profileError || !profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 401 }
-      )
-    }
-
-    // 3. Verify PIN
-    if (!verifyPin(pin, profile.pin_hash)) {
-      return NextResponse.json(
-        { error: 'Incorrect PIN' },
-        { status: 401 }
-      )
-    }
-
-    // 4. Set sessions
-    await setAccountSession(account.id)
-    await setProfileSession(profile.id)
-
-    // 5. Return session data
-    return NextResponse.json({
-      accountId: account.id,
-      profileId: profile.id,
-      managerName: profile.manager_name,
-      displayName: profile.display_name || first_name,
+    const supa = await createServerSupabase()
+    const { data, error } = await supa.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
     })
 
-  } catch (err: any) {
-    console.error('Error in /api/auth/signin:', err)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    if (error || !data.user) {
+      // Don't leak whether the email exists.
+      return NextResponse.json(
+        { error: 'Incorrect email or password.' },
+        { status: 401 }
+      )
+    }
+
+    // Clear any stale profile hint cookie — we'll re-pick one below.
+    await clearProfileSession()
+
+    // List child profiles for this user
+    const admin = createAdminSupabase()
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, first_name, manager_name, display_name, is_owner')
+      .eq('account_id', data.user.id)
+      .is('deleted_at', null)
+      .order('is_owner', { ascending: false })
+      .order('created_at', { ascending: true })
+
+    const list = profiles ?? []
+
+    // Auto-pick when there's only one obvious choice — keeps the existing UX
+    // smooth for the 5 users who all have a single owner profile today.
+    if (list.length === 1) {
+      await setProfileCookie(list[0].id)
+      return NextResponse.json({ profiles: list, profile: list[0] })
+    }
+
+    return NextResponse.json({ profiles: list })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
