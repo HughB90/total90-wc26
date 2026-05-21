@@ -771,8 +771,15 @@ function LeaguesTab({ userId, onAuthRequired }: { userId: string | null; onAuthR
   }
 
   const fetchMyLeagues = async () => {
-    const d = await fetch(`/api/bracket/league?userId=${userId}`).then(r => r.json()).catch(() => ({}))
-    setMyLeagues(d.leagues ?? [])
+    if (!userId) return  // wait for auth hydration
+    try {
+      const r = await fetch(`/api/bracket/league?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+      if (!r.ok) return
+      const d = await r.json()
+      setMyLeagues(d.leagues ?? [])
+    } catch {
+      /* network blip — keep last good list */
+    }
   }
 
   useEffect(() => { fetchMyLeagues() }, [userId])
