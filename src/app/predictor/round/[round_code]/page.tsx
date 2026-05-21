@@ -223,7 +223,7 @@ export default function RoundPicksPage({
     <>
     <AuthHeader />
     <style>{SELECT_OPTION_CSS}</style>
-    <main style={{ maxWidth: 780, margin: '0 auto', padding: '1.5rem 1rem 7rem' }}>
+    <main style={{ maxWidth: 780, margin: '0 auto', padding: '1.5rem 0.75rem 7rem', overflowX: 'hidden' }}>
       {/* Round nav strip — Home button + round dropdown (mirrors /scores) */}
       <div style={{
         display: 'flex',
@@ -431,7 +431,9 @@ function MatchCard({
       backgroundColor: C.card,
       border: `1px solid ${pick.is_star ? '#FBBF2466' : (drawNeedsPick ? '#F8717166' : C.borderSoft)}`,
       borderRadius: '0.75rem',
-      padding: '0.85rem 0.9rem',
+      padding: '0.85rem 0.75rem',
+      minWidth: 0,
+      overflow: 'hidden',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.7rem', color: C.muted }}>
         <span>Match {match.match_num} · {dateStr} CT</span>
@@ -451,10 +453,10 @@ function MatchCard({
           >★</button>
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
         <TeamSide team={match.home_team_code} align="right" />
         <ScoreInput value={pick.home} onChange={(v) => !locked && onChange({ home: v })} disabled={locked} />
-        <span style={{ color: C.muted, fontSize: '0.85rem' }}>–</span>
+        <span style={{ color: C.muted, fontSize: '0.85rem', flexShrink: 0 }}>–</span>
         <ScoreInput value={pick.away} onChange={(v) => !locked && onChange({ away: v })} disabled={locked} />
         <TeamSide team={match.away_team_code} align="left" />
       </div>
@@ -716,24 +718,50 @@ function GoalscorerSection({
 function TeamSide({ team, align }: { team: string; align: 'left' | 'right' }) {
   // Try a flag; for placeholder strings like "Winner M73" the flag URL 404s,
   // which renders an empty <img>. We hide it via onError.
+  // Use a short, abbreviated label on narrow viewports so long names like
+  // "South Africa" or "Bosnia & Herzegovina" don't blow out the card on iPhone.
   return (
     <div style={{
-      flex: 1,
+      flex: '1 1 0',
+      minWidth: 0,
       display: 'flex',
       alignItems: 'center',
       justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-      gap: '0.5rem',
-      minWidth: 0,
+      gap: '0.4rem',
+      overflow: 'hidden',
     }}>
-      {align === 'right' && <span style={{ color: C.text, fontSize: '0.82rem', fontWeight: 600, textAlign: 'right', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team}</span>}
+      {align === 'right' && (
+        <span style={{
+          color: C.text,
+          fontSize: '0.82rem',
+          fontWeight: 600,
+          textAlign: 'right',
+          minWidth: 0,
+          flex: '0 1 auto',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>{team}</span>
+      )}
       <img
         src={flagUrl(team)}
         alt=""
         loading="lazy"
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        style={{ width: 22, height: 14, objectFit: 'cover', borderRadius: 2, flexShrink: 0 }}
+        style={{ width: 20, height: 13, objectFit: 'cover', borderRadius: 2, flexShrink: 0 }}
       />
-      {align === 'left' && <span style={{ color: C.text, fontSize: '0.82rem', fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team}</span>}
+      {align === 'left' && (
+        <span style={{
+          color: C.text,
+          fontSize: '0.82rem',
+          fontWeight: 600,
+          minWidth: 0,
+          flex: '0 1 auto',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>{team}</span>
+      )}
     </div>
   )
 }
