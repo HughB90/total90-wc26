@@ -1,36 +1,32 @@
 /**
- * POST /api/auth/create-account — Create a new account + owner profile.
+ * POST /api/auth/create-account — Supabase signUp + create owner profile.
  *
- * Body: { email, first_name, pin, display_name?, manager_name }
- *  - email must be unique across accounts
- *  - manager_name is required (Leaderboard "Manager" column)
- *  - display_name optional (falls back to manager_name in UI)
- *  - password_hash starts as 'PENDING_SET'; parent sets a real password later
- *    via Account Settings (Tier 1 PIN flow is the primary login)
+ * Body: { email, password, first_name, manager_name, display_name?, pin? }
+ *   - email/password: Supabase Auth credentials
+ *   - first_name + manager_name: required for the initial owner profile
+ *   - display_name: optional friendly name (falls back to manager_name in UI)
+ *   - pin: optional 4-digit PIN for the profile picker quick-switch.
+ *     If omitted, defaults to '0000' (parent can change in account settings).
+ *
+ * On success:
+ *   - Supabase SSR cookies (`sb-*`) are written by @supabase/ssr.
+ *   - Owner profile row is created in `profiles`, FK = auth.users.id.
+ *   - `t90_profile_id` cookie is set to the new owner profile.
+ * Returns: { account: { id, email }, profile }
  *
  * Sends a Resend welcome email (best-effort, non-blocking).
- * Sets both signed cookies.
- * Returns: { profile, account: { id, email } }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
-import { setAccountSession, setProfileSession } from '@/lib/auth-cookies'
+import { createServerSupabase, createAdminSupabase } from '@/lib/supabase-server'
+import { setProfileCookie } from '@/lib/auth-cookies'
 import { hashPin, isValidPin } from '@/lib/auth-crypto'
-
-const sb = () =>
-  createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
 
 async function sendWelcomeEmail(
   email: string,
   firstName: string,
-  managerName: string,
-  pin: string
+  managerName: string
 ) {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return
@@ -39,7 +35,7 @@ async function sendWelcomeEmail(
     await resend.emails.send({
       from: 'Total90 <noreply@total90.com>',
       to: email,
-      subject: '🏆 Your WC2026 account — login details inside',
+      subject: '🏆 Your WC2026 account is ready',
       html: `
         <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0A0F2E;color:#F0F4FF;padding:2rem;border-radius:1rem;">
           <img src="https://wc26.total90.com/total90-logo-green.png" alt="Total90" style="width:48px;height:48px;display:block;margin:0 auto 1rem;" />
@@ -47,14 +43,13 @@ async function sendWelcomeEmail(
           <p style="text-align:center;color:#8899CC;margin:0 0 2rem;">World Cup 2026 · Make your picks</p>
 
           <div style="background:#0F1C4D;border:1px solid #1E3A6E;border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;">
-            <p style="margin:0 0 0.5rem;color:#8899CC;font-size:0.85rem;">YOUR LOGIN DETAILS</p>
+            <p style="margin:0 0 0.5rem;color:#8899CC;font-size:0.85rem;">ACCOUNT DETAILS</p>
             <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">Email:</strong> <span style="color:#FBBF24;">${email}</span></p>
             <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">First Name:</strong> <span style="color:#FBBF24;">${firstName}</span></p>
-            <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">Manager:</strong> <span style="color:#FBBF24;">${managerName}</span></p>
-            <p style="margin:0;"><strong style="color:#F0F4FF;">PIN:</strong> <span style="color:#FBBF24;font-weight:700;letter-spacing:0.2em;">${pin}</span></p>
+            <p style="margin:0;"><strong style="color:#F0F4FF;">Manager:</strong> <span style="color:#FBBF24;">${managerName}</span></p>
           </div>
 
-          <p style="text-align:center;color:#8899CC;font-size:0.85rem;margin:0 0 1rem;">Save this email — it&apos;s the only place your PIN is stored.</p>
+          <p style="text-align:center;color:#8899CC;font-size:0.85rem;margin:0 0 1rem;">Sign in any time with your email and password.</p>
 
           <a href="https://wc26.total90.com/bracket" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:0.875rem;border-radius:0.875rem;text-decoration:none;">
             Go to My Bracket →
@@ -71,64 +66,75 @@ async function sendWelcomeEmail(
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, first_name, pin, display_name, manager_name } = (await req.json()) as {
-      email?: string
-      first_name?: string
-      pin?: string
-      display_name?: string
-      manager_name?: string
-    }
+    const { email, password, first_name, manager_name, display_name, pin } =
+      (await req.json()) as {
+        email?: string
+        password?: string
+        first_name?: string
+        manager_name?: string
+        display_name?: string
+        pin?: string
+      }
 
-    if (!email || !first_name || !pin || !manager_name) {
+    if (!email || !password || !first_name || !manager_name) {
       return NextResponse.json(
-        { error: 'Missing required fields: email, first_name, pin, manager_name' },
+        { error: 'Missing required fields: email, password, first_name, manager_name' },
         { status: 400 }
       )
     }
-    if (!isValidPin(pin)) {
-      return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 })
+    if (password.length < 8) {
+      return NextResponse.json(
+        { error: 'Password must be at least 8 characters.' },
+        { status: 400 }
+      )
+    }
+    const finalPin = pin ?? '0000'
+    if (!isValidPin(finalPin)) {
+      return NextResponse.json(
+        { error: 'PIN must be exactly 4 digits.' },
+        { status: 400 }
+      )
     }
 
     const normalizedEmail = email.toLowerCase().trim()
-    const supabase = sb()
 
-    // Reject duplicate account
-    const { data: existing } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('email', normalizedEmail)
-      .maybeSingle()
+    // 1. Supabase signUp — this writes the sb-* cookies on success.
+    const supa = await createServerSupabase()
+    const { data: signUpData, error: signUpErr } = await supa.auth.signUp({
+      email: normalizedEmail,
+      password,
+    })
 
-    if (existing) {
+    if (signUpErr || !signUpData?.user) {
+      const msg = signUpErr?.message ?? 'Failed to create account.'
+      const code =
+        msg.toLowerCase().includes('already') || msg.toLowerCase().includes('registered')
+          ? 'ACCOUNT_EXISTS'
+          : undefined
       return NextResponse.json(
-        {
-          error:
-            'An account already exists for this email. Sign in with your first name + PIN instead.',
-          code: 'ACCOUNT_EXISTS',
-        },
-        { status: 409 }
+        { error: msg, code },
+        { status: code === 'ACCOUNT_EXISTS' ? 409 : 400 }
       )
     }
 
-    const { data: account, error: accountErr } = await supabase
-      .from('accounts')
-      .insert({ email: normalizedEmail, password_hash: 'PENDING_SET' })
-      .select('id, email')
-      .single()
+    const userId = signUpData.user.id
 
-    if (accountErr || !account) {
-      return NextResponse.json(
-        { error: accountErr?.message ?? 'Failed to create account' },
-        { status: 500 }
-      )
+    // 2. Auto-confirm the email so the user can sign in immediately (no click).
+    //    Tournament audience is tiny + trusted; skip the verify-your-email step.
+    const admin = createAdminSupabase()
+    try {
+      await admin.auth.admin.updateUserById(userId, { email_confirm: true })
+    } catch (e) {
+      console.warn('email_confirm update failed (non-fatal):', e)
     }
 
-    const { data: profile, error: profileErr } = await supabase
+    // 3. Create the owner profile (FK profiles.account_id -> auth.users.id).
+    const { data: profile, error: profileErr } = await admin
       .from('profiles')
       .insert({
-        account_id: account.id,
+        account_id: userId,
         first_name: first_name.trim(),
-        pin_hash: hashPin(pin),
+        pin_hash: hashPin(finalPin),
         manager_name: manager_name.trim(),
         display_name: display_name?.trim() || null,
         is_owner: true,
@@ -137,23 +143,25 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (profileErr || !profile) {
-      // Best-effort cleanup of the orphan account so a retry can use the same email.
-      await supabase.from('accounts').delete().eq('id', account.id)
+      // Best-effort cleanup of the auth.users row so the email isn't stuck taken.
+      try {
+        await admin.auth.admin.deleteUser(userId)
+      } catch {}
       return NextResponse.json(
-        { error: profileErr?.message ?? 'Failed to create profile' },
+        { error: profileErr?.message ?? 'Failed to create profile.' },
         { status: 500 }
       )
     }
 
-    await setAccountSession(account.id)
-    await setProfileSession(profile.id)
+    // 4. Set the profile-hint cookie.
+    await setProfileCookie(profile.id)
 
-    // Fire-and-forget welcome email
-    sendWelcomeEmail(normalizedEmail, first_name.trim(), manager_name.trim(), pin).catch(() => {})
+    // 5. Fire-and-forget welcome email.
+    sendWelcomeEmail(normalizedEmail, first_name.trim(), manager_name.trim()).catch(() => {})
 
     return NextResponse.json(
       {
-        account: { id: account.id, email: account.email },
+        account: { id: userId, email: normalizedEmail },
         profile,
       },
       { status: 201 }

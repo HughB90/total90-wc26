@@ -1,8 +1,11 @@
 'use client'
 
 /**
- * /auth/signin — Tier 1 login (email + first_name + PIN)
- * Feature flag: MULTI_PROFILE_ENABLED
+ * /auth/signin — Supabase Auth email + password sign-in (post 2026-05-20 unification).
+ *
+ * On success:
+ *  - If the user has 1 profile, the server picks it for us. Redirect to ?next or /.
+ *  - If multiple profiles, redirect to /auth/picker.
  */
 
 import { Suspense, useState } from 'react'
@@ -26,27 +29,34 @@ function SignInInner() {
   const searchParams = useSearchParams()
   const next = safeNext(searchParams.get('next'))
   const [email, setEmail] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [pin, setPin] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+  const [mode, setMode] = useState<'signin' | 'reset'>('signin')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setInfo('')
     setLoading(true)
 
     try {
+      if (mode === 'reset') {
+        await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim() }),
+        })
+        setInfo('If that email is registered, a reset link is on its way.')
+        return
+      }
+
       const res = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          first_name: firstName.trim(),
-          pin: pin.trim(),
-        }),
+        body: JSON.stringify({ email: email.trim(), password }),
       })
-
       const data = await res.json()
 
       if (!res.ok) {
@@ -54,11 +64,19 @@ function SignInInner() {
         return
       }
 
-      // Success — back to hub (or wherever they came from via ?next=)
-      router.push(next)
-      router.refresh()
-
-    } catch (err: any) {
+      // Server auto-picks when there's exactly one profile.
+      if (data.profile) {
+        router.push(next)
+        router.refresh()
+        return
+      }
+      const profiles = data.profiles ?? []
+      if (profiles.length > 1) {
+        router.push(`/auth/picker?next=${encodeURIComponent(next)}`)
+        return
+      }
+      setError('No profiles found on this account. Contact support.')
+    } catch (err) {
       setError('Network error. Please try again.')
       console.error('Sign in error:', err)
     } finally {
@@ -69,13 +87,21 @@ function SignInInner() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-800 to-cyan-900 flex items-center justify-center p-4">
       <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-white mb-2">Sign In</h1>
-        <p className="text-emerald-200 mb-6">Enter your account details</p>
+        <h1 className="text-3xl font-bold text-white mb-2">
+          {mode === 'reset' ? 'Reset Password' : 'Sign In'}
+        </h1>
+        <p className="text-emerald-200 mb-6">
+          {mode === 'reset'
+            ? 'Enter your email and we’ll send a reset link.'
+            : 'Sign in with your email and password.'}
+        </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-emerald-100 mb-1">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-emerald-100 mb-1"
+            >
               Email
             </label>
             <input
@@ -89,62 +115,63 @@ function SignInInner() {
             />
           </div>
 
-          {/* First Name */}
-          <div>
-            <label htmlFor="firstName" className="block text-sm font-medium text-emerald-100 mb-1">
-              First Name
-            </label>
-            <input
-              id="firstName"
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-              className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              placeholder="Your first name"
-            />
-          </div>
+          {mode === 'signin' && (
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-emerald-100 mb-1"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="••••••••"
+              />
+            </div>
+          )}
 
-          {/* PIN */}
-          <div>
-            <label htmlFor="pin" className="block text-sm font-medium text-emerald-100 mb-1">
-              PIN
-            </label>
-            <input
-              id="pin"
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]{4}"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              required
-              className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-              placeholder="4-digit PIN"
-            />
-          </div>
-
-          {/* Error */}
           {error && (
             <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 text-red-200 text-sm">
               {error}
             </div>
           )}
+          {info && (
+            <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-lg p-3 text-emerald-200 text-sm">
+              {info}
+            </div>
+          )}
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/50 text-white font-semibold py-3 rounded-lg transition-colors"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading
+              ? 'Loading…'
+              : mode === 'reset'
+                ? 'Send Reset Link'
+                : 'Sign In'}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <a href="/auth/account-signin" className="text-emerald-300 hover:text-emerald-200 text-sm">
-            Parent account login →
-          </a>
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setMode(mode === 'reset' ? 'signin' : 'reset')
+              setError('')
+              setInfo('')
+            }}
+            className="text-emerald-300 hover:text-emerald-200 text-sm underline"
+          >
+            {mode === 'reset' ? '← Back to sign-in' : 'Forgot password?'}
+          </button>
         </div>
       </div>
     </div>

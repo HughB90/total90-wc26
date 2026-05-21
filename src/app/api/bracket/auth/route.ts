@@ -2,43 +2,14 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { Resend } from 'resend'
-import { setAccountSession, setProfileSession } from '@/lib/auth-cookies'
 
-// DEPRECATED: legacy bracket auth endpoint. The canonical surface is
-// /api/auth/signin-tier1, /signin-tier2, /signin-tier3, /create-account.
-// This route stays alive during transition; on a successful lookup it also
-// upgrades the client to the new signed-cookie session so subsequent calls
-// hit the new model. Remove once all clients have rotated (~2 weeks).
-
-async function upgradeLegacyClient(supabase: any, bracketUserId: string) {
-  // Find the account+profile that corresponds to this bracket_users row.
-  // Migration created profiles 1:1 from bracket_users, keyed by (email, first_name).
-  const { data: bu } = await supabase
-    .from('bracket_users')
-    .select('email, first_name')
-    .eq('id', bracketUserId)
-    .maybeSingle()
-  if (!bu || !bu.email) return
-  const { data: account } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('email', bu.email.toLowerCase().trim())
-    .maybeSingle()
-  if (!account) return
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('account_id', account.id)
-    .ilike('first_name', bu.first_name ?? '')
-    .is('deleted_at', null)
-    .maybeSingle()
-  if (!profile) return
-  try {
-    await setAccountSession(account.id)
-    await setProfileSession(profile.id)
-  } catch {
-    // AUTH_COOKIE_SECRET missing in older envs — fail silently, don't break legacy login.
-  }
+// LEGACY: bracket_users-based auth. Pre-dates both the bespoke accounts table
+// and the current Supabase Auth unification. Still alive because the old
+// bracket page on prior deploys POSTs here. Returns user identity but does
+// NOT set a session cookie — the Supabase Auth flow is now the only way to
+// actually sign in for cookie-based access.
+async function upgradeLegacyClient(_supabase: unknown, _bracketUserId: string) {
+  // no-op since 2026-05-20 (Supabase Auth unification)
 }
 
 async function sendWelcomeEmail(email: string, displayName: string, pin: string) {
@@ -136,7 +107,14 @@ export async function POST(request: Request) {
       }
       
       await upgradeLegacyClient(supabase, existingByName.id)
-      return NextResponse.json({ ok: true, userId: existingByName.id, displayName: existingByName.display_name })
+      return NextResponse.json({
+        ok: true,
+        userId: existingByName.id,
+        displayName: existingByName.display_name,
+        deprecated: true,
+        message:
+          'This sign-in path is deprecated. Use /api/auth/signin (email + password) for cookie-based access.',
+      })
     }
 
     const normalizedEmail = (email ?? '').trim().toLowerCase()
@@ -196,7 +174,14 @@ export async function POST(request: Request) {
     }
 
     await upgradeLegacyClient(supabase, userId)
-    return NextResponse.json({ ok: true, userId, displayName: resolvedName })
+    return NextResponse.json({
+      ok: true,
+      userId,
+      displayName: resolvedName,
+      deprecated: true,
+      message:
+        'This sign-in path is deprecated. Use /api/auth/signin (email + password) for cookie-based access.',
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: message }, { status: 500 })
