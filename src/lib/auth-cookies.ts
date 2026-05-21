@@ -110,6 +110,7 @@ export async function setProfileSession(profileId: string) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
+    maxAge: ACCOUNT_MAX_AGE, // 30 days — match account cookie so profile survives browser restart
     path: '/',
   })
 }
