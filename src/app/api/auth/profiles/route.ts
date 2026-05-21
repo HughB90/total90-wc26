@@ -90,55 +90,33 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Owner profile: only allowed when the account has zero existing profiles.
-    // Owner profile does NOT require a PIN (parent signs in via email+password).
-    // Child profiles ALWAYS require a 4-digit PIN.
+    // Owner = first profile under this account. is_owner flag is client-asserted
+    // but only honored when no other profiles exist.
     const isFirstProfile = !count || count === 0
     const isOwner = Boolean(wantOwner) && isFirstProfile
 
-    if (!isOwner) {
-      if (!pin) {
-        return NextResponse.json(
-          { error: 'PIN is required for child profiles.' },
-          { status: 400 }
-        )
-      }
-      if (!isValidPin(pin)) {
-        return NextResponse.json(
-          { error: 'PIN must be exactly 4 digits' },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Owner profiles get an auto-generated PIN (pin_hash is NOT NULL in DB).
-    // Parent signs in via email+password; PIN can be exposed later for kid
-    // quick-switch UI inside the account.
-    let effectivePin = pin
-    if (!effectivePin && isOwner) {
-      effectivePin = String(Math.floor(1000 + Math.random() * 9000))
-    }
-    if (!effectivePin || !isValidPin(effectivePin)) {
-      return NextResponse.json(
-        { error: 'PIN must be exactly 4 digits' },
-        { status: 400 }
-      )
-    }
+    // PINs are no longer required at create time (Hugh's call 2026-05-21).
+    // pin_hash is still NOT NULL in the DB schema, so we auto-generate a
+    // random 4-digit PIN per profile. Kept around for a future kid-quick-
+    // switch challenge UI — but the create flow never asks for it.
+    const effectivePin =
+      pin && isValidPin(pin) ? pin : String(Math.floor(1000 + Math.random() * 9000))
     const pinHash = hashPin(effectivePin)
 
-    // Collision rule: (account_id, first_name, pin_hash) unique.
+    // Collision rule: (account_id, first_name) unique within an account so
+    // the dropdown doesn't show two 'Lucas' entries. PIN is no longer part
+    // of the uniqueness check.
     const { data: existing } = await admin
       .from('profiles')
       .select('id')
       .eq('account_id', userId)
       .ilike('first_name', first_name.trim())
-      .eq('pin_hash', pinHash)
       .is('deleted_at', null)
       .maybeSingle()
 
     if (existing) {
       return NextResponse.json(
-        { error: 'A profile with this name and PIN already exists in your account' },
+        { error: 'A profile with that first name already exists on this account.' },
         { status: 409 }
       )
     }

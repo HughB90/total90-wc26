@@ -53,7 +53,6 @@ export default function AuthHeader() {
   const [addOpen, setAddOpen] = useState(false)
   const [addFirstName, setAddFirstName] = useState('')
   const [addManager, setAddManager] = useState('')
-  const [addPin, setAddPin] = useState('')
   const [addError, setAddError] = useState('')
   const [addBusy, setAddBusy] = useState(false)
 
@@ -117,8 +116,8 @@ export default function AuthHeader() {
 
   const submitAdd = async () => {
     setAddError('')
-    if (!addFirstName.trim() || !addManager.trim() || addPin.length !== 4) {
-      setAddError('First name, team name, and a 4-digit PIN are required.')
+    if (!addFirstName.trim() || !addManager.trim()) {
+      setAddError('First name and team name are required.')
       return
     }
     setAddBusy(true)
@@ -130,7 +129,6 @@ export default function AuthHeader() {
         body: JSON.stringify({
           first_name: addFirstName.trim(),
           manager_name: addManager.trim(),
-          pin: addPin,
         }),
       })
       const data = await res.json()
@@ -143,7 +141,6 @@ export default function AuthHeader() {
       setSiblings(prev => prev ? [...prev, data.profile] : [data.profile])
       setAddFirstName('')
       setAddManager('')
-      setAddPin('')
       setAddOpen(false)
       setAddBusy(false)
     } catch {
@@ -327,15 +324,6 @@ export default function AuthHeader() {
                           value={addManager}
                           onChange={e => setAddManager(e.target.value)}
                           style={inp}
-                        />
-                        <input
-                          placeholder="4-digit PIN"
-                          inputMode="numeric"
-                          type="password"
-                          maxLength={4}
-                          value={addPin}
-                          onChange={e => setAddPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
-                          style={{ ...inp, letterSpacing: '0.3em', textAlign: 'center' }}
                         />
                         {addError && (
                           <p style={{ color: C.red, fontSize: '0.74rem', margin: 0 }}>{addError}</p>

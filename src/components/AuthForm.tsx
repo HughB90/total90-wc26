@@ -274,6 +274,9 @@ export default function AuthForm({
           <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
             World Cup 2026 · Pick your winners
           </p>
+          <p style={{ color: '#8899CC', fontSize: '0.72rem', margin: '0.5rem 0 0', fontStyle: 'italic' }}>
+            Tip: one account can hold multiple profiles — add kids and family members from your profile menu after sign-in.
+          </p>
         </div>
 
         {mode !== 'reset' && mode !== 'setup-profile' && (
