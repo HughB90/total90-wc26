@@ -11,7 +11,7 @@ const C = {
   muted: '#8899CC',
 }
 
-type Mode = 'signin' | 'create' | 'reset'
+type Mode = 'signin' | 'create' | 'reset' | 'setup-profile'
 
 export interface AuthFormProfile {
   id: string
@@ -84,7 +84,12 @@ export default function AuthForm({
       }
       const profiles = (data.profiles ?? []) as AuthFormProfile[]
       if (profiles.length === 0) {
-        setError('No profiles found on this account. Contact support.')
+        // Authed Supabase user with no wc26 profile yet (e.g. existing sessions
+        // user signing into wc26 for the first time). Pivot the form into
+        // "create your first bracket profile" mode — user is already authed,
+        // we just need first_name + manager_name to POST /api/auth/profiles.
+        setInfo('Welcome! Set up your bracket profile to get started.')
+        setMode('setup-profile')
         return
       }
       if (onProfilePickerNeeded) {
@@ -145,6 +150,47 @@ export default function AuthForm({
       }
       persistLegacy(data.profile)
       onAuth(data.profile)
+      return
+    }
+
+    if (mode === 'setup-profile') {
+      if (!firstName.trim() || !managerName.trim()) {
+        setError('First name and team name are required.')
+        return
+      }
+      setLoading(true)
+      // No PIN required for the owner profile — PIN is for kid sub-profiles only.
+      // The server-side route uses a randomly-generated PIN when not supplied.
+      const res = await fetch('/api/auth/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          manager_name: managerName.trim(),
+          is_owner: true,
+        }),
+      })
+      const data = await res.json()
+      setLoading(false)
+      if (!res.ok || !data.profile) {
+        setError(data.error ?? 'Could not create profile.')
+        return
+      }
+      // Now pick it so the profile cookie is set, then complete auth.
+      const pickRes = await fetch('/api/auth/pick-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ profile_id: data.profile.id }),
+      })
+      const pickData = await pickRes.json()
+      if (pickRes.ok && pickData.profile) {
+        persistLegacy(pickData.profile)
+        onAuth(pickData.profile)
+      } else {
+        setError(pickData.error ?? 'Profile created but could not be selected.')
+      }
       return
     }
 
@@ -230,7 +276,7 @@ export default function AuthForm({
           </p>
         </div>
 
-        {mode !== 'reset' && (
+        {mode !== 'reset' && mode !== 'setup-profile' && (
           <div
             style={{
               display: 'flex',
@@ -280,28 +326,30 @@ export default function AuthForm({
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-          <div>
-            <label
-              style={{
-                color: C.muted,
-                fontSize: '0.78rem',
-                display: 'block',
-                marginBottom: '0.4rem',
-              }}
-            >
-              Email
-            </label>
-            <input
-              style={inp}
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
+          {mode !== 'setup-profile' && (
+            <div>
+              <label
+                style={{
+                  color: C.muted,
+                  fontSize: '0.78rem',
+                  display: 'block',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                Email
+              </label>
+              <input
+                style={inp}
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          )}
 
-          {mode === 'create' && (
+          {(mode === 'create' || mode === 'setup-profile') && (
             <>
               <div>
                 <label
@@ -351,7 +399,7 @@ export default function AuthForm({
             </>
           )}
 
-          {mode !== 'reset' && (
+          {mode !== 'reset' && mode !== 'setup-profile' && (
             <div>
               <label
                 style={{
@@ -418,7 +466,9 @@ export default function AuthForm({
                 ? 'Sign In →'
                 : mode === 'create'
                   ? 'Create Account →'
-                  : 'Send Reset Link →'}
+                  : mode === 'setup-profile'
+                    ? 'Create Bracket Profile →'
+                    : 'Send Reset Link →'}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: '0.25rem' }}>

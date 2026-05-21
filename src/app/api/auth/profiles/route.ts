@@ -53,22 +53,17 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { first_name, pin, manager_name, display_name } = body as {
+    const { first_name, pin, manager_name, display_name, is_owner: wantOwner } = body as {
       first_name?: string
       pin?: string
       manager_name?: string
       display_name?: string
+      is_owner?: boolean
     }
 
-    if (!first_name || !pin || !manager_name) {
+    if (!first_name || !manager_name) {
       return NextResponse.json(
-        { error: 'Missing required fields: first_name, pin, manager_name' },
-        { status: 400 }
-      )
-    }
-    if (!isValidPin(pin)) {
-      return NextResponse.json(
-        { error: 'PIN must be exactly 4 digits' },
+        { error: 'Missing required fields: first_name, manager_name' },
         { status: 400 }
       )
     }
@@ -95,8 +90,43 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Collision rule: (account_id, first_name, pin_hash) must be unique
-    const pinHash = hashPin(pin)
+    // Owner profile: only allowed when the account has zero existing profiles.
+    // Owner profile does NOT require a PIN (parent signs in via email+password).
+    // Child profiles ALWAYS require a 4-digit PIN.
+    const isFirstProfile = !count || count === 0
+    const isOwner = Boolean(wantOwner) && isFirstProfile
+
+    if (!isOwner) {
+      if (!pin) {
+        return NextResponse.json(
+          { error: 'PIN is required for child profiles.' },
+          { status: 400 }
+        )
+      }
+      if (!isValidPin(pin)) {
+        return NextResponse.json(
+          { error: 'PIN must be exactly 4 digits' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Owner profiles get an auto-generated PIN (pin_hash is NOT NULL in DB).
+    // Parent signs in via email+password; PIN can be exposed later for kid
+    // quick-switch UI inside the account.
+    let effectivePin = pin
+    if (!effectivePin && isOwner) {
+      effectivePin = String(Math.floor(1000 + Math.random() * 9000))
+    }
+    if (!effectivePin || !isValidPin(effectivePin)) {
+      return NextResponse.json(
+        { error: 'PIN must be exactly 4 digits' },
+        { status: 400 }
+      )
+    }
+    const pinHash = hashPin(effectivePin)
+
+    // Collision rule: (account_id, first_name, pin_hash) unique.
     const { data: existing } = await admin
       .from('profiles')
       .select('id')
@@ -121,7 +151,7 @@ export async function POST(req: NextRequest) {
         pin_hash: pinHash,
         manager_name: manager_name.trim(),
         display_name: display_name?.trim() || null,
-        is_owner: false,
+        is_owner: isOwner,
       })
       .select('id, first_name, manager_name, display_name, is_owner')
       .single()
