@@ -29,6 +29,10 @@ const C = {
 }
 
 const GROUP_ROUNDS = new Set(['group_r1', 'group_r2', 'group_r3'])
+// Stars now apply to R1–R4 only (group stages + R32). R5–R8 use the
+// Anytime Goalscorer pick instead. See PREDICTOR-WAVE-C-AMEND-GOALSCORER.md.
+const STAR_ROUNDS = new Set(['group_r1', 'group_r2', 'group_r3', 'r32'])
+const GOALSCORER_ROUNDS = new Set(['r16', 'qf', 'sf', 'final'])
 const ROUND_LABEL: Record<string, string> = {
   group_r1: 'Round 1 — Group Stage 1',
   group_r2: 'Round 2 — Group Stage 2',
@@ -57,11 +61,22 @@ interface PredictorMatch {
   is_knockout: boolean
 }
 
+interface GoalscorerPlayer {
+  id: string
+  name: string | null
+  short_name: string | null
+  last_name: string | null
+  nationality: string | null
+}
+
 interface PickState {
   home: string  // string so empty input is valid
   away: string
   is_star: boolean
   if_draw_winner: string | null
+  goalscorer_player_id: string | null
+  goalscorer_team_code: string | null
+  goalscorer_player: GoalscorerPlayer | null
   dirty: boolean
 }
 
@@ -74,6 +89,8 @@ export default function RoundPicksPage({
   const router = useRouter()
 
   const isKnockout = !GROUP_ROUNDS.has(round_code)
+  const hasStars = STAR_ROUNDS.has(round_code)
+  const hasGoalscorer = GOALSCORER_ROUNDS.has(round_code)
   const label = ROUND_LABEL[round_code] || round_code
 
   const [matches, setMatches] = useState<PredictorMatch[]>([])
@@ -107,6 +124,9 @@ export default function RoundPicksPage({
             away: String(p.away_score),
             is_star: Boolean(p.is_star),
             if_draw_winner: p.if_draw_winner ?? null,
+            goalscorer_player_id: p.goalscorer_player_id ?? null,
+            goalscorer_team_code: p.goalscorer_team_code ?? null,
+            goalscorer_player: p.goalscorer_player ?? null,
             dirty: false,
           }
         }
@@ -132,7 +152,7 @@ export default function RoundPicksPage({
   const capForGroup = 16
   const expected = ROUND_EXPECTED[round_code] ?? 0
   const tooManyGroup = !isKnockout && filledPicks.length > capForGroup
-  const tooManyStars = starCount > 1
+  const tooManyStars = hasStars && starCount > 1
   const knockoutShort = isKnockout && filledPicks.length !== expected
   const drawNeedsWinner = isKnockout && filledPicks.some(([, p]) =>
     p.home === p.away && !p.if_draw_winner
@@ -148,6 +168,9 @@ export default function RoundPicksPage({
         away: cur[matchId]?.away ?? '',
         is_star: cur[matchId]?.is_star ?? false,
         if_draw_winner: cur[matchId]?.if_draw_winner ?? null,
+        goalscorer_player_id: cur[matchId]?.goalscorer_player_id ?? null,
+        goalscorer_team_code: cur[matchId]?.goalscorer_team_code ?? null,
+        goalscorer_player: cur[matchId]?.goalscorer_player ?? null,
         ...patch,
         dirty: true,
       },
@@ -269,8 +292,12 @@ export default function RoundPicksPage({
       }}>
         <span style={{ color: C.text }}>
           Picks: <span style={{ color: tooManyGroup ? C.red : C.green }}>{filledPicks.length}{!isKnockout ? `/${capForGroup}` : `/${expected}`}</span>
-          {' · '}
-          Stars: <span style={{ color: tooManyStars ? C.red : C.green }}>{starCount}/1</span>
+          {hasStars && (
+            <>
+              {' · '}
+              Stars: <span style={{ color: tooManyStars ? C.red : C.green }}>{starCount}/1</span>
+            </>
+          )}
         </span>
         <span style={{ color: locked ? C.muted : C.gold }}>
           {locked ? 'Round locked' : `Locks in ${countdown}`}
@@ -283,7 +310,16 @@ export default function RoundPicksPage({
       )}
       <div style={{ display: 'grid', gap: '0.6rem' }}>
         {matches.map((mt) => {
-          const pick = picks[mt.id] || { home: '', away: '', is_star: false, if_draw_winner: null, dirty: false }
+          const pick = picks[mt.id] || {
+            home: '',
+            away: '',
+            is_star: false,
+            if_draw_winner: null,
+            goalscorer_player_id: null,
+            goalscorer_team_code: null,
+            goalscorer_player: null,
+            dirty: false,
+          }
           const isDraw = pick.home !== '' && pick.home === pick.away
           const drawNeedsPick = isKnockout && isDraw && !pick.if_draw_winner
           return (
@@ -292,9 +328,12 @@ export default function RoundPicksPage({
               match={mt}
               pick={pick}
               isKnockout={isKnockout}
+              hasStars={hasStars}
+              hasGoalscorer={hasGoalscorer}
               locked={locked}
               drawNeedsPick={drawNeedsPick}
               onChange={(patch) => setPick(mt.id, patch)}
+              onGoalscorerSaved={(g) => setPick(mt.id, { ...g, dirty: false })}
             />
           )
         })}
@@ -364,14 +403,17 @@ export default function RoundPicksPage({
 }
 
 function MatchCard({
-  match, pick, isKnockout, locked, drawNeedsPick, onChange,
+  match, pick, isKnockout, hasStars, hasGoalscorer, locked, drawNeedsPick, onChange, onGoalscorerSaved,
 }: {
   match: PredictorMatch
   pick: PickState
   isKnockout: boolean
+  hasStars: boolean
+  hasGoalscorer: boolean
   locked: boolean
   drawNeedsPick: boolean
   onChange: (patch: Partial<PickState>) => void
+  onGoalscorerSaved: (g: Partial<PickState>) => void
 }) {
   const isDraw = pick.home !== '' && pick.home === pick.away
   const koDate = new Date(match.kickoff_at)
@@ -393,19 +435,21 @@ function MatchCard({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.7rem', color: C.muted }}>
         <span>Match {match.match_num} · {dateStr} CT</span>
-        <button
-          onClick={() => !locked && onChange({ is_star: !pick.is_star })}
-          disabled={locked}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: locked ? 'default' : 'pointer',
-            color: pick.is_star ? C.gold : '#2a3550',
-            fontSize: '1.15rem',
-            padding: 0,
-          }}
-          aria-label="Toggle star"
-        >★</button>
+        {hasStars && (
+          <button
+            onClick={() => !locked && onChange({ is_star: !pick.is_star })}
+            disabled={locked}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: locked ? 'default' : 'pointer',
+              color: pick.is_star ? C.gold : '#2a3550',
+              fontSize: '1.15rem',
+              padding: 0,
+            }}
+            aria-label="Toggle star"
+          >★</button>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <TeamSide team={match.home_team_code} align="right" />
@@ -445,6 +489,224 @@ function MatchCard({
               >{tc}</button>
             ))}
           </div>
+        </div>
+      )}
+      {hasGoalscorer && (
+        <GoalscorerSection
+          match={match}
+          pick={pick}
+          locked={locked}
+          onSaved={onGoalscorerSaved}
+        />
+      )}
+    </div>
+  )
+}
+
+function GoalscorerSection({
+  match, pick, locked, onSaved,
+}: {
+  match: PredictorMatch
+  pick: PickState
+  locked: boolean
+  onSaved: (g: Partial<PickState>) => void
+}) {
+  const saved = Boolean(pick.goalscorer_player_id && pick.goalscorer_team_code)
+  const [editing, setEditing] = useState(false)
+  const open = !saved || editing
+
+  const [selTeam, setSelTeam] = useState<string>(pick.goalscorer_team_code ?? '')
+  const [selPlayer, setSelPlayer] = useState<string>(pick.goalscorer_player_id ?? '')
+  const [players, setPlayers] = useState<GoalscorerPlayer[] | null>(null)
+  const [loadingPlayers, setLoadingPlayers] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  // Sync selTeam / selPlayer if the saved pick changes from above (e.g. round
+  // page re-fetch after another save).
+  useEffect(() => {
+    setSelTeam(pick.goalscorer_team_code ?? '')
+    setSelPlayer(pick.goalscorer_player_id ?? '')
+  }, [pick.goalscorer_team_code, pick.goalscorer_player_id])
+
+  // Fetch squad whenever team changes.
+  useEffect(() => {
+    if (!selTeam) { setPlayers(null); return }
+    let cancelled = false
+    setLoadingPlayers(true)
+    ;(async () => {
+      try {
+        const r = await fetch(`/api/predictor/players?team_code=${encodeURIComponent(selTeam)}`, { credentials: 'include' })
+        const j = await r.json().catch(() => null)
+        if (cancelled) return
+        setPlayers((j?.players ?? []) as GoalscorerPlayer[])
+      } catch {
+        if (!cancelled) setPlayers([])
+      } finally {
+        if (!cancelled) setLoadingPlayers(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selTeam])
+
+  // Reset player selection if team changes and current player isn't on the new squad.
+  useEffect(() => {
+    if (!players) return
+    if (selPlayer && !players.some((p) => p.id === selPlayer)) {
+      setSelPlayer('')
+    }
+  }, [players, selPlayer])
+
+  const canSave = !locked && !busy && Boolean(selTeam && selPlayer) && (
+    selPlayer !== pick.goalscorer_player_id || selTeam !== pick.goalscorer_team_code
+  )
+
+  async function save() {
+    if (!canSave) return
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch('/api/predictor/picks/goalscorer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          match_id: match.id,
+          team_code: selTeam,
+          player_id: selPlayer,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      if (r.status === 401) {
+        setErr('Sign in to save your goalscorer pick.')
+      } else if (r.status === 403) {
+        setErr('Round is locked.')
+      } else if (!r.ok) {
+        setErr(j?.error || 'Save failed.')
+      } else {
+        const found = (players ?? []).find((p) => p.id === selPlayer) ?? null
+        onSaved({
+          goalscorer_player_id: selPlayer,
+          goalscorer_team_code: selTeam,
+          goalscorer_player: found,
+        })
+        setEditing(false)
+      }
+    } catch {
+      setErr('Network error.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const chipName = pick.goalscorer_player?.short_name
+    || pick.goalscorer_player?.name
+    || pick.goalscorer_player?.last_name
+    || 'Player'
+
+  return (
+    <div style={{
+      marginTop: '0.6rem',
+      padding: '0.55rem 0.7rem',
+      borderRadius: '0.4rem',
+      backgroundColor: 'rgba(251,191,36,0.05)',
+      border: `1px solid ${saved && !editing ? '#2a3550' : 'rgba(251,191,36,0.25)'}`,
+    }}>
+      <div style={{ color: C.muted, fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+        Anytime Goalscorer
+      </div>
+      {!open && saved && (
+        <button
+          type="button"
+          onClick={() => !locked && setEditing(true)}
+          disabled={locked}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            background: 'rgba(0,230,118,0.10)',
+            border: `1px solid ${C.green}`,
+            color: C.text,
+            borderRadius: '999px',
+            padding: '0.3rem 0.7rem',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            cursor: locked ? 'default' : 'pointer',
+          }}
+          aria-label="Change goalscorer pick"
+        >
+          <span aria-hidden="true">⚽</span>
+          <span>{chipName}</span>
+          <span style={{ color: C.muted, fontWeight: 600 }}>({pick.goalscorer_team_code})</span>
+          {!locked && <span style={{ color: C.muted, fontWeight: 500, fontSize: '0.7rem' }}>· tap to change</span>}
+        </button>
+      )}
+      {open && (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              value={selTeam}
+              onChange={(e) => setSelTeam(e.target.value)}
+              disabled={locked}
+              style={{ ...selectStyle, flex: '1 1 140px', minWidth: 120 }}
+              aria-label="Select team"
+            >
+              <option value="">Select team</option>
+              <option value={match.home_team_code}>{match.home_team_code}</option>
+              <option value={match.away_team_code}>{match.away_team_code}</option>
+            </select>
+            <select
+              value={selPlayer}
+              onChange={(e) => setSelPlayer(e.target.value)}
+              disabled={locked || !selTeam || loadingPlayers}
+              style={{ ...selectStyle, flex: '2 1 200px', minWidth: 160 }}
+              aria-label="Select player"
+            >
+              <option value="">
+                {!selTeam ? 'Pick team first' : loadingPlayers ? 'Loading…' : (players && players.length === 0 ? 'No players available' : 'Select player')}
+              </option>
+              {(players ?? []).map((pl) => {
+                const label = pl.short_name || pl.name || pl.last_name || pl.id
+                return <option key={pl.id} value={pl.id}>{label}</option>
+              })}
+            </select>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!canSave}
+              style={{
+                backgroundColor: canSave ? C.gold : '#2a3550',
+                color: canSave ? '#0A0F2E' : C.muted,
+                border: 'none',
+                borderRadius: '0.4rem',
+                padding: '0.42rem 0.85rem',
+                fontWeight: 800,
+                fontSize: '0.78rem',
+                cursor: canSave ? 'pointer' : 'default',
+              }}
+            >{busy ? 'Saving…' : 'Save'}</button>
+          </div>
+          {err && <div style={{ color: C.red, fontSize: '0.72rem' }}>{err}</div>}
+          {saved && editing && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false)
+                setSelTeam(pick.goalscorer_team_code ?? '')
+                setSelPlayer(pick.goalscorer_player_id ?? '')
+                setErr(null)
+              }}
+              style={{
+                alignSelf: 'flex-start',
+                background: 'none',
+                border: 'none',
+                color: C.muted,
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >Cancel</button>
+          )}
         </div>
       )}
     </div>
