@@ -11,8 +11,10 @@
 
 import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { flagUrl } from '@/lib/predictor-flags'
 import AuthHeader from '@/components/AuthHeader'
+import { selectStyle, SELECT_OPTION_CSS, PREDICTOR_ROUND_OPTIONS } from '@/lib/select-style'
 
 const C = {
   bg: '#0A0F2E',
@@ -69,6 +71,7 @@ export default function RoundPicksPage({
   params: Promise<{ round_code: string }>
 }) {
   const { round_code } = use(params)
+  const router = useRouter()
 
   const isKnockout = !GROUP_ROUNDS.has(round_code)
   const label = ROUND_LABEL[round_code] || round_code
@@ -196,14 +199,48 @@ export default function RoundPicksPage({
   return (
     <>
     <AuthHeader />
+    <style>{SELECT_OPTION_CSS}</style>
     <main style={{ maxWidth: 780, margin: '0 auto', padding: '1.5rem 1rem 7rem' }}>
+      {/* Round nav strip — Home button + round dropdown (mirrors /scores) */}
+      <div style={{
+        display: 'flex',
+        gap: '0.6rem',
+        alignItems: 'center',
+        marginBottom: '1rem',
+        flexWrap: 'wrap',
+      }}>
+        <Link
+          href="/predictor"
+          style={{
+            ...selectStyle,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            textDecoration: 'none',
+            backgroundImage: 'none',
+            padding: '0.45rem 0.85rem',
+          }}
+        >
+          <span aria-hidden="true">←</span> Home
+        </Link>
+        <select
+          value={round_code}
+          onChange={(e) => router.push(`/predictor/round/${e.target.value}`)}
+          style={selectStyle}
+          aria-label="Choose round"
+        >
+          {PREDICTOR_ROUND_OPTIONS.map((opt) => (
+            <option key={opt.code} value={opt.code}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+
       <div style={{ marginBottom: '1rem' }}>
-        <Link href="/predictor" style={{ color: C.muted, fontSize: '0.8rem', textDecoration: 'none' }}>← Back to Predictor</Link>
         <h1 style={{
           fontSize: 'clamp(1.5rem, 4vw, 1.9rem)',
           fontWeight: 900,
           color: C.gold,
-          margin: '0.5rem 0 0.3rem',
+          margin: '0 0 0.3rem',
         }}>{label}</h1>
         <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
           {isKnockout
