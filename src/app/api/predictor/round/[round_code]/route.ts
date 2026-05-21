@@ -64,15 +64,47 @@ export async function GET(
   }
 
   const matchIds = (matches ?? []).map((m) => m.id)
-  let myPicks: unknown[] = []
+  let myPicks: Array<Record<string, unknown>> = []
   if (matchIds.length) {
     const { data: picks, error: pErr } = await sb
       .from('predictor_picks')
-      .select('match_id, home_score, away_score, if_draw_winner, is_star, updated_at')
+      .select('match_id, home_score, away_score, if_draw_winner, is_star, goalscorer_player_id, goalscorer_team_code, updated_at')
       .eq('profile_id', session.profile_id)
       .in('match_id', matchIds)
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
-    myPicks = picks ?? []
+    myPicks = (picks ?? []) as Array<Record<string, unknown>>
+
+    // Hydrate goalscorer player metadata (short_name + name) so the UI chip
+    // can render without a second round-trip per match.
+    const playerIds = Array.from(new Set(
+      myPicks
+        .map((p) => p.goalscorer_player_id)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    ))
+    if (playerIds.length > 0) {
+      const { data: players, error: plErr } = await sb
+        .from('s3_players')
+        .select('id, name, short_name, last_name, nationality')
+        .in('id', playerIds)
+      if (plErr) return NextResponse.json({ error: plErr.message }, { status: 500 })
+      const byId = new Map((players ?? []).map((p) => [p.id, p]))
+      myPicks = myPicks.map((p) => {
+        const pid = p.goalscorer_player_id as string | null
+        const found = pid ? byId.get(pid) : null
+        return {
+          ...p,
+          goalscorer_player: found
+            ? {
+                id: found.id,
+                name: found.name,
+                short_name: found.short_name,
+                last_name: found.last_name,
+                nationality: found.nationality,
+              }
+            : null,
+        }
+      })
+    }
   }
 
   const myStarCount = (myPicks as Array<{ is_star: boolean }>).filter((p) => p.is_star).length

@@ -30,6 +30,9 @@ const VALID_ROUNDS = new Set([
   'r32', 'r16', 'qf', 'sf', 'final',
 ])
 const GROUP_ROUNDS = new Set(['group_r1', 'group_r2', 'group_r3'])
+// Stars apply to Rounds 1–4 only (group_r1/r2/r3 + r32). R5–R8 use the
+// Anytime Goalscorer pick instead — see PREDICTOR-WAVE-C-AMEND-GOALSCORER.md.
+const NO_STAR_ROUNDS = new Set(['r16', 'qf', 'sf', 'final'])
 const ROUND_EXPECTED_COUNT: Record<string, number> = {
   group_r1: 24, group_r2: 24, group_r3: 24,
   r32: 16, r16: 8, qf: 4, sf: 2, final: 2,
@@ -92,6 +95,12 @@ export async function POST(req: NextRequest) {
   // Star cap
   const starCount = picks.filter((p) => p.is_star).length
   if (starCount > 1) return badRequest('too_many_stars', { stars: starCount, max: 1 })
+
+  // Stars are not allowed on R5–R8 (defensive — UI hides the toggle, but a
+  // raw client could still try). Reject before the upsert.
+  if (NO_STAR_ROUNDS.has(roundCode) && starCount > 0) {
+    return badRequest('stars_not_allowed_in_round', { round_code: roundCode })
+  }
 
   // Cap per-round count
   if (GROUP_ROUNDS.has(roundCode) && picks.length > 16) {
