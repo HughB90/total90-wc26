@@ -13,6 +13,7 @@ import { use, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { flagUrl } from '@/lib/predictor-flags'
 import AuthHeader from '@/components/AuthHeader'
+import { getRound, TOURNAMENT_STAR_CAP } from '@/lib/predictor-rounds'
 
 const C = {
   bg: '#0A0F2E',
@@ -80,6 +81,13 @@ export default function RoundPicksPage({
   const [now, setNow] = useState(() => new Date())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [totalStars, setTotalStars] = useState(0)
+
+  // Round metadata (stars_enabled / scorer_enabled per amendment 2026-05-20).
+  // Source of truth is server config, but mirror locally for the picks UI.
+  const roundCfg = getRound(round_code)
+  const starsEnabled = roundCfg?.stars_enabled ?? false
+  const scorerEnabled = roundCfg?.scorer_enabled ?? false
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
@@ -97,6 +105,7 @@ export default function RoundPicksPage({
         setMatches(j.matches || [])
         setLockAt(j.lock_at || null)
         setLocked(Boolean(j.locked))
+        setTotalStars(Number(j.my_total_stars ?? 0))
         const initial: Record<string, PickState> = {}
         for (const p of j.my_picks || []) {
           initial[p.match_id] = {
@@ -135,7 +144,16 @@ export default function RoundPicksPage({
     p.home === p.away && !p.if_draw_winner
   )
 
-  const canSubmit = !locked && filledPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner
+  const starsDisallowedButPresent = !starsEnabled && starCount > 0
+  // Tournament cap check: server is authoritative, but warn proactively in UI.
+  // totalStars is the count across ALL rounds. If this round previously had
+  // a star (still in `totalStars`), the round-scoped starCount lives inside
+  // it; the server cap check subtracts current-round stars before adding the
+  // batch, so the proactive UI check is conservative.
+  // Used by the disabled-button caption only — server enforces the real cap.
+  const _tournamentStarsExceeded = starsEnabled && totalStars > TOURNAMENT_STAR_CAP
+  void _tournamentStarsExceeded
+  const canSubmit = !locked && filledPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner && !starsDisallowedButPresent
 
   function setPick(matchId: string, patch: Partial<PickState>) {
     setPicks((cur) => ({
@@ -207,8 +225,12 @@ export default function RoundPicksPage({
         }}>{label}</h1>
         <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
           {isKnockout
-            ? `Pick every match (${expected} total). 1 star allowed.`
-            : `Pick up to 16 of 24 matches. 1 star allowed.`}
+            ? `Pick every match (${expected} total).`
+            : `Pick up to 16 of 24 matches.`}
+          {starsEnabled
+            ? ` 1 star allowed (${TOURNAMENT_STAR_CAP} total across the tournament).`
+            : ' No stars in this round.'}
+          {scorerEnabled && ' Anytime Goalscorer: +2 pts per correct scorer.'}
         </p>
       </div>
 
@@ -232,8 +254,13 @@ export default function RoundPicksPage({
       }}>
         <span style={{ color: C.text }}>
           Picks: <span style={{ color: tooManyGroup ? C.red : C.green }}>{filledPicks.length}{!isKnockout ? `/${capForGroup}` : `/${expected}`}</span>
-          {' · '}
-          Stars: <span style={{ color: tooManyStars ? C.red : C.green }}>{starCount}/1</span>
+          {starsEnabled && (
+            <>
+              {' · '}
+              Stars: <span style={{ color: tooManyStars ? C.red : C.green }}>{starCount}/1</span>
+              <span style={{ color: C.muted, marginLeft: 4 }}>(tournament {totalStars}/{TOURNAMENT_STAR_CAP})</span>
+            </>
+          )}
         </span>
         <span style={{ color: locked ? C.muted : C.gold }}>
           {locked ? 'Round locked' : `Locks in ${countdown}`}
@@ -257,6 +284,7 @@ export default function RoundPicksPage({
               isKnockout={isKnockout}
               locked={locked}
               drawNeedsPick={drawNeedsPick}
+              starsEnabled={starsEnabled}
               onChange={(patch) => setPick(mt.id, patch)}
             />
           )
@@ -282,6 +310,7 @@ export default function RoundPicksPage({
           <span style={{ color: C.muted, fontSize: '0.78rem' }}>
             {tooManyGroup && <span style={{ color: C.red }}>{filledPicks.length}/16 — drop {filledPicks.length - 16}</span>}
             {tooManyStars && <span style={{ color: C.red }}> · Too many stars</span>}
+            {starsDisallowedButPresent && <span style={{ color: C.red }}> · No stars in this round</span>}
             {knockoutShort && <span style={{ color: C.red }}>Pick all {expected} matches</span>}
             {drawNeedsWinner && <span style={{ color: C.red }}>Choose draw advancer</span>}
             {canSubmit && <span>Ready to submit {filledPicks.length} pick{filledPicks.length === 1 ? '' : 's'}</span>}
@@ -327,13 +356,14 @@ export default function RoundPicksPage({
 }
 
 function MatchCard({
-  match, pick, isKnockout, locked, drawNeedsPick, onChange,
+  match, pick, isKnockout, locked, drawNeedsPick, starsEnabled, onChange,
 }: {
   match: PredictorMatch
   pick: PickState
   isKnockout: boolean
   locked: boolean
   drawNeedsPick: boolean
+  starsEnabled: boolean
   onChange: (patch: Partial<PickState>) => void
 }) {
   const isDraw = pick.home !== '' && pick.home === pick.away
@@ -356,19 +386,21 @@ function MatchCard({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.7rem', color: C.muted }}>
         <span>Match {match.match_num} · {dateStr} CT</span>
-        <button
-          onClick={() => !locked && onChange({ is_star: !pick.is_star })}
-          disabled={locked}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: locked ? 'default' : 'pointer',
-            color: pick.is_star ? C.gold : '#2a3550',
-            fontSize: '1.15rem',
-            padding: 0,
-          }}
-          aria-label="Toggle star"
-        >★</button>
+        {starsEnabled ? (
+          <button
+            onClick={() => !locked && onChange({ is_star: !pick.is_star })}
+            disabled={locked}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: locked ? 'default' : 'pointer',
+              color: pick.is_star ? C.gold : '#2a3550',
+              fontSize: '1.15rem',
+              padding: 0,
+            }}
+            aria-label="Toggle star"
+          >★</button>
+        ) : null}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <TeamSide team={match.home_team_code} align="right" />

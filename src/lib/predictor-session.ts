@@ -32,10 +32,6 @@ export async function getProfileSession(): Promise<ProfileSession | null> {
   return null
 }
 
-// Hard lock for the pre-tournament winner pick: R1 first kickoff.
-// 2026-06-11 14:00 CT = 2026-06-11 19:00 UTC (CDT = UTC-5).
-export const WINNER_PICK_LOCK_ISO = '2026-06-11T19:00:00.000Z'
-
-export function isWinnerPickLocked(now = new Date()): boolean {
-  return now.getTime() >= new Date(WINNER_PICK_LOCK_ISO).getTime()
-}
+// Pre-tournament winner pick lock: 1 minute before R1 first kickoff.
+// Canonical source: src/lib/predictor-rounds.ts (PREDICTOR_ROUNDS[0].lock_iso).
+export { WINNER_PICK_LOCK_ISO, isWinnerPickLocked } from './predictor-rounds'
