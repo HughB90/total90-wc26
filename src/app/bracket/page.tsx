@@ -1246,16 +1246,17 @@ export default function BracketPage() {
       .catch(() => {})
   }, [leagueView])
 
-  // Fetch my rank and total users
+  // Fetch my rank and total users. `userId` may be a bracket_users.id
+  // (legacy) or a profiles.id (post-AuthHeader), so match either.
   useEffect(() => {
     if (!userId) return
     fetch('/api/bracket/leaderboard')
       .then(r => r.json())
-      .then((data: { rows?: { userId: string; score: number }[]; total?: number }) => {
+      .then((data: { rows?: { userId: string; profileId?: string | null; score: number }[]; total?: number }) => {
         const rows = data.rows ?? []
         const total = data.total ?? rows.length
-        const myIdx = rows.findIndex((r: { userId: string }) => r.userId === userId)
-        const myScore = myIdx >= 0 ? (rows[myIdx] as { score: number }).score : 0
+        const myIdx = rows.findIndex((r) => r.userId === userId || r.profileId === userId)
+        const myScore = myIdx >= 0 ? rows[myIdx].score : 0
         setMyRank({ rank: myIdx >= 0 ? myIdx + 1 : total + 1, total, score: myScore })
       })
       .catch(() => {})

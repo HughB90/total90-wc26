@@ -133,11 +133,13 @@ export async function GET(request: Request) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Get leagues user is in
+    // Get leagues user is in. `userId` from the client can be either a
+    // bracket_users.id (legacy) or a profiles.id (post-AuthHeader). Both are
+    // stored on wc26_league_members — try either.
     const { data: memberships } = await (supabase
       .from('wc26_league_members')
       .select('league_id, wc26_leagues(id, name, invite_code, creator_id)')
-      .eq('user_id', userId) as any)
+      .or(`user_id.eq.${userId},profile_id.eq.${userId}`) as any)
 
     if (!memberships?.length) return NextResponse.json({ leagues: [] })
 
@@ -152,17 +154,23 @@ export async function GET(request: Request) {
         .select('user_id')
         .eq('league_id', league.id) as any)
 
-      const memberIds = (leagueMembers as any[])?.map((lm: any) => lm.user_id) ?? []
+      // Collect both kinds of identifiers so we can match bracket_entries
+      // regardless of which scheme the row uses.
+      const memberUserIds = (leagueMembers as any[])?.map((lm: any) => lm.user_id).filter(Boolean) ?? []
+      const memberProfileIds = (leagueMembers as any[])?.map((lm: any) => lm.profile_id).filter(Boolean) ?? []
+      const memberIds = Array.from(new Set([...memberUserIds, ...memberProfileIds]))
 
       const { data: entries } = await (supabase
         .from('bracket_entries')
-        .select('user_id, score')
-        .in('user_id', memberIds) as any)
+        .select('user_id, profile_id, score')
+        .or(`user_id.in.(${memberIds.join(',')}),profile_id.in.(${memberIds.join(',')})`) as any)
 
-      // Sum scores per user
+      // Sum scores per member (key by user_id when present, else profile_id)
       const scoreMap = new Map<string, number>()
-      for (const e of entries ?? []) {
-        scoreMap.set(e.user_id, (scoreMap.get(e.user_id) ?? 0) + (e.score ?? 0))
+      for (const e of (entries ?? []) as any[]) {
+        const key = e.user_id ?? e.profile_id
+        if (!key) continue
+        scoreMap.set(key, (scoreMap.get(key) ?? 0) + (e.score ?? 0))
       }
 
       const sorted = Array.from(scoreMap.entries()).sort((a, b) => b[1] - a[1])
@@ -173,8 +181,8 @@ export async function GET(request: Request) {
         id: league.id,
         name: league.name,
         inviteCode: league.invite_code,
-        memberCount: memberIds.length,
-        myRank: myRank || memberIds.length,
+        memberCount: memberUserIds.length || memberProfileIds.length,
+        myRank: myRank || memberUserIds.length || memberProfileIds.length,
         myScore,
         isCreator: league.creator_id === userId,
       }
