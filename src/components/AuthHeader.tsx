@@ -81,15 +81,25 @@ export default function AuthHeader() {
       .finally(() => setSiblingsLoading(false))
   }, [menuOpen, me?.account, siblings, siblingsLoading])
 
-  const handleAuth = () => {
-    // Hard reload after sign-in so every component re-fetches with the new
-    // session (Picks tab, Leaderboard, etc.) instead of needing a manual
-    // refresh to see the user's picks/score.
-    if (typeof window !== 'undefined') {
-      window.location.reload()
+  const handleAuth = async () => {
+    // After sign-in, wait until the auth cookie is actually visible to the
+    // server (poll /api/auth/me) before doing a hard reload. Skipping this
+    // step caused a race where reload() fired before the browser committed
+    // the Set-Cookie header, leaving the next page render anonymous and
+    // forcing the user to refresh again.
+    if (typeof window === 'undefined') {
+      refresh()
       return
     }
-    refresh()
+    for (let i = 0; i < 10; i++) {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+        const data = await res.json().catch(() => null)
+        if (data?.profile) break
+      } catch { /* keep trying */ }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    window.location.reload()
   }
 
   const handleSignOut = async () => {
