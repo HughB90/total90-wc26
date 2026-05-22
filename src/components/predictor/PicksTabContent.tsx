@@ -48,9 +48,35 @@ interface RoundSummary {
   matchCount: number
 }
 
+// sessionStorage cache keys. Bumped if the response shape changes.
+const CACHE_VERSION = 'v1'
+const ROUNDS_CACHE_KEY = `predictor.picks.rounds.${CACHE_VERSION}`
+const WINNER_CACHE_KEY = `predictor.picks.winner.${CACHE_VERSION}`
+
+function readCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(key: string, value: unknown) {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* quota / private-mode — silent */
+  }
+}
+
 export default function PicksTabContent({ authed }: { authed: boolean }) {
-  const [rounds, setRounds] = useState<RoundSummary[] | null>(null)
-  const [winnerPick, setWinnerPick] = useState<string | null>(null)
+  // Hydrate from sessionStorage so flipping to the Picks tab a second time
+  // renders instantly; we still re-fetch in the background to refresh data.
+  const [rounds, setRounds] = useState<RoundSummary[] | null>(() => readCache<RoundSummary[]>(ROUNDS_CACHE_KEY))
+  const [winnerPick, setWinnerPick] = useState<string | null>(() => readCache<string | null>(WINNER_CACHE_KEY))
 
   useEffect(() => {
     let cancelled = false
@@ -111,7 +137,10 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
           return { code: rm.code, label: rm.label, picks: [], matchCount: 0 }
         }
       }))
-      if (!cancelled) setRounds(results)
+      if (!cancelled) {
+        setRounds(results)
+        writeCache(ROUNDS_CACHE_KEY, results)
+      }
     })()
 
     if (authed) {
@@ -119,11 +148,16 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
         try {
           const r = await fetchWithTimeout('/api/predictor/winner')
           const j = await r.json().catch(() => null)
-          if (!cancelled) setWinnerPick(j?.pick?.team_code ?? null)
+          const code = j?.pick?.team_code ?? null
+          if (!cancelled) {
+            setWinnerPick(code)
+            writeCache(WINNER_CACHE_KEY, code)
+          }
         } catch { /* timeout or network — leave as null */ }
       })()
     } else {
       setWinnerPick(null)
+      writeCache(WINNER_CACHE_KEY, null)
     }
 
     return () => { cancelled = true }
@@ -136,11 +170,9 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
         title="Tournament Winner"
         editHref="/predictor/winner"
       >
-        {!authed ? (
-          <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-            Sign in to pick your champion. Worth 40 pts.
-          </p>
-        ) : winnerPick ? (
+        {winnerPick ? (
+          // Trust the API: if it returned a pick, render it regardless of the
+          // parent's `authed` prop (which can lag the actual session cookie).
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
             <img
               src={flagUrl(winnerPick)}
@@ -158,6 +190,10 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
               minWidth: 0,
             }}>{winnerPick}</strong>
           </div>
+        ) : !authed ? (
+          <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
+            Sign in to pick your champion. Worth 40 pts.
+          </p>
         ) : (
           <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0 }}>No pick yet.</p>
         )}
@@ -175,20 +211,22 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
             </span>
           }
         >
-          {!authed ? (
-            <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-              Sign in to make picks.
-            </p>
-          ) : !rounds ? (
-            <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>Loading…</p>
-          ) : r.picks.length === 0 ? (
-            <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>No picks yet.</p>
-          ) : (
+          {r.picks.length > 0 ? (
+            // Trust the API: render picks whenever they're present, regardless
+            // of the parent's `authed` prop. The parent can lag the cookie.
             <div style={{ display: 'grid', gap: '0.3rem', minWidth: 0 }}>
               {r.picks.map((p) => (
                 <PickRow key={p.match_id} pick={p} showGoalscorer={GOALSCORER_ROUND_CODES.has(r.code)} />
               ))}
             </div>
+          ) : !authed ? (
+            <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
+              Sign in to make picks.
+            </p>
+          ) : !rounds ? (
+            <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>Loading…</p>
+          ) : (
+            <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>No picks yet.</p>
           )}
         </Pill>
       ))}

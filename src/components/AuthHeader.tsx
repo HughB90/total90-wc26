@@ -108,6 +108,13 @@ export default function AuthHeader() {
     try {
       localStorage.removeItem('bracket_user_id')
       localStorage.removeItem('bracket_display_name')
+      // Clear cached picks/leaderboard so the next user doesn't see stale data.
+      const keysToClear: string[] = []
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const k = window.sessionStorage.key(i)
+        if (k && (k.startsWith('predictor.') || k.startsWith('bracket.'))) keysToClear.push(k)
+      }
+      for (const k of keysToClear) window.sessionStorage.removeItem(k)
     } catch {}
     setMe({ account: null, profile: null })
     setSiblings(null)

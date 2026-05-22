@@ -69,10 +69,12 @@ function PredictorHome() {
     return () => clearInterval(t)
   }, [])
 
-  // Auth probe — runs once on mount
+  // Auth probe — re-runs whenever the active tab changes (so flipping into a
+  // tab after sign-in always re-checks the cookie) and whenever the window
+  // regains focus (so a sign-in performed in another tab is reflected here).
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    const probe = async () => {
       try {
         const r = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
         if (!r.ok) { if (!cancelled) setAuthedReady(true); return }
@@ -85,13 +87,21 @@ function PredictorHome() {
             display_name: j.profile.display_name ?? null,
             first_name: j.profile.first_name ?? '',
           })
+        } else {
+          setMe(null)
         }
       } catch { /* anon */ } finally {
         if (!cancelled) setAuthedReady(true)
       }
-    })()
-    return () => { cancelled = true }
-  }, [])
+    }
+    probe()
+    const onFocus = () => { probe() }
+    if (typeof window !== 'undefined') window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus)
+    }
+  }, [activeTab])
 
   const handleTabChange = useCallback((tab: PredictorTabId) => {
     const sp = new URLSearchParams(Array.from(searchParams.entries()))
