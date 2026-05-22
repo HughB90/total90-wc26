@@ -55,13 +55,22 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
   useEffect(() => {
     let cancelled = false
 
+    // Helper: fetch with an AbortController + hard timeout so a hung route
+    // can never freeze the Picks tab on "Loading…" forever.
+    async function fetchWithTimeout(url: string, ms = 8000): Promise<Response> {
+      const ac = new AbortController()
+      const t = setTimeout(() => ac.abort(), ms)
+      try {
+        return await fetch(url, { credentials: 'include', cache: 'no-store', signal: ac.signal })
+      } finally {
+        clearTimeout(t)
+      }
+    }
+
     ;(async () => {
       const results = await Promise.all(PREDICTOR_ROUND_OPTIONS.map(async (rm) => {
         try {
-          const r = await fetch(`/api/predictor/round/${rm.code}`, {
-            credentials: 'include',
-            cache: 'no-store',
-          })
+          const r = await fetchWithTimeout(`/api/predictor/round/${rm.code}`)
           if (!r.ok) {
             return { code: rm.code, label: rm.label, picks: [], matchCount: 0 }
           }
@@ -108,10 +117,10 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
     if (authed) {
       ;(async () => {
         try {
-          const r = await fetch('/api/predictor/winner', { credentials: 'include', cache: 'no-store' })
+          const r = await fetchWithTimeout('/api/predictor/winner')
           const j = await r.json().catch(() => null)
           if (!cancelled) setWinnerPick(j?.pick?.team_code ?? null)
-        } catch { /* */ }
+        } catch { /* timeout or network — leave as null */ }
       })()
     } else {
       setWinnerPick(null)

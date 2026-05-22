@@ -82,6 +82,13 @@ export default function AuthHeader() {
   }, [menuOpen, me?.account, siblings, siblingsLoading])
 
   const handleAuth = () => {
+    // Hard reload after sign-in so every component re-fetches with the new
+    // session (Picks tab, Leaderboard, etc.) instead of needing a manual
+    // refresh to see the user's picks/score.
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+      return
+    }
     refresh()
   }
 
