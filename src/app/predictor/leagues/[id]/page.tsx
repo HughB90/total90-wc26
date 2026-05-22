@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import AuthHeader from '@/components/AuthHeader'
 import { flagUrl } from '@/lib/predictor-flags'
 import { PREDICTOR_ROUND_OPTIONS } from '@/lib/select-style'
+import ScoringRulesContent from '@/components/predictor/ScoringRulesContent'
 
 const C = {
   bg: '#0A0F2E',
@@ -567,32 +568,6 @@ function MembersTab({ members, meId, createdBy }: {
 }
 
 function ScoringTab() {
-  return (
-    <div style={{
-      backgroundColor: C.card,
-      border: `1px solid ${C.border}`,
-      borderRadius: '0.7rem',
-      padding: '1rem 1.15rem',
-      color: C.text,
-      fontSize: '0.85rem',
-      lineHeight: 1.55,
-    }}>
-      <p style={{ margin: '0 0 0.75rem', color: C.text }}>
-        Full scoring rules live on the dedicated rules page so they stay in sync with the global predictor.
-      </p>
-      <Link
-        href="/predictor/scoring"
-        style={{
-          display: 'inline-block',
-          padding: '0.5rem 0.85rem',
-          borderRadius: '0.45rem',
-          color: '#0A0F2E',
-          backgroundColor: C.gold,
-          fontWeight: 800,
-          fontSize: '0.8rem',
-          textDecoration: 'none',
-        }}
-      >Open scoring rules →</Link>
-    </div>
-  )
+  // Shared rules content — same component used on /predictor/scoring and the /predictor Scoring tab.
+  return <ScoringRulesContent />
 }
