@@ -16,7 +16,7 @@
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import AuthHeader from '@/components/AuthHeader'
 import PredictorTabBar, {
   parseTab,
@@ -55,9 +55,13 @@ export default function PredictorPage() {
 }
 
 function PredictorHome() {
-  const router = useRouter()
   const searchParams = useSearchParams()
-  const activeTab = parseTab(searchParams.get('tab'))
+  // Tab is local state, seeded once from ?tab=, then synced back to the URL
+  // via window.history.replaceState. We avoid router.replace here because
+  // Next 16's App Router silently drops same-pathname search-param-only
+  // navigations when the user landed on the page directly (URL stays put,
+  // the page feels frozen, no errors). Pure DOM history is reliable.
+  const [activeTab, setActiveTab] = useState<PredictorTabId>(() => parseTab(searchParams.get('tab')))
 
   const [now, setNow] = useState(() => new Date())
   const [me, setMe] = useState<MeProfile | null>(null)
@@ -104,15 +108,18 @@ function PredictorHome() {
   }, [activeTab])
 
   const handleTabChange = useCallback((tab: PredictorTabId) => {
-    const sp = new URLSearchParams(Array.from(searchParams.entries()))
+    setActiveTab(tab)
+    if (typeof window === 'undefined') return
+    const sp = new URLSearchParams(window.location.search)
     if (tab === 'leaderboard') {
       sp.delete('tab')
     } else {
       sp.set('tab', tab)
     }
     const qs = sp.toString()
-    router.replace(qs ? `/predictor?${qs}` : '/predictor', { scroll: false })
-  }, [router, searchParams])
+    const next = qs ? `/predictor?${qs}` : '/predictor'
+    window.history.replaceState(window.history.state, '', next)
+  }, [])
 
   const lockMs = useMemo(() => new Date(ROUND_1_LOCK_ISO).getTime(), [])
   const r1Locked = now.getTime() >= lockMs
