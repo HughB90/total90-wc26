@@ -81,8 +81,25 @@ export default function AuthHeader() {
       .finally(() => setSiblingsLoading(false))
   }, [menuOpen, me?.account, siblings, siblingsLoading])
 
-  const handleAuth = () => {
-    refresh()
+  const handleAuth = async () => {
+    // After sign-in, wait until the auth cookie is actually visible to the
+    // server (poll /api/auth/me) before doing a hard reload. Skipping this
+    // step caused a race where reload() fired before the browser committed
+    // the Set-Cookie header, leaving the next page render anonymous and
+    // forcing the user to refresh again.
+    if (typeof window === 'undefined') {
+      refresh()
+      return
+    }
+    for (let i = 0; i < 10; i++) {
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+        const data = await res.json().catch(() => null)
+        if (data?.profile) break
+      } catch { /* keep trying */ }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    window.location.reload()
   }
 
   const handleSignOut = async () => {
@@ -91,6 +108,13 @@ export default function AuthHeader() {
     try {
       localStorage.removeItem('bracket_user_id')
       localStorage.removeItem('bracket_display_name')
+      // Clear cached picks/leaderboard so the next user doesn't see stale data.
+      const keysToClear: string[] = []
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const k = window.sessionStorage.key(i)
+        if (k && (k.startsWith('predictor.') || k.startsWith('bracket.'))) keysToClear.push(k)
+      }
+      for (const k of keysToClear) window.sessionStorage.removeItem(k)
     } catch {}
     setMe({ account: null, profile: null })
     setSiblings(null)
