@@ -1317,10 +1317,53 @@ export default function BracketPage() {
           </div>
         )}
 
-        {/* Page Header */}
-        <div style={{ marginBottom: '0.75rem' }}>
-          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.4rem', margin: 0 }}>🏆 Bracket Challenge</h1>
-          <p style={{ color: C.muted, fontSize: '0.8rem', margin: '0.2rem 0 0' }}>World Cup 2026 · Make your picks</p>
+        {/* Stadium hero — blurred photo + heavy navy overlay + gold eyebrow */}
+        <div style={{
+          position: 'relative',
+          margin: '0 -0.25rem 1rem',
+          padding: '2.25rem 1.25rem 1.5rem',
+          borderRadius: '1rem',
+          overflow: 'hidden',
+          // Layered: deep navy gradient on top of the stadium photo so the
+          // image reads as atmosphere, not background art.
+          backgroundImage:
+            `radial-gradient(ellipse at center top, rgba(10,15,46,0.55) 0%, rgba(10,15,46,0.92) 70%), ` +
+            `linear-gradient(180deg, rgba(10,15,46,0.6) 0%, rgba(10,15,46,0.95) 100%), ` +
+            `url('/hero/stadium-roof-1168.jpg')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 35%',
+          border: '1px solid rgba(251,191,36,0.18)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)',
+        }}>
+          <div style={{
+            color: C.gold,
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            opacity: 0.85,
+            marginBottom: '0.4rem',
+          }}>
+            World Cup 2026 · Bracket Challenge
+          </div>
+          <h1 style={{
+            color: '#F0F4FF',
+            fontWeight: 900,
+            fontSize: '1.75rem',
+            margin: 0,
+            lineHeight: 1.15,
+            textShadow: '0 2px 12px rgba(0,0,0,0.5)',
+          }}>
+            🏆 Make your picks
+          </h1>
+          <p style={{
+            color: '#A8B5DD',
+            fontSize: '0.85rem',
+            margin: '0.4rem 0 0',
+            textShadow: '0 1px 4px rgba(0,0,0,0.4)',
+          }}>
+            Lock in your groups, knockouts, and champion. Compete globally and in private leagues.
+          </p>
         </div>
 
         {/* Global standings strip */}
