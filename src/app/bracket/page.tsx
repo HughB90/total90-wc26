@@ -1293,7 +1293,42 @@ export default function BracketPage() {
   }
 
   return (
-    <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+    <div style={{
+      position: 'relative',
+      minHeight: '100vh',
+      color: C.text,
+      fontFamily: "system-ui, -apple-system, sans-serif",
+      backgroundColor: C.bg,
+      isolation: 'isolate',
+    }}>
+      {/* Fixed stadium backdrop — blurred photo with heavy navy overlay.
+          Lives in its own layer so the blur filter only hits the image,
+          not the foreground UI. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: -2,
+          backgroundImage: `url('/hero/stadium-roof-1168.jpg')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          backgroundRepeat: 'no-repeat',
+          filter: 'blur(8px) brightness(0.55) saturate(1.1)',
+          transform: 'scale(1.08)', // hide blur edge bleed
+          willChange: 'transform',
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: -1,
+          background:
+            'linear-gradient(180deg, rgba(10,15,46,0.72) 0%, rgba(10,15,46,0.86) 55%, rgba(10,15,46,0.95) 100%)',
+        }}
+      />
       <AuthHeader />
       <AuthModal 
         isOpen={showAuthModal} 
@@ -1317,50 +1352,35 @@ export default function BracketPage() {
           </div>
         )}
 
-        {/* Stadium hero — blurred photo + heavy navy overlay + gold eyebrow */}
-        <div style={{
-          position: 'relative',
-          margin: '0 -0.25rem 1rem',
-          padding: '2.25rem 1.25rem 1.5rem',
-          borderRadius: '1rem',
-          overflow: 'hidden',
-          // Layered: deep navy gradient on top of the stadium photo so the
-          // image reads as atmosphere, not background art.
-          backgroundImage:
-            `radial-gradient(ellipse at center top, rgba(10,15,46,0.55) 0%, rgba(10,15,46,0.92) 70%), ` +
-            `linear-gradient(180deg, rgba(10,15,46,0.6) 0%, rgba(10,15,46,0.95) 100%), ` +
-            `url('/hero/stadium-roof-1168.jpg')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 35%',
-          border: '1px solid rgba(251,191,36,0.18)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)',
-        }}>
+        {/* Page header — sits on top of the page-level stadium background */}
+        <div style={{ marginBottom: '0.85rem' }}>
           <div style={{
             color: C.gold,
             fontSize: '0.7rem',
             fontWeight: 700,
             letterSpacing: '0.18em',
             textTransform: 'uppercase',
-            opacity: 0.85,
-            marginBottom: '0.4rem',
+            opacity: 0.9,
+            marginBottom: '0.3rem',
+            textShadow: '0 1px 4px rgba(0,0,0,0.5)',
           }}>
             World Cup 2026 · Bracket Challenge
           </div>
           <h1 style={{
             color: '#F0F4FF',
             fontWeight: 900,
-            fontSize: '1.75rem',
+            fontSize: '1.5rem',
             margin: 0,
             lineHeight: 1.15,
-            textShadow: '0 2px 12px rgba(0,0,0,0.5)',
+            textShadow: '0 2px 10px rgba(0,0,0,0.6)',
           }}>
             🏆 Make your picks
           </h1>
           <p style={{
             color: '#A8B5DD',
-            fontSize: '0.85rem',
-            margin: '0.4rem 0 0',
-            textShadow: '0 1px 4px rgba(0,0,0,0.4)',
+            fontSize: '0.8rem',
+            margin: '0.3rem 0 0',
+            textShadow: '0 1px 4px rgba(0,0,0,0.5)',
           }}>
             Lock in your groups, knockouts, and champion. Compete globally and in private leagues.
           </p>
