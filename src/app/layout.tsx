@@ -138,8 +138,39 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         backgroundColor: '#0A0F2E',
         color: '#F0F4FF',
         fontFamily: "system-ui, -apple-system, sans-serif",
-
+        position: 'relative',
+        isolation: 'isolate',
+        minHeight: '100vh',
       }}>
+        {/* Site-wide stadium backdrop — blurred photo + 50% navy overlay.
+            Lives in the body so every page inherits it. */}
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: -2,
+            backgroundImage: `url('/hero/stadium-roof-1168.jpg')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center top',
+            backgroundRepeat: 'no-repeat',
+            filter: 'blur(8px) brightness(0.7) saturate(1.1)',
+            transform: 'scale(1.08)',
+            willChange: 'transform',
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: -1,
+            background:
+              'linear-gradient(180deg, rgba(10,15,46,0.50) 0%, rgba(10,15,46,0.55) 100%)',
+            pointerEvents: 'none',
+          }}
+        />
         <AppLaunchBanner />
         <SiteNav />
         {children}

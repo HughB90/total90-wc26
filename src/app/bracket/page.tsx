@@ -1294,41 +1294,10 @@ export default function BracketPage() {
 
   return (
     <div style={{
-      position: 'relative',
       minHeight: '100vh',
       color: C.text,
       fontFamily: "system-ui, -apple-system, sans-serif",
-      backgroundColor: C.bg,
-      isolation: 'isolate',
     }}>
-      {/* Fixed stadium backdrop — blurred photo with heavy navy overlay.
-          Lives in its own layer so the blur filter only hits the image,
-          not the foreground UI. */}
-      <div
-        aria-hidden
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: -2,
-          backgroundImage: `url('/hero/stadium-roof-1168.jpg')`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center top',
-          backgroundRepeat: 'no-repeat',
-          filter: 'blur(8px) brightness(0.55) saturate(1.1)',
-          transform: 'scale(1.08)', // hide blur edge bleed
-          willChange: 'transform',
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: -1,
-          background:
-            'linear-gradient(180deg, rgba(10,15,46,0.72) 0%, rgba(10,15,46,0.86) 55%, rgba(10,15,46,0.95) 100%)',
-        }}
-      />
       <AuthHeader />
       <AuthModal 
         isOpen={showAuthModal} 

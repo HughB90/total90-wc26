@@ -488,7 +488,6 @@ export default function ScoresPage() {
 
   return (
     <div style={{
-      backgroundColor: C.bg,
       minHeight: '100vh',
       color: C.text,
       fontFamily: 'system-ui, -apple-system, sans-serif',
