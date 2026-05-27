@@ -1293,7 +1293,11 @@ export default function BracketPage() {
   }
 
   return (
-    <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+    <div style={{
+      minHeight: '100vh',
+      color: C.text,
+      fontFamily: "system-ui, -apple-system, sans-serif",
+    }}>
       <AuthHeader />
       <AuthModal 
         isOpen={showAuthModal} 
@@ -1317,10 +1321,38 @@ export default function BracketPage() {
           </div>
         )}
 
-        {/* Page Header */}
-        <div style={{ marginBottom: '0.75rem' }}>
-          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.4rem', margin: 0 }}>🏆 Bracket Challenge</h1>
-          <p style={{ color: C.muted, fontSize: '0.8rem', margin: '0.2rem 0 0' }}>World Cup 2026 · Make your picks</p>
+        {/* Page header — sits on top of the page-level stadium background */}
+        <div style={{ marginBottom: '0.85rem' }}>
+          <div style={{
+            color: C.gold,
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            opacity: 0.9,
+            marginBottom: '0.3rem',
+            textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          }}>
+            World Cup 2026 · Bracket Challenge
+          </div>
+          <h1 style={{
+            color: '#F0F4FF',
+            fontWeight: 900,
+            fontSize: '1.5rem',
+            margin: 0,
+            lineHeight: 1.15,
+            textShadow: '0 2px 10px rgba(0,0,0,0.6)',
+          }}>
+            🏆 Make your picks
+          </h1>
+          <p style={{
+            color: '#A8B5DD',
+            fontSize: '0.8rem',
+            margin: '0.3rem 0 0',
+            textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          }}>
+            Lock in your groups, knockouts, and champion. Compete globally and in private leagues.
+          </p>
         </div>
 
         {/* Global standings strip */}

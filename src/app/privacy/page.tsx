@@ -1,6 +1,6 @@
 export default function PrivacyPage() {
   return (
-    <div style={{ backgroundColor: '#0A0F2E', minHeight: '100vh', color: '#F0F4FF', fontFamily: 'system-ui, -apple-system, sans-serif', padding: '3rem 1.5rem' }}>
+    <div style={{ minHeight: '100vh', color: '#F0F4FF', fontFamily: 'system-ui, -apple-system, sans-serif', padding: '3rem 1.5rem' }}>
       <div style={{ maxWidth: '720px', margin: '0 auto' }}>
         <h1 style={{ color: '#00E676', fontWeight: 900, fontSize: '1.75rem', marginBottom: '0.5rem' }}>Privacy Policy</h1>
         <p style={{ color: '#8899CC', fontSize: '0.85rem', marginBottom: '2rem' }}>Last updated: May 2026 · Total90 LLC</p>

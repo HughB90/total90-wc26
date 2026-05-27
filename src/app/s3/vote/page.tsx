@@ -37,7 +37,7 @@ export default function VotePage() {
   }, [])
 
   return (
-    <div style={{ backgroundColor: '#0A0F2E', minHeight: '100vh', color: '#F0F4FF', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ minHeight: '100vh', color: '#F0F4FF', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       {/* Nav */}
       <nav style={{ position: 'sticky', top: 0, zIndex: 50, backgroundColor: 'rgba(10,15,46,0.97)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #1E3A6E', padding: '0.6rem 1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>

@@ -92,7 +92,7 @@ const cards: CardItem[] = [
 
 export default function HomePage() {
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0A0F2E' }}>
+    <div style={{ minHeight: '100vh' }}>
       <main style={{ maxWidth: '900px', margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
 
         {/* Hero */}
