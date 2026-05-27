@@ -154,7 +154,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             backgroundSize: 'cover',
             backgroundPosition: 'center top',
             backgroundRepeat: 'no-repeat',
-            filter: 'blur(4px) brightness(0.7) saturate(1.1)',
+            filter: 'blur(2px) brightness(0.7) saturate(1.1)',
             transform: 'scale(1.08)',
             willChange: 'transform',
             pointerEvents: 'none',
