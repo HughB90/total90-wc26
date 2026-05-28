@@ -96,7 +96,10 @@ export default function NewsPage() {
             ⚽ World Cup 2026 Intelligence
           </h1>
           <p style={{ color: '#8899CC', fontSize: '0.85rem', margin: 0 }}>
-            Powered by Grok · Updates every 2 hours · {articles.length} articles
+            {articles.length} {articles.length === 1 ? 'article' : 'articles'}
+            {lastFetch && (
+              <> · Last updated {new Date(lastFetch).toLocaleDateString("en-US", {month:"short",day:"numeric"})} at {new Date(lastFetch).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}</>
+            )}
           </p>
         </div>
 
@@ -104,7 +107,7 @@ export default function NewsPage() {
           <p style={{ color: '#8899CC', textAlign: 'center', padding: '3rem 0' }}>Loading…</p>
         ) : articles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 0' }}>
-            <p style={{ color: '#8899CC', marginBottom: '1rem' }}>No articles yet. Click Refresh to fetch from Grok.</p>
+            <p style={{ color: '#8899CC', marginBottom: '1rem' }}>No articles yet. Click Refresh to load the latest.</p>
             <button
               onClick={triggerFetch}
               disabled={fetching}
