@@ -80,9 +80,7 @@ Return as JSON array, no markdown:
     }))
 
     await (supabase.from('news_articles' as never) as never as { insert: (r: unknown) => Promise<unknown> }).insert(rows)
-    await (supabase.from('news_articles' as never) as never as { delete: () => { lt: (col: string, val: string) => Promise<unknown> } })
-      .delete()
-      .lt('published_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+    // 48h auto-delete removed 2026-05-27 — curated articles should persist.
 
     return NextResponse.json({ ok: true, inserted: rows.length })
   } catch (err: unknown) {
