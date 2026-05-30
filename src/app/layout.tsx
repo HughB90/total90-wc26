@@ -198,7 +198,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             whiteSpace: 'nowrap',
           }}
         >
-          ⚽ App
+          ⚽ Get the Fantasy League App →
         </a>
       <Analytics />
       <SpeedInsights />
