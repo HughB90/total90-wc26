@@ -27,6 +27,7 @@ import GlobalLeaderboardPill from '@/components/predictor/GlobalLeaderboardPill'
 import PicksTabContent from '@/components/predictor/PicksTabContent'
 import LeaguesTabContent from '@/components/predictor/LeaguesTabContent'
 import ScoringRulesContent from '@/components/predictor/ScoringRulesContent'
+import HowToContent from '@/components/predictor/HowToContent'
 
 const C = {
   bg: '#0A0F2E',
@@ -191,9 +192,12 @@ function PredictorHome() {
       {activeTab === 'scoring' && (
         <ScoringRulesContent />
       )}
+      {activeTab === 'howto' && (
+        <HowToContent />
+      )}
 
-      {/* Anon nudge (only on tabs that actually require auth — not Scoring) */}
-      {authedReady && !me && activeTab !== 'scoring' && (
+      {/* Anon nudge (only on tabs that actually require auth — not Scoring/How To) */}
+      {authedReady && !me && activeTab !== 'scoring' && activeTab !== 'howto' && (
         <div style={{
           marginTop: '1.5rem',
           padding: '1rem 1.25rem',

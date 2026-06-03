@@ -14,16 +14,17 @@ const C = {
   muted: '#8899CC',
 }
 
-export type PredictorTabId = 'leaderboard' | 'picks' | 'leagues' | 'scoring'
+export type PredictorTabId = 'leaderboard' | 'picks' | 'leagues' | 'scoring' | 'howto'
 
 const TAB_LABELS: Record<PredictorTabId, string> = {
   leaderboard: 'Leaderboard',
   picks: 'Picks',
   leagues: 'Leagues',
   scoring: 'Scoring',
+  howto: 'How To',
 }
 
-export const PREDICTOR_TAB_IDS: PredictorTabId[] = ['leaderboard', 'picks', 'leagues', 'scoring']
+export const PREDICTOR_TAB_IDS: PredictorTabId[] = ['leaderboard', 'picks', 'leagues', 'scoring', 'howto']
 
 export function parseTab(raw: string | null | undefined): PredictorTabId {
   return PREDICTOR_TAB_IDS.includes(raw as PredictorTabId) ? (raw as PredictorTabId) : 'leaderboard'
