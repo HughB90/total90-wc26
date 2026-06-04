@@ -222,3 +222,78 @@ agree. For R5–R8 a row where `exact = 0, result = 0, scorer = 2` will read as
 `red` in the generated column but `green` in the library output. Callers that
 need the library's view (e.g. picks-tab tile coloring) should compute it from
 the breakdown rather than reading the generated column directly.
+
+---
+
+## Wiring (2026-06-04)
+
+The pure scoring engine (`src/lib/predictor/scoring.ts`) is exposed to
+the database via a single admin-gated endpoint, plus a cache refresh
+that keeps the per-profile leaderboard totals in sync.
+
+### Endpoint
+
+```
+POST /api/predictor/score-match
+Headers: x-admin-key: <PREDICTOR_ADMIN_KEY>
+Body:    { "match_id": "<text>" }
+```
+
+Auth mirrors `/api/admin/bracket/recompute` (its own env var,
+`PREDICTOR_ADMIN_KEY`; do not reuse the bracket key). Unset env → 503.
+Wrong header → 401.
+
+### Operational flow
+
+1. Match is played. An admin updates `predictor_matches`:
+   - `home_score`, `away_score` (90 + ET; ignore shootout score)
+   - For knockouts that went to PKs: `went_to_pks = true`,
+     `pk_winner_team_code = <team_code>`
+   - `goalscorers` jsonb (open-play + ET scorer player_ids; NO shootout)
+   - `status` flipped to `final` (the endpoint doesn't currently gate
+     on status, but UI convention is `final`).
+2. Admin calls `POST /api/predictor/score-match` with the `match_id`.
+3. The endpoint:
+   - Loads the match (404 if missing, 422 if either score is null).
+   - Loads every `predictor_picks` row for that match.
+   - Calls `scorePick()` per pick, upserts into `predictor_scores`
+     keyed by `(profile_id, match_id)`.
+   - For every affected profile, full re-sums their `predictor_scores`
+     rows into `predictor_leaderboard_cache` (per-round buckets +
+     `exact_score_pts_only` tiebreaker + total).
+
+### Idempotency
+
+Safe to re-run. `predictor_scores` upserts replace existing rows.
+The cache refresh is a full re-sum from `predictor_scores`, so a
+partial failure (or a stale cache from a prior bug) self-heals on
+the next call.
+
+### Cache refresh strategy
+
+Per-profile, NOT whole-table. Only profiles that submitted a pick for
+the scored match have their cache row touched. Two concurrent calls
+for different matches that share profiles can race on a profile's
+cache row — last write wins, but because both writes derive from the
+same `predictor_scores` source they converge to the same value.
+
+### Leaderboard read path
+
+`GET /api/predictor/leaderboard` reads `total_pts` (plus the
+`winner_pick_pts` bonus) directly from `predictor_leaderboard_cache`.
+Tiebreaker ladder for this pass:
+
+1. `total_pts` DESC
+2. `exact_score_pts_only` DESC
+3. `manager_name` ASC
+
+### Known gaps
+
+- **`winner_pick_pts` flow is not wired here.** Awarding the +40
+  tournament-winner bonus is a separate (once-per-tournament) flow.
+  This endpoint preserves any existing `winner_pick_pts` value on
+  upsert; new cache rows start at 0.
+- **Tiebreaker #3 ("most correct results") is not cached yet.** A
+  future migration will add `correct_results_count` to
+  `predictor_leaderboard_cache`; until then we fall back to alphabetical
+  manager name as the third sort key.

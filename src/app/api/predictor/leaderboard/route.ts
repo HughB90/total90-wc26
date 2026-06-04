@@ -20,10 +20,21 @@
  * `total_players` kept as an alias for `total_count` so older callers
  * that still read `total_players` don't break.
  *
- * NOTE — Scoring engine (Wave D) is NOT shipped yet. All `total` values
- * are 0 and ranks are assigned by stable manager_name order. The UI
- * must render the 0s without breaking. When the engine ships, swap the
- * score source to `predictor_scores` aggregated per profile.
+ * Scoring source (2026-06-04, Wave D wired):
+ *   `total` is read from `predictor_leaderboard_cache.total_pts`.
+ *   That cache is refreshed by POST /api/predictor/score-match every
+ *   time a match is scored. Profiles with no cache row (have picks but
+ *   no match has been scored yet) appear with total = 0.
+ *
+ * Tiebreaker ladder (this pass):
+ *   1. total_pts DESC
+ *   2. exact_score_pts_only DESC  (sum of pure exact-score points,
+ *      tracked separately in the cache)
+ *   3. manager_name ASC (stable alphabetical)
+ *
+ * TODO (next migration): add `correct_results_count` to
+ * predictor_leaderboard_cache so we can implement tiebreaker #3 per
+ * the full spec ("most correct results") before falling back to name.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -36,6 +47,13 @@ interface ProfileRow {
   id: string
   manager_name: string | null
   first_name: string | null
+}
+
+interface CacheRow {
+  profile_id: string
+  total_pts: number | null
+  exact_score_pts_only: number | null
+  winner_pick_pts: number | null
 }
 
 function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
@@ -74,8 +92,6 @@ export async function GET(req: NextRequest) {
     profileIds = (members ?? []).map((m) => m.profile_id)
   } else {
     // Global: every profile that has at least one predictor pick OR a winner pick.
-    // Until scoring is wired, this gives us a real list (vs. dumping every profile
-    // in the system).
     const [pickProfiles, winnerProfiles] = await Promise.all([
       sb.from('predictor_picks').select('profile_id'),
       sb.from('predictor_winner_picks').select('profile_id'),
@@ -98,23 +114,57 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const { data: profiles, error: pErr } = await sb
-    .from('profiles')
-    .select('id, manager_name, first_name')
-    .in('id', profileIds)
+  // Pull profiles + cache rows in parallel.
+  const [profilesRes, cacheRes] = await Promise.all([
+    sb.from('profiles').select('id, manager_name, first_name').in('id', profileIds),
+    sb
+      .from('predictor_leaderboard_cache')
+      .select('profile_id, total_pts, exact_score_pts_only, winner_pick_pts')
+      .in('profile_id', profileIds),
+  ])
 
-  if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
+  if (profilesRes.error) {
+    return NextResponse.json({ error: profilesRes.error.message }, { status: 500 })
+  }
+  if (cacheRes.error) {
+    return NextResponse.json({ error: cacheRes.error.message }, { status: 500 })
+  }
 
-  const ranked = (profiles ?? [])
-    .map((p: ProfileRow) => ({
-      profile_id: p.id,
-      manager_name: p.manager_name ?? p.first_name ?? 'Manager',
-      first_name: p.first_name ?? '',
-      total: 0, // TODO Wave D: aggregate predictor_scores.total_pts here
+  // Index cache by profile_id; missing profiles = 0 across the board.
+  const cacheByProfile = new Map<string, CacheRow>()
+  for (const c of (cacheRes.data ?? []) as CacheRow[]) {
+    cacheByProfile.set(c.profile_id, c)
+  }
+
+  const ranked = ((profilesRes.data ?? []) as ProfileRow[])
+    .map((p) => {
+      const cache = cacheByProfile.get(p.id)
+      const matchTotal = cache?.total_pts ?? 0
+      const winnerBonus = cache?.winner_pick_pts ?? 0
+      return {
+        profile_id: p.id,
+        manager_name: p.manager_name ?? p.first_name ?? 'Manager',
+        first_name: p.first_name ?? '',
+        total: matchTotal + winnerBonus,
+        // Tiebreaker buckets (not exposed in response shape).
+        _exact: cache?.exact_score_pts_only ?? 0,
+      }
+    })
+    .sort((a, b) => {
+      // 1. total DESC
+      if (b.total !== a.total) return b.total - a.total
+      // 2. exact_score_pts_only DESC
+      if (b._exact !== a._exact) return b._exact - a._exact
+      // 3. manager_name ASC (stable alphabetical)
+      return a.manager_name.localeCompare(b.manager_name)
+    })
+    .map((r, i) => ({
+      rank: i + 1,
+      profile_id: r.profile_id,
+      manager_name: r.manager_name,
+      first_name: r.first_name,
+      total: r.total,
     }))
-    // Stable ordering by manager_name so the zero-tie list is deterministic
-    .sort((a, b) => a.manager_name.localeCompare(b.manager_name))
-    .map((r, i) => ({ rank: i + 1, ...r }))
 
   // Legacy `limit` mode: return the first N rows, ignore page param.
   // Otherwise standard pagination starting at page 1.
