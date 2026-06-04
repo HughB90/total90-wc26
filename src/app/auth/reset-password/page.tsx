@@ -44,8 +44,18 @@ function ResetPasswordInner() {
   )
 
   useEffect(() => {
-    // Wait for Supabase to process the recovery token in the URL fragment.
+    // Supabase's legacy recovery flow lands us here with the session encoded
+    // in the URL hash fragment:
+    //   #access_token=...&refresh_token=...&expires_in=...&token_type=bearer&type=recovery
+    //
+    // @supabase/ssr's createBrowserClient uses cookie storage and does NOT
+    // auto-parse window.location.hash the way the vanilla supabase-js client
+    // does. So we have to do it ourselves: pull the tokens out and call
+    // setSession() explicitly, which writes the sb-* cookies and fires
+    // SIGNED_IN. Then we wipe the hash so a refresh doesn't try to re-process
+    // an already-used token.
     let cancelled = false
+
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return
       if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
@@ -53,12 +63,58 @@ function ResetPasswordInner() {
         setReady(true)
       }
     })
-    // Also check whether we already have a session (e.g. user revisits the page)
-    supabase.auth.getSession().then(({ data }) => {
+
+    async function bootstrap() {
+      // 1. Already have a session (page revisited after success, or cookies live)?
+      const existing = await supabase.auth.getSession()
       if (cancelled) return
-      if (data.session) setHasSession(true)
+      if (existing.data.session) {
+        setHasSession(true)
+        setReady(true)
+        return
+      }
+
+      // 2. Try to recover from the URL hash fragment.
+      if (typeof window !== 'undefined' && window.location.hash.length > 1) {
+        const params = new URLSearchParams(window.location.hash.slice(1))
+        const access_token = params.get('access_token')
+        const refresh_token = params.get('refresh_token')
+        const type = params.get('type')
+        const hashErr = params.get('error_description') || params.get('error')
+
+        if (hashErr) {
+          setReady(true)
+          return
+        }
+        if (access_token && refresh_token && type === 'recovery') {
+          const { error: setErr } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          })
+          if (cancelled) return
+          if (!setErr) {
+            setHasSession(true)
+            // Strip the hash so a reload doesn't replay a now-used token.
+            try {
+              window.history.replaceState(
+                null,
+                '',
+                window.location.pathname + window.location.search
+              )
+            } catch {
+              /* non-fatal */
+            }
+          }
+          setReady(true)
+          return
+        }
+      }
+
+      // 3. No session, no recoverable hash — link is invalid/expired.
       setReady(true)
-    })
+    }
+    void bootstrap()
+
     return () => {
       cancelled = true
       sub.subscription.unsubscribe()
