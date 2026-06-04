@@ -1,15 +1,21 @@
 -- ============================================================================
--- WC26 Predictor — Scoring v2 (canonical rules)
+-- WC26 Predictor — Scoring v2 (canonical rules, bundled-pick model)
 -- Date: 2026-06-03
 -- Branch: feat/predictor-scoring-engine-v2
 -- Spec:  docs/PREDICTOR-SCORING-RULES.md
 -- ----------------------------------------------------------------------------
--- Changes:
+-- Hugh clarified 2026-06-03: in knockouts, a predicted draw scoreline IS the
+-- prediction that the match goes to PKs, bundled with which team wins on PKs
+-- (via pk_advance_team_id). There is NO separate +3 advancer_pk_pts bonus.
+-- The PK side is folded into the existing exact/result point types.
+--
+-- Changes vs the original phase-3 schema:
 --   1. predictor_picks: add `pk_advance_team_id` (canonical replacement for
 --      legacy `if_draw_winner`; both coexist for now).
---   2. predictor_scores: add `advancer_pk_pts`; rebuild `total_pts` and
---      `outcome_color` generated columns to include it.
---   3. profiles: add `display_name` and `team_name` (schema only, no UI yet).
+--   2. profiles: add `display_name` and `team_name` (schema only, no UI yet).
+--
+-- predictor_scores generated columns from 2026-05-19-predictor-phase-3.sql
+-- remain authoritative and are NOT modified by this migration.
 --
 -- Idempotent: safe to re-run.
 -- ============================================================================
@@ -20,44 +26,12 @@ alter table predictor_picks
 
 comment on column predictor_picks.pk_advance_team_id is
   'Team code the user expects to advance on penalties when their predicted '
-  'scoreline is a draw (R4–R8 knockouts only). Required for +3 PK-advance '
-  'bonus. Canonical going forward; legacy `if_draw_winner` retained for '
-  'back-compat.';
+  'scoreline is a draw (R4–R8 knockouts only). Bundled with the draw '
+  'scoreline as a single "this match goes to PKs and X wins the shootout" '
+  'prediction. Canonical going forward; legacy `if_draw_winner` retained '
+  'for back-compat.';
 
--- ---- 2. predictor_scores: add advancer_pk_pts, rebuild generated cols ----
--- Drop generated columns first (cannot ALTER generated expression in place).
-alter table predictor_scores drop column if exists total_pts;
-alter table predictor_scores drop column if exists outcome_color;
-
-alter table predictor_scores
-  add column if not exists advancer_pk_pts int not null default 0;
-
-comment on column predictor_scores.advancer_pk_pts is
-  '+3 if predicted draw + match went to PKs + pk_advance_team_id matched '
-  'actual PK winner. R4–R8 only. Else 0.';
-
--- Rebuild generated total_pts (now includes advancer_pk_pts).
-alter table predictor_scores
-  add column total_pts int
-    generated always as
-      ((exact_pts + result_pts + scorer_pts + advancer_pk_pts) * star_multiplier)
-    stored;
-
--- Rebuild generated outcome_color.
--- teal  : exact_pts > 0
--- green : any other positive component (result, advancer_pk, scorer)
--- red   : all components zero (i.e. pick exists, scored nothing)
-alter table predictor_scores
-  add column outcome_color text
-    generated always as (
-      case
-        when exact_pts > 0 then 'teal'
-        when (result_pts > 0 or advancer_pk_pts > 0 or scorer_pts > 0) then 'green'
-        else 'red'
-      end
-    ) stored;
-
--- ---- 3. profiles: add display_name + team_name (schema only) -------------
+-- ---- 2. profiles: add display_name + team_name (schema only) -------------
 alter table profiles
   add column if not exists display_name text,
   add column if not exists team_name    text;
