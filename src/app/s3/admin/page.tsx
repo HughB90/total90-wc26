@@ -108,7 +108,7 @@ export default function S3AdminPage() {
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (password === 'total90admin2026') {
+    if (password === 'Total90Ba!!') {
       setAuthed(true);
       setPasswordError(false);
     } else {
