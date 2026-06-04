@@ -5,21 +5,39 @@
  *
  * Two ways a user can land here with a valid recovery session:
  *
- *  1. PKCE flow (current default): /auth/callback exchanged a `?code=`
- *     server-side and the `sb-*` cookies are already live. `getSession()`
- *     returns the session immediately.
+ *  1. Legacy hash-fragment flow (current default for this project): the URL
+ *     contains `#access_token=...&refresh_token=...&type=recovery`. We parse
+ *     it ourselves and call `setSession({ access_token, refresh_token })`
+ *     because @supabase/ssr's createBrowserClient (cookie storage) does NOT
+ *     auto-detect tokens in window.location.hash the way vanilla
+ *     @supabase/supabase-js does.
  *
- *  2. Legacy hash-fragment flow: the URL still contains
- *     `#access_token=...&type=recovery`; the browser Supabase client
- *     picks that up and fires `PASSWORD_RECOVERY`.
+ *  2. PKCE flow (if Supabase migrates this project later): /auth/callback
+ *     exchanges the `?code=` server-side and the `sb-*` cookies are already
+ *     live by the time we land here. getSession() returns the session.
  *
- * Either way we then call `updateUser({ password })` and redirect to
- * /bracket.
+ * Either way we then call `updateUser({ password })` and redirect to /bracket.
+ *
+ * Styled to match the Bracket Challenge AuthForm modal — same palette,
+ * same inputs, same gold CTA button.
  */
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
+
+const C = {
+  bg: '#0A0F2E',
+  card: '#0F1C4D',
+  border: '#1E3A6E',
+  gold: '#FBBF24',
+  text: '#F0F4FF',
+  muted: '#8899CC',
+  inputBg: '#162040',
+  errBg: 'rgba(239, 68, 68, 0.12)',
+  errBorder: 'rgba(239, 68, 68, 0.45)',
+  errText: '#fca5a5',
+}
 
 export default function ResetPasswordPage() {
   return (
@@ -44,16 +62,6 @@ function ResetPasswordInner() {
   )
 
   useEffect(() => {
-    // Supabase's legacy recovery flow lands us here with the session encoded
-    // in the URL hash fragment:
-    //   #access_token=...&refresh_token=...&expires_in=...&token_type=bearer&type=recovery
-    //
-    // @supabase/ssr's createBrowserClient uses cookie storage and does NOT
-    // auto-parse window.location.hash the way the vanilla supabase-js client
-    // does. So we have to do it ourselves: pull the tokens out and call
-    // setSession() explicitly, which writes the sb-* cookies and fires
-    // SIGNED_IN. Then we wipe the hash so a refresh doesn't try to re-process
-    // an already-used token.
     let cancelled = false
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
@@ -65,7 +73,7 @@ function ResetPasswordInner() {
     })
 
     async function bootstrap() {
-      // 1. Already have a session (page revisited after success, or cookies live)?
+      // 1. Already have a session?
       const existing = await supabase.auth.getSession()
       if (cancelled) return
       if (existing.data.session) {
@@ -94,7 +102,6 @@ function ResetPasswordInner() {
           if (cancelled) return
           if (!setErr) {
             setHasSession(true)
-            // Strip the hash so a reload doesn't replay a now-used token.
             try {
               window.history.replaceState(
                 null,
@@ -119,7 +126,7 @@ function ResetPasswordInner() {
       cancelled = true
       sub.subscription.unsubscribe()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -140,72 +147,191 @@ function ResetPasswordInner() {
       setError(upErr.message)
       return
     }
-    // Redirect into the app. The Supabase session cookies are already live.
     router.replace('/bracket')
     router.refresh()
   }
 
+  const inp: React.CSSProperties = {
+    width: '100%',
+    backgroundColor: C.inputBg,
+    border: `1px solid ${C.border}`,
+    borderRadius: '0.625rem',
+    padding: '0.7rem 1rem',
+    color: C.text,
+    fontSize: '0.9rem',
+    outline: 'none',
+    boxSizing: 'border-box',
+    fontFamily: 'inherit',
+  }
+
+  const labelStyle: React.CSSProperties = {
+    color: C.muted,
+    fontSize: '0.78rem',
+    display: 'block',
+    marginBottom: '0.4rem',
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-800 to-cyan-900 flex items-center justify-center p-4">
-      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-white mb-2">Set a New Password</h1>
-        <p className="text-emerald-200 mb-6">
-          Choose a new password for your World Cup account.
-        </p>
-
-        {!ready ? (
-          <p className="text-emerald-200 text-sm">Verifying recovery link…</p>
-        ) : !hasSession ? (
-          <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 text-red-200 text-sm">
-            This reset link is invalid or has expired. Request a new one from
-            the <a href="/auth/signin" className="underline">sign-in page</a>.
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-emerald-100 mb-1">
-                New password
-              </label>
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="••••••••"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-emerald-100 mb-1">
-                Confirm new password
-              </label>
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                className="w-full px-4 py-2 bg-white/10 border border-white/30 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                placeholder="••••••••"
-              />
-            </div>
-
-            {error && (
-              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 text-red-200 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-500/50 text-white font-semibold py-3 rounded-lg transition-colors"
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        padding: '2.5rem 1.25rem 4rem',
+      }}
+    >
+      <div style={{ width: '100%', maxWidth: '380px' }}>
+        <div
+          style={{
+            backgroundColor: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: '1rem',
+            padding: '1.75rem 1.5rem',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+          }}
+        >
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <img
+              src="/total90-logo-green.png"
+              alt=""
+              style={{
+                width: '56px',
+                height: '56px',
+                objectFit: 'contain',
+                display: 'block',
+                margin: '0 auto 0.75rem',
+              }}
+            />
+            <h1
+              style={{
+                color: C.gold,
+                fontWeight: 900,
+                fontSize: '1.5rem',
+                margin: '0 0 0.25rem',
+              }}
             >
-              {loading ? 'Saving…' : 'Update Password'}
-            </button>
-          </form>
-        )}
+              Set a New Password
+            </h1>
+            <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
+              Choose a new password for your World Cup account.
+            </p>
+          </div>
+
+          {!ready ? (
+            <p
+              style={{
+                color: C.muted,
+                fontSize: '0.85rem',
+                textAlign: 'center',
+                margin: '0.5rem 0',
+              }}
+            >
+              Verifying recovery link…
+            </p>
+          ) : !hasSession ? (
+            <div
+              style={{
+                backgroundColor: C.errBg,
+                border: `1px solid ${C.errBorder}`,
+                borderRadius: '0.625rem',
+                padding: '0.875rem 1rem',
+                color: C.errText,
+                fontSize: '0.85rem',
+                lineHeight: 1.45,
+              }}
+            >
+              This reset link is invalid or has expired. Request a new one from
+              the{' '}
+              <a
+                href="/bracket"
+                style={{ color: C.gold, textDecoration: 'underline' }}
+              >
+                bracket page
+              </a>{' '}
+              by clicking <em>Forgot password?</em> on the sign-in modal.
+            </div>
+          ) : (
+            <form
+              onSubmit={handleSubmit}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+            >
+              <div>
+                <label style={labelStyle}>New password</label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  style={inp}
+                  placeholder="••••••••"
+                />
+                <p
+                  style={{
+                    color: '#4A6080',
+                    fontSize: '0.72rem',
+                    margin: '0.35rem 0 0',
+                  }}
+                >
+                  8+ characters.
+                </p>
+              </div>
+              <div>
+                <label style={labelStyle}>Confirm new password</label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  required
+                  style={inp}
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {error && (
+                <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  backgroundColor: loading ? C.inputBg : C.gold,
+                  color: '#0A0F2E',
+                  fontWeight: 800,
+                  fontSize: '1rem',
+                  padding: '0.875rem',
+                  borderRadius: '0.875rem',
+                  border: 'none',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'inherit',
+                  marginTop: '0.25rem',
+                }}
+              >
+                {loading ? 'Saving…' : 'Update Password →'}
+              </button>
+
+              <div style={{ textAlign: 'center', marginTop: '0.25rem' }}>
+                <a
+                  href="/bracket"
+                  style={{
+                    color: C.muted,
+                    fontSize: '0.78rem',
+                    textDecoration: 'underline',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  ← Back to bracket
+                </a>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   )
