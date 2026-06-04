@@ -30,8 +30,6 @@ interface RuleRow {
 const PER_MATCH: RuleRow[] = [
   { label: 'Exact score',         value: '10 pts' },
   { label: 'Correct result',      value: '4 pts',  hint: 'W/D/L without the exact score' },
-  { label: 'Goal difference',     value: '+2 pts', hint: 'Right margin, wrong scoreline' },
-  { label: 'Both teams scored',   value: '+1 pt',  hint: 'Correctly called BTTS' },
 ]
 
 const KNOCKOUTS: RuleRow[] = [
