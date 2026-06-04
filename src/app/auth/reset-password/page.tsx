@@ -3,11 +3,18 @@
 /**
  * /auth/reset-password — completes a Supabase Auth password recovery.
  *
- * The recovery email link from Supabase redirects here with a URL fragment
- * containing the recovery token (e.g. `#access_token=...&type=recovery`).
- * The Supabase JS client picks that up automatically and establishes a
- * temporary session. We then call `updateUser({ password })` to set the new
- * password and redirect to /bracket.
+ * Two ways a user can land here with a valid recovery session:
+ *
+ *  1. PKCE flow (current default): /auth/callback exchanged a `?code=`
+ *     server-side and the `sb-*` cookies are already live. `getSession()`
+ *     returns the session immediately.
+ *
+ *  2. Legacy hash-fragment flow: the URL still contains
+ *     `#access_token=...&type=recovery`; the browser Supabase client
+ *     picks that up and fires `PASSWORD_RECOVERY`.
+ *
+ * Either way we then call `updateUser({ password })` and redirect to
+ * /bracket.
  */
 
 import { Suspense, useEffect, useState } from 'react'

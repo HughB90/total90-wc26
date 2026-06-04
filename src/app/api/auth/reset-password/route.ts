@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
     const admin = createAdminSupabase()
     // resetPasswordForEmail dispatches the Supabase-templated recovery mail.
     await admin.auth.resetPasswordForEmail(email.toLowerCase().trim(), {
-      redirectTo: `${SITE_BASE}/auth/reset-password`,
+      // Route through /auth/callback so the PKCE `?code=` is exchanged for a
+      // real session server-side before the user lands on the form. The
+      // callback forwards to /auth/reset-password on `type=recovery`.
+      redirectTo: `${SITE_BASE}/auth/callback?type=recovery`,
     })
 
     return NextResponse.json({ ok: true })
