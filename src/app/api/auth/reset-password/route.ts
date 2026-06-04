@@ -23,10 +23,16 @@ export async function POST(req: NextRequest) {
     const admin = createAdminSupabase()
     // resetPasswordForEmail dispatches the Supabase-templated recovery mail.
     await admin.auth.resetPasswordForEmail(email.toLowerCase().trim(), {
-      // Route through /auth/callback so the PKCE `?code=` is exchanged for a
-      // real session server-side before the user lands on the form. The
-      // callback forwards to /auth/reset-password on `type=recovery`.
-      redirectTo: `${SITE_BASE}/auth/callback?type=recovery`,
+      // Point straight at the form. Supabase's legacy verify flow appends
+      // the recovery session as a URL fragment (#access_token=...&type=recovery)
+      // which only the browser-side Supabase client can read — a server
+      // redirect through /auth/callback would strip it. The page's
+      // onAuthStateChange picks up PASSWORD_RECOVERY when the client sees
+      // the fragment.
+      //
+      // /auth/callback is still wired up to handle the PKCE `?code=` flow
+      // if Supabase ever switches our project's email templates over.
+      redirectTo: `${SITE_BASE}/auth/reset-password`,
     })
 
     return NextResponse.json({ ok: true })
