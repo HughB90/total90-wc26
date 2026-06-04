@@ -21,6 +21,7 @@ export async function GET() {
               id: profile.id,
               account_id: profile.account_id,
               first_name: profile.first_name,
+              last_name: profile.last_name,
               manager_name: profile.manager_name,
               display_name: profile.display_name,
               is_owner: profile.is_owner,

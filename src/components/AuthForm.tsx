@@ -16,6 +16,7 @@ type Mode = 'signin' | 'create' | 'reset' | 'setup-profile'
 export interface AuthFormProfile {
   id: string
   first_name: string
+  last_name?: string | null
   manager_name: string
   display_name: string | null
   is_owner: boolean
@@ -38,6 +39,7 @@ export default function AuthForm({
 }: AuthFormProps) {
   const [mode, setMode] = useState<Mode>(defaultMode)
   const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [managerName, setManagerName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -117,9 +119,12 @@ export default function AuthForm({
         !email.trim() ||
         !password ||
         !firstName.trim() ||
+        !lastName.trim() ||
         !managerName.trim()
       ) {
-        setError('Email, password, first name, and team name are required.')
+        setError(
+          'Email, password, first name, last name, and team name are required.'
+        )
         return
       }
       if (password.length < 8) {
@@ -134,6 +139,7 @@ export default function AuthForm({
           email: email.trim(),
           password,
           first_name: firstName.trim(),
+          last_name: lastName.trim(),
           manager_name: managerName.trim(),
         }),
       })
@@ -154,8 +160,8 @@ export default function AuthForm({
     }
 
     if (mode === 'setup-profile') {
-      if (!firstName.trim() || !managerName.trim()) {
-        setError('First name and team name are required.')
+      if (!firstName.trim() || !lastName.trim() || !managerName.trim()) {
+        setError('First name, last name, and team name are required.')
         return
       }
       setLoading(true)
@@ -167,6 +173,7 @@ export default function AuthForm({
         credentials: 'include',
         body: JSON.stringify({
           first_name: firstName.trim(),
+          last_name: lastName.trim(),
           manager_name: managerName.trim(),
           is_owner: true,
         }),
@@ -370,6 +377,24 @@ export default function AuthForm({
                   placeholder="Your first name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    color: C.muted,
+                    fontSize: '0.78rem',
+                    display: 'block',
+                    marginBottom: '0.4rem',
+                  }}
+                >
+                  Last Name
+                </label>
+                <input
+                  style={inp}
+                  placeholder="Your last name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                 />
               </div>
               <div>

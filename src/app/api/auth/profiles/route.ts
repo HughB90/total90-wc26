@@ -27,7 +27,7 @@ export async function GET() {
     const admin = createAdminSupabase()
     const { data: profiles, error } = await admin
       .from('profiles')
-      .select('id, first_name, manager_name, display_name, is_owner, created_at')
+      .select('id, first_name, last_name, manager_name, display_name, is_owner, created_at')
       .eq('account_id', userId)
       .is('deleted_at', null)
       .order('is_owner', { ascending: false })
@@ -53,8 +53,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { first_name, pin, manager_name, display_name, is_owner: wantOwner } = body as {
+    const {
+      first_name,
+      last_name,
+      pin,
+      manager_name,
+      display_name,
+      is_owner: wantOwner,
+    } = body as {
       first_name?: string
+      last_name?: string
       pin?: string
       manager_name?: string
       display_name?: string
@@ -64,6 +72,15 @@ export async function POST(req: NextRequest) {
     if (!first_name || !manager_name) {
       return NextResponse.json(
         { error: 'Missing required fields: first_name, manager_name' },
+        { status: 400 }
+      )
+    }
+    // last_name is required for any new profile created via this endpoint
+    // (added 2026-06-04). Existing rows remain blank — we don't backfill or
+    // nag — but every fresh insert must carry one.
+    if (!last_name || !last_name.trim()) {
+      return NextResponse.json(
+        { error: 'Missing required field: last_name' },
         { status: 400 }
       )
     }
@@ -126,12 +143,13 @@ export async function POST(req: NextRequest) {
       .insert({
         account_id: userId,
         first_name: first_name.trim(),
+        last_name: last_name.trim(),
         pin_hash: pinHash,
         manager_name: manager_name.trim(),
         display_name: display_name?.trim() || null,
         is_owner: isOwner,
       })
-      .select('id, first_name, manager_name, display_name, is_owner')
+      .select('id, first_name, last_name, manager_name, display_name, is_owner')
       .single()
 
     if (createError) {

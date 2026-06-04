@@ -24,6 +24,7 @@ export interface ProfileRow {
   id: string
   account_id: string
   first_name: string
+  last_name: string | null
   manager_name: string
   display_name: string | null
   is_owner: boolean
@@ -60,7 +61,7 @@ export async function resolveSession(): Promise<ResolvedSession> {
   if (profileHint) {
     const { data: profile } = await admin
       .from('profiles')
-      .select('id, account_id, first_name, manager_name, display_name, is_owner')
+      .select('id, account_id, first_name, last_name, manager_name, display_name, is_owner')
       .eq('id', profileHint)
       .eq('account_id', userId) // belt-and-suspenders: profile must belong to this user
       .is('deleted_at', null)
@@ -73,7 +74,7 @@ export async function resolveSession(): Promise<ResolvedSession> {
   //    fixes the 2026-05-20 "profile cookie expired" bug pattern.
   const { data: owner } = await admin
     .from('profiles')
-    .select('id, account_id, first_name, manager_name, display_name, is_owner')
+    .select('id, account_id, first_name, last_name, manager_name, display_name, is_owner')
     .eq('account_id', userId)
     .is('deleted_at', null)
     .order('is_owner', { ascending: false })
