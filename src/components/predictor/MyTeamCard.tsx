@@ -7,6 +7,7 @@
  */
 
 import type { CSSProperties } from 'react'
+import { profileFullName } from '@/lib/predictor/display-name'
 
 const C = {
   card: '#0F1C4D',
@@ -41,6 +42,9 @@ export interface MyTeamCardProps {
   managerName: string | null
   // Person's first name (profiles.first_name) e.g. "Hugh".
   firstName: string | null
+  // Person's last name (profiles.last_name) e.g. "Brown". Optional —
+  // legacy profiles created before 2026-06-04 may not have one.
+  lastName: string | null
   total: number                // all-rounds total (0 until Wave D)
   // Per-round scores keyed by round_code; missing keys render as 0.
   perRound: Record<string, number>
@@ -51,6 +55,7 @@ export default function MyTeamCard({
   authed,
   managerName,
   firstName,
+  lastName,
   total,
   perRound,
   winnerScore,
@@ -95,9 +100,12 @@ export default function MyTeamCard({
               whiteSpace: 'nowrap',
               maxWidth: '100%',
             }}>{managerName ?? firstName ?? 'Manager'}</span>
-            {firstName && firstName !== managerName && (
-              <span style={{ color: C.muted, fontSize: '0.78rem' }}>· {firstName}</span>
-            )}
+            {(() => {
+              const sub = profileFullName(firstName, lastName, managerName)
+              return sub ? (
+                <span style={{ color: C.muted, fontSize: '0.78rem' }}>· {sub}</span>
+              ) : null
+            })()}
           </div>
 
           <div style={{

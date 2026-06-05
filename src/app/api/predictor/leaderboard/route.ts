@@ -47,6 +47,7 @@ interface ProfileRow {
   id: string
   manager_name: string | null
   first_name: string | null
+  last_name: string | null
 }
 
 interface CacheRow {
@@ -116,7 +117,7 @@ export async function GET(req: NextRequest) {
 
   // Pull profiles + cache rows in parallel.
   const [profilesRes, cacheRes] = await Promise.all([
-    sb.from('profiles').select('id, manager_name, first_name').in('id', profileIds),
+    sb.from('profiles').select('id, manager_name, first_name, last_name').in('id', profileIds),
     sb
       .from('predictor_leaderboard_cache')
       .select('profile_id, total_pts, exact_score_pts_only, winner_pick_pts')
@@ -145,6 +146,7 @@ export async function GET(req: NextRequest) {
         profile_id: p.id,
         manager_name: p.manager_name ?? p.first_name ?? 'Manager',
         first_name: p.first_name ?? '',
+        last_name: p.last_name ?? '',
         total: matchTotal + winnerBonus,
         // Tiebreaker buckets (not exposed in response shape).
         _exact: cache?.exact_score_pts_only ?? 0,
@@ -163,6 +165,7 @@ export async function GET(req: NextRequest) {
       profile_id: r.profile_id,
       manager_name: r.manager_name,
       first_name: r.first_name,
+      last_name: r.last_name,
       total: r.total,
     }))
 

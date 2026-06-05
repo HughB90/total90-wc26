@@ -45,6 +45,7 @@ interface MeProfile {
   manager_name: string
   display_name: string | null
   first_name: string
+  last_name: string
 }
 
 export default function PredictorPage() {
@@ -91,6 +92,7 @@ function PredictorHome() {
             manager_name: j.profile.manager_name ?? j.profile.first_name ?? 'Manager',
             display_name: j.profile.display_name ?? null,
             first_name: j.profile.first_name ?? '',
+            last_name: j.profile.last_name ?? '',
           })
         } else {
           setMe(null)
@@ -230,6 +232,7 @@ function LeaderboardTab({ authed, authedReady, me }: { authed: boolean; authedRe
         authed={authed}
         managerName={me?.manager_name ?? null}
         firstName={me?.first_name ?? null}
+        lastName={me?.last_name ?? null}
         total={total}
         perRound={perRound}
         winnerScore={winnerScore}
