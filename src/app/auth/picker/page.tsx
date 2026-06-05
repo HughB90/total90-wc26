@@ -3,15 +3,32 @@
 /**
  * /auth/picker — "Who's playing?" Netflix-style profile picker.
  *
- * Owner-only affordances (added 2026-06-04):
- *   - "Edit" pencil on every profile in the account.
- *   - "Delete" trash on every non-owner profile.
- *   - Delete is hidden once Round 1 has started (the server hard-blocks it
- *     anyway with a 409, but we suppress the affordance to avoid confusion).
+ * Owner-only affordances:
+ *   - "Edit" link on every profile in the account.
+ *   - "Delete" button on every non-owner profile (the server hard-blocks
+ *     deletes after R1 lock with a 409).
+ *
+ * Styled with inline styles to match the rest of wc26 (AuthForm,
+ * AuthHeader, reset-password). The project does not load Tailwind.
  */
 
 import { Suspense, useState, useEffect, useCallback } from 'react'
+import type { CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+
+const C = {
+  bg: '#0A0F2E',
+  card: '#0F1C4D',
+  border: '#1E3A6E',
+  borderSoft: '#162040',
+  gold: '#FBBF24',
+  green: '#00E676',
+  text: '#F0F4FF',
+  muted: '#8899CC',
+  red: '#F87171',
+  redBg: 'rgba(239, 68, 68, 0.12)',
+  redBorder: 'rgba(239, 68, 68, 0.45)',
+}
 
 function safeNext(next: string | null): string {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return '/'
@@ -62,8 +79,6 @@ function ProfilePickerInner() {
       }
 
       setProfiles(profilesData.profiles || [])
-      // The caller is considered "the owner" if their active profile is the
-      // owner. Kids signed-in as their own profile can't manage the picker.
       setCallerIsOwner(Boolean(meData?.profile?.is_owner))
     } catch (err) {
       setError('Network error. Please try again.')
@@ -133,93 +148,239 @@ function ProfilePickerInner() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center">
-        <div className="text-white text-xl">Loading profiles...</div>
-      </div>
+      <CenteredShell>
+        <p style={{ color: C.muted, fontSize: '0.95rem' }}>Loading profiles…</p>
+      </CenteredShell>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex items-center justify-center p-4">
-        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-6 text-red-200 max-w-md">
+      <CenteredShell>
+        <div style={{
+          background: C.redBg,
+          border: `1px solid ${C.redBorder}`,
+          borderRadius: '0.625rem',
+          padding: '0.875rem 1rem',
+          color: C.red,
+          fontSize: '0.9rem',
+          maxWidth: 380,
+        }}>
           {error}
         </div>
-      </div>
+      </CenteredShell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black flex flex-col items-center justify-center p-4">
-      <h1 className="text-4xl font-bold text-white mb-8">Who&apos;s playing?</h1>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      padding: '3rem 1.25rem 4rem',
+    }}>
+      <h1 style={{
+        color: C.text,
+        fontSize: '1.8rem',
+        fontWeight: 900,
+        margin: '0 0 0.5rem',
+        textAlign: 'center',
+      }}>
+        Who&apos;s playing?
+      </h1>
+      <p style={{
+        color: C.muted,
+        fontSize: '0.9rem',
+        margin: '0 0 2rem',
+        textAlign: 'center',
+        maxWidth: 380,
+      }}>
+        Pick a profile to continue. Enter the profile&apos;s 4-digit PIN to sign in.
+      </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-4xl">
-        {profiles.map((profile) => (
-          <div
-            key={profile.id}
-            className="group relative bg-gradient-to-br from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/40 hover:to-teal-500/40 border border-white/20 rounded-xl p-6 transition-all"
-          >
-            <button
-              onClick={() => selectProfile(profile.first_name)}
-              className="w-full text-left"
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+        gap: '1rem',
+        width: '100%',
+        maxWidth: 720,
+      }}>
+        {profiles.map((profile) => {
+          const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim()
+          const subtitle = profile.display_name || fullName || profile.first_name
+          return (
+            <div
+              key={profile.id}
+              style={{
+                position: 'relative',
+                background: C.card,
+                border: `1px solid ${C.border}`,
+                borderRadius: '0.875rem',
+                padding: '1rem 0.85rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
             >
-              <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-3xl font-bold">
-                {profile.first_name[0].toUpperCase()}
-              </div>
-
-              <div className="text-white font-semibold text-lg text-center">
-                {profile.display_name || profile.first_name}
-              </div>
-
-              <div className="text-emerald-300 text-sm text-center mt-1">
-                {profile.manager_name}
-              </div>
-
               {profile.is_owner && (
-                <div className="absolute top-2 right-2 bg-yellow-500 text-yellow-900 text-xs font-bold px-2 py-1 rounded">
+                <span style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  background: C.gold,
+                  color: '#0A0F2E',
+                  fontSize: '0.6rem',
+                  fontWeight: 800,
+                  padding: '0.15rem 0.45rem',
+                  borderRadius: '0.3rem',
+                  letterSpacing: '0.04em',
+                }}>
                   OWNER
+                </span>
+              )}
+
+              <button
+                onClick={() => selectProfile(profile.first_name)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  width: '100%',
+                  padding: 0,
+                  fontFamily: 'inherit',
+                  color: C.text,
+                }}
+              >
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: '50%',
+                  background: `linear-gradient(135deg, ${C.gold}, ${C.green})`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#0A0F2E',
+                  fontSize: '1.8rem',
+                  fontWeight: 900,
+                }}>
+                  {profile.first_name[0].toUpperCase()}
+                </div>
+                <div style={{
+                  color: C.text,
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  textAlign: 'center',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {profile.manager_name}
+                </div>
+                <div style={{
+                  color: C.muted,
+                  fontSize: '0.74rem',
+                  textAlign: 'center',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {subtitle}
+                </div>
+              </button>
+
+              {callerIsOwner && (
+                <div style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'center',
+                  borderTop: `1px solid ${C.border}`,
+                  paddingTop: '0.5rem',
+                  width: '100%',
+                  justifyContent: 'center',
+                }}>
+                  <a
+                    href={`/auth/profiles/${profile.id}/edit`}
+                    style={{
+                      color: C.muted,
+                      fontSize: '0.74rem',
+                      textDecoration: 'underline',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    Edit
+                  </a>
+                  {!profile.is_owner && (
+                    <>
+                      <span style={{ color: C.border, fontSize: '0.74rem' }}>·</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteError('')
+                          setConfirmDelete(profile)
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: C.red,
+                          fontSize: '0.74rem',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
-            </button>
+            </div>
+          )
+        })}
 
-            {callerIsOwner && (
-              <div className="mt-3 flex items-center justify-center gap-2">
-                <a
-                  href={`/auth/profiles/${profile.id}/edit`}
-                  className="text-xs text-white/70 hover:text-white underline"
-                  aria-label={`Edit ${profile.first_name}`}
-                >
-                  Edit
-                </a>
-                {!profile.is_owner && (
-                  <>
-                    <span className="text-white/30">·</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteError('')
-                        setConfirmDelete(profile)
-                      }}
-                      className="text-xs text-red-300 hover:text-red-200 underline"
-                      aria-label={`Delete ${profile.first_name}`}
-                    >
-                      🗑 Delete
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
+        {/* Add Profile tile */}
         <a
           href="/auth/profiles/new"
-          className="group relative bg-white/5 hover:bg-white/10 border border-dashed border-white/30 rounded-xl p-6 transition-all hover:scale-105 flex flex-col items-center justify-center"
+          style={{
+            background: 'rgba(255,255,255,0.02)',
+            border: `1px dashed ${C.border}`,
+            borderRadius: '0.875rem',
+            padding: '1rem 0.85rem',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.6rem',
+            color: C.gold,
+            textDecoration: 'none',
+            minHeight: 170,
+            fontFamily: 'inherit',
+          }}
         >
-          <div className="w-20 h-20 mb-3 rounded-full border-2 border-dashed border-white/40 flex items-center justify-center text-white text-4xl">
+          <div style={{
+            width: 64,
+            height: 64,
+            borderRadius: '50%',
+            border: `2px dashed ${C.gold}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: C.gold,
+            fontSize: '2rem',
+            fontWeight: 900,
+          }}>
             +
           </div>
-          <div className="text-white/70 font-semibold text-center">Add Profile</div>
+          <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>Add Profile</div>
         </a>
       </div>
 
@@ -229,7 +390,16 @@ function ProfilePickerInner() {
           router.push('/')
           router.refresh()
         }}
-        className="mt-8 text-white/50 hover:text-white/80 text-sm underline"
+        style={{
+          marginTop: '2rem',
+          background: 'transparent',
+          border: 'none',
+          color: C.muted,
+          fontSize: '0.85rem',
+          textDecoration: 'underline',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
       >
         Sign out
       </button>
@@ -252,41 +422,37 @@ function ProfilePickerInner() {
           <div
             style={{
               width: '100%',
-              maxWidth: '380px',
-              background: '#0F1C4D',
-              border: '1px solid #1E3A6E',
+              maxWidth: 380,
+              background: C.card,
+              border: `1px solid ${C.border}`,
               borderRadius: '0.875rem',
               padding: '1.5rem',
-              color: '#F0F4FF',
+              color: C.text,
               fontFamily: 'inherit',
             }}
           >
-            <h2
-              style={{
-                color: '#FBBF24',
-                fontSize: '1.1rem',
-                fontWeight: 800,
-                margin: '0 0 0.5rem',
-              }}
-            >
+            <h2 style={{
+              color: C.gold,
+              fontSize: '1.1rem',
+              fontWeight: 800,
+              margin: '0 0 0.5rem',
+            }}>
               Delete profile?
             </h2>
-            <p style={{ color: '#8899CC', fontSize: '0.9rem', margin: '0 0 1rem' }}>
+            <p style={{ color: C.muted, fontSize: '0.9rem', margin: '0 0 1rem' }}>
               This will permanently remove{' '}
-              <strong style={{ color: '#F0F4FF' }}>
+              <strong style={{ color: C.text }}>
                 {confirmDelete.display_name || confirmDelete.first_name}
               </strong>{' '}
               and any picks they&apos;ve made. This can&apos;t be undone.
             </p>
 
             {deleteError && (
-              <p
-                style={{
-                  color: '#ef4444',
-                  fontSize: '0.82rem',
-                  margin: '0 0 1rem',
-                }}
-              >
+              <p style={{
+                color: '#ef4444',
+                fontSize: '0.82rem',
+                margin: '0 0 1rem',
+              }}>
                 {deleteError}
               </p>
             )}
@@ -299,8 +465,8 @@ function ProfilePickerInner() {
                 style={{
                   flex: 1,
                   background: 'transparent',
-                  border: '1px solid #1E3A6E',
-                  color: '#8899CC',
+                  border: `1px solid ${C.border}`,
+                  color: C.muted,
                   padding: '0.7rem',
                   borderRadius: '0.625rem',
                   cursor: deleting ? 'not-allowed' : 'pointer',
@@ -316,7 +482,7 @@ function ProfilePickerInner() {
                 disabled={deleting}
                 style={{
                   flex: 1,
-                  background: deleting ? '#162040' : '#ef4444',
+                  background: deleting ? C.borderSoft : '#ef4444',
                   border: 'none',
                   color: '#fff',
                   padding: '0.7rem',
@@ -334,4 +500,15 @@ function ProfilePickerInner() {
       )}
     </div>
   )
+}
+
+function CenteredShell({ children }: { children: React.ReactNode }) {
+  const style: CSSProperties = {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2rem 1.25rem',
+  }
+  return <div style={style}>{children}</div>
 }
