@@ -24,14 +24,19 @@ const categoryColors: Record<string, { bg: string; color: string; label: string 
   general:    { bg: 'rgba(136,153,204,0.1)',  color: '#8899CC', label: '📰 News' },
 }
 
+type FilterKind = 'all' | 'breaking' | 'category' | 'player' | 'team'
+interface ActiveFilter { kind: FilterKind; value: string }
+const ALL: ActiveFilter = { kind: 'all', value: '' }
+
 export default function NewsPage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(true)
   const [lastFetch, setLastFetch] = useState<string | null>(null)
+  const [filter, setFilter] = useState<ActiveFilter>(ALL)
 
   const loadArticles = async () => {
     try {
-      const res = await fetch('/api/news?limit=30')
+      const res = await fetch('/api/news?limit=50')
       const data = await res.json()
       const list: Article[] = Array.isArray(data?.articles) ? data.articles : []
       setArticles(list)
@@ -43,6 +48,50 @@ export default function NewsPage() {
   }
 
   useEffect(() => { loadArticles() }, [])
+
+  // Build chip lists from currently-loaded articles
+  const catCounts: Record<string, number> = {}
+  const playerCounts: Record<string, number> = {}
+  const teamCounts: Record<string, number> = {}
+  let breakingCount = 0
+  for (const a of articles) {
+    catCounts[a.category] = (catCounts[a.category] || 0) + 1
+    if (a.is_breaking) breakingCount++
+    for (const p of a.players || []) playerCounts[p] = (playerCounts[p] || 0) + 1
+    for (const t of a.teams || []) teamCounts[t] = (teamCounts[t] || 0) + 1
+  }
+  const sortedCats = Object.entries(catCounts).sort((a, b) => b[1] - a[1])
+  const topPlayers = Object.entries(playerCounts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  const topTeams = Object.entries(teamCounts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+
+  // Apply active filter
+  const visible = articles.filter(a => {
+    if (filter.kind === 'all') return true
+    if (filter.kind === 'breaking') return a.is_breaking
+    if (filter.kind === 'category') return a.category === filter.value
+    if (filter.kind === 'player') return (a.players || []).includes(filter.value)
+    if (filter.kind === 'team') return (a.teams || []).includes(filter.value)
+    return true
+  })
+
+  const toggleFilter = (next: ActiveFilter) => {
+    if (filter.kind === next.kind && filter.value === next.value) setFilter(ALL)
+    else setFilter(next)
+  }
+
+  const chipBase = {
+    fontSize: '0.72rem',
+    fontWeight: 600 as const,
+    padding: '0.3rem 0.7rem',
+    borderRadius: '1rem',
+    border: '1px solid #1E3A6E',
+    backgroundColor: '#0F1C4D',
+    color: '#8899CC',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  }
+  const chipActive = { ...chipBase, backgroundColor: '#00E676', color: '#0A0F2E', borderColor: '#00E676' }
+  const isActive = (kind: FilterKind, value = '') => filter.kind === kind && filter.value === value
 
   return (
     <div style={{ minHeight: '100vh', color: '#F0F4FF', fontFamily: "'Poppins', system-ui, sans-serif" }}>
@@ -74,15 +123,61 @@ export default function NewsPage() {
           </p>
         </div>
 
+        {/* Filter chips */}
+        {!loading && articles.length > 0 && (
+          <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <button style={isActive('all') ? chipActive : chipBase} onClick={() => setFilter(ALL)}>All · {articles.length}</button>
+              {breakingCount > 0 && (
+                <button style={isActive('breaking') ? chipActive : chipBase} onClick={() => toggleFilter({ kind: 'breaking', value: '' })}>
+                  🔴 Breaking · {breakingCount}
+                </button>
+              )}
+              {sortedCats.map(([cat, n]) => {
+                const meta = categoryColors[cat] || categoryColors.general
+                const active = isActive('category', cat)
+                return (
+                  <button
+                    key={cat}
+                    style={active ? chipActive : { ...chipBase, color: meta.color, borderColor: meta.color }}
+                    onClick={() => toggleFilter({ kind: 'category', value: cat })}
+                  >
+                    {meta.label} · {n}
+                  </button>
+                )
+              })}
+            </div>
+            {(topPlayers.length > 0 || topTeams.length > 0) && (
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {topPlayers.map(([p, n]) => (
+                  <button key={p} style={isActive('player', p) ? chipActive : chipBase} onClick={() => toggleFilter({ kind: 'player', value: p })}>
+                    👤 {p} · {n}
+                  </button>
+                ))}
+                {topTeams.map(([t, n]) => (
+                  <button key={t} style={isActive('team', t) ? chipActive : chipBase} onClick={() => toggleFilter({ kind: 'team', value: t })}>
+                    🏴 {t} · {n}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <p style={{ color: '#8899CC', textAlign: 'center', padding: '3rem 0' }}>Loading…</p>
         ) : articles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 0' }}>
             <p style={{ color: '#8899CC', marginBottom: '1rem' }}>No articles yet — next update lands this morning or afternoon.</p>
           </div>
+        ) : visible.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem 0' }}>
+            <p style={{ color: '#8899CC', marginBottom: '1rem' }}>No articles match this filter.</p>
+            <button style={chipBase} onClick={() => setFilter(ALL)}>Clear filter</button>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            {articles.map(a => {
+            {visible.map(a => {
               const cat = categoryColors[a.category] || categoryColors.general
               return (
                 <div
@@ -112,10 +207,18 @@ export default function NewsPage() {
                   {(a.players.length > 0 || a.teams.length > 0) && (
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
                       {a.players.slice(0, 3).map(p => (
-                        <span key={p} style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '0.5rem', backgroundColor: '#162040', color: '#8899CC' }}>👤 {p}</span>
+                        <button
+                          key={p}
+                          onClick={(e) => { e.stopPropagation(); toggleFilter({ kind: 'player', value: p }) }}
+                          style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '0.5rem', backgroundColor: '#162040', color: '#8899CC', border: 'none', cursor: 'pointer' }}
+                        >👤 {p}</button>
                       ))}
                       {a.teams.slice(0, 2).map(t => (
-                        <span key={t} style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '0.5rem', backgroundColor: '#162040', color: '#8899CC' }}>🏴 {t}</span>
+                        <button
+                          key={t}
+                          onClick={(e) => { e.stopPropagation(); toggleFilter({ kind: 'team', value: t }) }}
+                          style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '0.5rem', backgroundColor: '#162040', color: '#8899CC', border: 'none', cursor: 'pointer' }}
+                        >🏴 {t}</button>
                       ))}
                     </div>
                   )}
