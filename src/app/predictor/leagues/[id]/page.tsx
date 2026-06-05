@@ -17,6 +17,7 @@ import AuthHeader from '@/components/AuthHeader'
 import { flagUrl } from '@/lib/predictor-flags'
 import { PREDICTOR_ROUND_OPTIONS } from '@/lib/select-style'
 import ScoringRulesContent from '@/components/predictor/ScoringRulesContent'
+import { profileFullName } from '@/lib/predictor/display-name'
 
 const C = {
   bg: '#0A0F2E',
@@ -32,7 +33,7 @@ const C = {
 
 interface LeagueInfo {
   league: { id: string; name: string; invite_code: string; created_by: string; created_at: string }
-  members: { profile_id: string; manager_name: string; first_name: string; is_admin: boolean; joined_at: string }[]
+  members: { profile_id: string; manager_name: string; first_name: string; last_name: string; is_admin: boolean; joined_at: string }[]
   is_admin: boolean
   is_member: boolean
 }
@@ -42,6 +43,7 @@ interface LeaderboardRow {
   profile_id: string
   manager_name: string
   first_name: string
+  last_name: string
   total: number
 }
 
@@ -365,9 +367,12 @@ function LeaderboardTab({ rows, meId }: { rows: LeaderboardRow[]; meId: string |
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}>{row.manager_name}</div>
-            {row.first_name && row.first_name !== row.manager_name && (
-              <div style={{ color: C.muted, fontSize: '0.7rem' }}>{row.first_name}</div>
-            )}
+            {(() => {
+              const sub = profileFullName(row.first_name, row.last_name, row.manager_name)
+              return sub ? (
+                <div style={{ color: C.muted, fontSize: '0.7rem' }}>{sub}</div>
+              ) : null
+            })()}
           </div>
           <span style={{ color: C.gold, fontSize: '0.85rem', fontWeight: 800, textAlign: 'right' }}>{row.total}</span>
         </div>
@@ -527,7 +532,7 @@ function MyPicksTab({ authed }: { authed: boolean }) {
 }
 
 function MembersTab({ members, meId, createdBy }: {
-  members: { profile_id: string; manager_name: string; first_name: string; is_admin: boolean; joined_at: string }[]
+  members: { profile_id: string; manager_name: string; first_name: string; last_name: string; is_admin: boolean; joined_at: string }[]
   meId: string | null
   createdBy: string
 }) {
@@ -552,9 +557,12 @@ function MembersTab({ members, meId, createdBy }: {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}>{m.manager_name}</div>
-            {m.first_name && m.first_name !== m.manager_name && (
-              <div style={{ color: C.muted, fontSize: '0.7rem' }}>{m.first_name}</div>
-            )}
+            {(() => {
+              const sub = profileFullName(m.first_name, m.last_name, m.manager_name)
+              return sub ? (
+                <div style={{ color: C.muted, fontSize: '0.7rem' }}>{sub}</div>
+              ) : null
+            })()}
           </div>
           {m.profile_id === createdBy ? (
             <span style={{ color: C.gold, fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Owner</span>

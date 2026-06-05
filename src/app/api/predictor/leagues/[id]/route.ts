@@ -59,12 +59,19 @@ export async function GET(
 
   const profileIds = (members ?? []).map((m) => m.profile_id)
   const { data: profiles } = profileIds.length
-    ? await sb.from('profiles').select('id, manager_name, first_name').in('id', profileIds)
-    : { data: [] as { id: string; manager_name: string | null; first_name: string | null }[] }
+    ? await sb.from('profiles').select('id, manager_name, first_name, last_name').in('id', profileIds)
+    : { data: [] as { id: string; manager_name: string | null; first_name: string | null; last_name: string | null }[] }
 
-  const profileMap = new Map<string, { manager_name: string | null; first_name: string | null }>()
+  const profileMap = new Map<
+    string,
+    { manager_name: string | null; first_name: string | null; last_name: string | null }
+  >()
   for (const p of profiles ?? []) {
-    profileMap.set(p.id, { manager_name: p.manager_name, first_name: p.first_name })
+    profileMap.set(p.id, {
+      manager_name: p.manager_name,
+      first_name: p.first_name,
+      last_name: p.last_name,
+    })
   }
 
   const enrichedMembers = (members ?? []).map((m) => {
@@ -73,6 +80,7 @@ export async function GET(
       profile_id: m.profile_id,
       manager_name: p?.manager_name ?? p?.first_name ?? 'Manager',
       first_name: p?.first_name ?? '',
+      last_name: p?.last_name ?? '',
       is_admin: m.is_admin,
       joined_at: m.joined_at,
     }

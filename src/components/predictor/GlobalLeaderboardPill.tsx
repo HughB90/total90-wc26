@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { profileFullName } from '@/lib/predictor/display-name'
 
 const C = {
   card: '#0F1C4D',
@@ -30,6 +31,7 @@ interface LeaderboardRow {
   profile_id: string
   manager_name: string
   first_name: string
+  last_name: string
   total: number
 }
 
@@ -172,15 +174,18 @@ export default function GlobalLeaderboardPill({ meId }: { meId: string | null })
                       {row.manager_name}
                       {isMe && <span style={{ color: C.gold, fontWeight: 700 }}> ← You</span>}
                     </div>
-                    {row.first_name && row.first_name !== row.manager_name && (
-                      <div style={{
-                        color: C.muted,
-                        fontSize: '0.7rem',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}>{row.first_name}</div>
-                    )}
+                    {(() => {
+                      const sub = profileFullName(row.first_name, row.last_name, row.manager_name)
+                      return sub ? (
+                        <div style={{
+                          color: C.muted,
+                          fontSize: '0.7rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>{sub}</div>
+                      ) : null
+                    })()}
                   </div>
                   <span style={{ color: C.gold, fontSize: '0.82rem', fontWeight: 800, textAlign: 'right' }}>{row.total}</span>
                 </div>
