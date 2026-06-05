@@ -29,6 +29,12 @@ type Player = {
   sack_count: number;
   vote_count: number;
   photo_url: string;
+  club: string | null;
+  t90_score: number | null;
+  cat_score: number | null;
+  tenk_score: number | null;
+  starting_xi: number | null;
+  t90_rank: number | null;
 };
 
 type SortOption = 'most_voted' | 'most_signed' | 'most_sold' | 'most_sacked' | 't90_score';
@@ -126,7 +132,7 @@ export default function S3AdminPage() {
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       const { data, error: fetchError } = await supabase
         .from('s3_players')
-        .select('id, name, short_name, nationality, position, s3_value, sign_count, sell_count, sack_count, vote_count, photo_url')
+        .select('id, name, short_name, nationality, position, s3_value, sign_count, sell_count, sack_count, vote_count, photo_url, club, t90_score, cat_score, tenk_score, starting_xi, t90_rank')
         .order('vote_count', { ascending: false });
 
       if (fetchError) {
@@ -175,7 +181,8 @@ export default function S3AdminPage() {
         result.sort((a, b) => (b.sack_count ?? 0) - (a.sack_count ?? 0));
         break;
       case 't90_score':
-        result.sort((a, b) => (b.s3_value ?? 0) - (a.s3_value ?? 0));
+        // Now actually sorts by T90 score (was incorrectly s3_value before 2026-06-05)
+        result.sort((a, b) => (b.t90_score ?? 0) - (a.t90_score ?? 0));
         break;
     }
 
@@ -473,7 +480,7 @@ export default function S3AdminPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#0A1535', borderBottom: `1px solid ${COLORS.border}` }}>
-                  {['#', 'Player', 'Nationality', 'Pos', 'S³ Score', 'Sign', 'Sell', 'Sack', 'Total Votes', 'Sign %', 'Sell %', 'Sack %'].map((col) => (
+                  {['#', 'Player', 'Nationality', 'Club', 'Pos', 'XI', 'T90', 'Cat', '10k', 'S³ Score', 'Sign', 'Sell', 'Sack', 'Total Votes', 'Sign %', 'Sell %', 'Sack %'].map((col) => (
                     <th
                       key={col}
                       style={{
@@ -555,6 +562,9 @@ export default function S3AdminPage() {
                       <td style={{ padding: '10px 14px', color: COLORS.muted }}>
                         {player.nationality}
                       </td>
+                      <td style={{ padding: '10px 14px', color: COLORS.muted, fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {player.club ?? '—'}
+                      </td>
                       <td style={{ padding: '10px 14px' }}>
                         <span
                           style={{
@@ -573,6 +583,40 @@ export default function S3AdminPage() {
                         >
                           {player.position}
                         </span>
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        {player.starting_xi != null ? (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              minWidth: 22,
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              background:
+                                player.starting_xi === 1 ? '#15803D' :
+                                player.starting_xi === 2 ? '#A16207' :
+                                '#7F1D1D',
+                              color: '#fff',
+                            }}
+                            title={
+                              player.starting_xi === 1 ? 'Likely starter' :
+                              player.starting_xi === 2 ? 'Rotation' : 'Deep bench'
+                            }
+                          >
+                            {player.starting_xi}
+                          </span>
+                        ) : <span style={{ color: COLORS.muted }}>—</span>}
+                      </td>
+                      <td style={{ padding: '10px 14px', color: COLORS.text, fontWeight: 600 }}>
+                        {player.t90_score != null ? Number(player.t90_score).toFixed(1) : '—'}
+                      </td>
+                      <td style={{ padding: '10px 14px', color: COLORS.muted }}>
+                        {player.cat_score != null ? Number(player.cat_score).toFixed(1) : '—'}
+                      </td>
+                      <td style={{ padding: '10px 14px', color: COLORS.muted }}>
+                        {player.tenk_score != null ? player.tenk_score.toLocaleString() : '—'}
                       </td>
                       <td style={{ padding: '10px 14px', color: COLORS.gold, fontWeight: 700 }}>
                         {player.s3_value ?? '—'}
@@ -603,7 +647,7 @@ export default function S3AdminPage() {
                 })}
                 {paginated.length === 0 && (
                   <tr>
-                    <td colSpan={12} style={{ padding: '40px', textAlign: 'center', color: COLORS.muted }}>
+                    <td colSpan={17} style={{ padding: '40px', textAlign: 'center', color: COLORS.muted }}>
                       No players match your filters.
                     </td>
                   </tr>
