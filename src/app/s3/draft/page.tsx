@@ -7,6 +7,10 @@
  * Auth-gated: signed-out visitors see a centered sign-in nudge above the
  * shared AuthHeader's Sign In button. Authed visitors see the full table.
  *
+ * Layout:
+ *   - viewport > 700px  → desktop table (legacy)
+ *   - viewport ≤ 700px  → mobile card list
+ *
  * Style: matches the rest of the /s3 surface (dark navy, gold accent).
  */
 
@@ -60,11 +64,24 @@ interface Pick {
 
 type PickMap = Record<string, Pick>
 
-const POS_COLORS: Record<string, string> = {
-  GK:  '#4A1D96',
-  DEF: '#1E40AF',
-  MID: '#065F46',
-  FWD: '#92400E',
+/**
+ * Position pill style — STANDARDIZED 3-letter format with locked colors.
+ * DB stores 'GK' | 'DEF' | 'MID' | 'FWD'; we render 'GK' as 'GKP'.
+ *   GKP → red    (#DC2626)
+ *   DEF → green  (#15803D)
+ *   MID → yellow (#EAB308) — chosen over #A16207 for legibility on dark bg
+ *   FWD → teal   (#0891B2)
+ */
+const POS_PILL: Record<string, { label: string; bg: string; fg: string }> = {
+  GK:  { label: 'GKP', bg: '#DC2626', fg: '#fff' },
+  GKP: { label: 'GKP', bg: '#DC2626', fg: '#fff' },
+  DEF: { label: 'DEF', bg: '#15803D', fg: '#fff' },
+  MID: { label: 'MID', bg: '#EAB308', fg: '#0A0F2E' },
+  FWD: { label: 'FWD', bg: '#0891B2', fg: '#fff' },
+}
+
+function posPill(position: string): { label: string; bg: string; fg: string } {
+  return POS_PILL[position] ?? { label: position || '—', bg: '#374151', fg: '#fff' }
 }
 
 const XI_COLORS: Record<number, { bg: string; label: string }> = {
@@ -92,11 +109,9 @@ function picksEqual(a: Pick | undefined, b: Pick | undefined): boolean {
 /** Red→Green gradient based on group strength (49.5 → 86.5 observed range). */
 function groupStrengthColor(strength: number | null): string {
   if (strength == null) return C.muted
-  // Clamp to a sane band so colors map well
   const lo = 55
   const hi = 88
   const t = Math.max(0, Math.min(1, (strength - lo) / (hi - lo)))
-  // higher = harder = redder; lower = easier = greener
   if (t > 0.66) return '#EF4444'
   if (t > 0.45) return '#F59E0B'
   if (t > 0.25) return '#A3E635'
@@ -154,14 +169,11 @@ export default function S3DraftPage() {
       .then(r => r.json())
       .then((data: Player[]) => {
         if (cancelled || !Array.isArray(data)) return
-        // Filter to ranked players, sort by t90_rank ascending (smallest = best)
         const ranked = data
           .filter(p => p.t90_rank != null)
           .sort((a, b) => (a.t90_rank ?? 9999) - (b.t90_rank ?? 9999))
           .slice(0, MAX_ROWS)
         setPlayers(ranked)
-        // Find latest t90_updated_at across loaded players (we don't expose
-        // it in /api/s3/players; fall back to "Today" for now).
         setLastSync(new Date().toISOString())
       })
       .catch(() => { /* keep empty */ })
@@ -221,8 +233,6 @@ export default function S3DraftPage() {
   const handleSave = useCallback(async () => {
     if (!me || saving || !dirty) return
     setSaving(true)
-    // Send the union of (currently dirty rows) + (rows that existed in saved
-    // but were cleared) so the server can delete them.
     const ids = new Set([...Object.keys(picks), ...Object.keys(savedPicks)])
     const payload: Array<{ player_id: string; drafted: boolean; my_team: boolean; favorite: boolean }> = []
     for (const id of ids) {
@@ -239,7 +249,6 @@ export default function S3DraftPage() {
         body: JSON.stringify({ picks: payload }),
       })
       if (!res.ok) throw new Error(`save failed (${res.status})`)
-      // Mark clean: snapshot current picks as saved
       setSavedPicks({ ...picks })
       setSavedToast(true)
       if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -254,27 +263,22 @@ export default function S3DraftPage() {
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <>
-      <PrintStyles />
+      <DraftStyles />
       <AuthHeader />
 
-      {/* Branded page header */}
-      <header className="draft-page-header" style={{
-        maxWidth: 1280, margin: '0 auto', padding: '1.5rem 1.25rem 1rem',
-        display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '1rem',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+      {/* Branded page header — horizontal on desktop, stacked on mobile */}
+      <header className="draft-page-header">
+        {/* Row 1 on mobile: logo + opta badge.
+            Desktop: logo cell (left), title cell (middle), opta cell (right). */}
+        <div className="dph-logo">
           <img src="/total90-logo-green.png" alt="Total90" style={{ width: 40, height: 40, objectFit: 'contain' }} />
           <span style={{ color: C.gold, fontWeight: 800, letterSpacing: '-0.02em' }}>TOTAL90</span>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <h1 style={{ margin: 0, fontSize: 'clamp(1.1rem, 2.6vw, 1.65rem)', fontWeight: 900, letterSpacing: '-0.02em', color: C.text }}>
-            Total90 Intelligence — Top 250 Ranked Players
-          </h1>
-          <p style={{ margin: '0.25rem 0 0', color: C.muted, fontSize: '0.78rem' }}>
-            Powered by Opta · Last updated: {formatDate(lastSync)}
-          </p>
+        <div className="dph-title">
+          <h1>Total90 Intelligence — Top 250 Ranked Players</h1>
+          <p>Powered by Opta · Last updated: {formatDate(lastSync)}</p>
         </div>
-        <div style={{ justifySelf: 'end' }}>
+        <div className="dph-opta">
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '0.35rem 0.6rem', borderRadius: '0.4rem',
@@ -315,13 +319,13 @@ export default function S3DraftPage() {
             position: 'sticky', top: 0, zIndex: 5,
             background: C.bg, padding: '0.75rem 0',
             borderBottom: `1px solid ${C.border}`,
-            display: 'flex', alignItems: 'center', gap: '0.75rem',
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
             flexWrap: 'wrap',
           }}>
             <CounterChip label="Drafted" value={counts.drafted} color={C.muted} />
             <CounterChip label="My Team" value={counts.my_team} color={C.green} />
             <CounterChip label="Favorited" value={counts.favorite} color={C.star} />
-            <div style={{ flex: 1 }} />
+            <div style={{ flex: 1, minWidth: 8 }} />
             {savedToast && (
               <span style={{
                 color: C.green, fontWeight: 700, fontSize: '0.8rem',
@@ -349,9 +353,9 @@ export default function S3DraftPage() {
           </div>
         )}
 
-        {/* Table */}
+        {/* Desktop table — hidden on mobile via CSS */}
         {me && (
-          <div style={{
+          <div className="draft-table-wrap" style={{
             background: C.card, border: `1px solid ${C.border}`,
             borderRadius: 12, marginTop: '0.75rem', overflow: 'hidden',
           }}>
@@ -398,13 +402,46 @@ export default function S3DraftPage() {
             </div>
           </div>
         )}
+
+        {/* Mobile cards — hidden on desktop via CSS */}
+        {me && (
+          <div className="draft-cards" style={{ marginTop: '0.75rem' }}>
+            {loadingPlayers && (
+              <div style={{ padding: '3rem 1rem', textAlign: 'center', color: C.muted }}>
+                Loading top 250…
+              </div>
+            )}
+            {!loadingPlayers && players.length === 0 && (
+              <div style={{ padding: '3rem 1rem', textAlign: 'center', color: C.muted }}>
+                No ranked players found.
+              </div>
+            )}
+            {!loadingPlayers && players.map(p => {
+              const pick = picks[p.id] ?? defaultPick()
+              const iso = nationToIso(p.nationality)
+              const group = nationGroup(p.nationality)
+              const strength = groupStrengthFor(p.nationality)
+              return (
+                <PlayerCard
+                  key={p.id}
+                  player={p}
+                  pick={pick}
+                  iso={iso}
+                  group={group}
+                  strength={strength}
+                  onToggle={togglePick}
+                />
+              )
+            })}
+          </div>
+        )}
       </main>
     </>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Player row
+// Desktop row
 // ─────────────────────────────────────────────────────────────────────────
 
 function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
@@ -432,7 +469,6 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
     textDecoration: draftedDim ? 'line-through' : 'none',
   }
 
-  const posBg = POS_COLORS[player.position] ?? '#374151'
   const xi = player.starting_xi
   const xiColor = xi && XI_COLORS[xi] ? XI_COLORS[xi] : null
   const strengthColor = groupStrengthColor(strength)
@@ -481,11 +517,7 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
         </span>
       </td>
       <td style={{ padding: '8px 10px' }}>
-        <span style={{
-          display: 'inline-block', padding: '2px 8px',
-          borderRadius: 4, fontSize: 11, fontWeight: 700,
-          background: posBg, color: '#fff',
-        }}>{player.position}</span>
+        <PosPill position={player.position} />
       </td>
       <td style={{ padding: '8px 10px', textAlign: 'center' }}>
         {xiColor ? (
@@ -521,8 +553,163 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Toggle (dotted circle / filled circle)
+// Mobile card
 // ─────────────────────────────────────────────────────────────────────────
+
+function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
+  player: Player
+  pick: Pick
+  iso: string | null
+  group: string | null
+  strength: number | null
+  onToggle: (id: string, key: keyof Pick) => void
+}) {
+  const draftedDim = pick.drafted
+  const myTeamTint = pick.my_team
+  const favorite   = pick.favorite
+
+  const xi = player.starting_xi
+  const xiColor = xi && XI_COLORS[xi] ? XI_COLORS[xi] : null
+  const strengthColor = groupStrengthColor(strength)
+
+  const cardStyle: React.CSSProperties = {
+    background: myTeamTint ? 'rgba(21,128,61,0.14)' : C.card,
+    border: `1px solid ${C.border}`,
+    borderLeft: myTeamTint ? `4px solid ${C.green}` : `1px solid ${C.border}`,
+    borderRadius: 12,
+    padding: '0.85rem 0.9rem',
+    marginBottom: '0.6rem',
+    opacity: draftedDim ? 0.35 : 1,
+    transition: 'opacity 0.15s, background 0.15s',
+  }
+
+  const nameStyle: React.CSSProperties = {
+    fontWeight: 800, color: C.text, fontSize: '0.98rem',
+    textDecoration: draftedDim ? 'line-through' : 'none',
+    lineHeight: 1.2,
+  }
+
+  return (
+    <div className="draft-card" style={cardStyle}>
+      {/* Line 1: photo + name + pos pill */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+        {player.photo_url ? (
+          <img
+            src={player.photo_url}
+            alt={player.name}
+            width={44}
+            height={44}
+            style={{ borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <div style={{
+            width: 44, height: 44, borderRadius: '50%',
+            background: C.border, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            color: C.muted, fontSize: 16, fontWeight: 700, flexShrink: 0,
+          }}>{player.name?.[0] ?? '?'}</div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={nameStyle}>
+            {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
+            {player.name}
+          </div>
+          {/* Line 2: flag + club on the same row */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            marginTop: 3, color: C.muted, fontSize: 12,
+          }}>
+            {iso ? (
+              <span className={`fi fi-${iso}`} style={{ width: 24, height: 18, borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)', flexShrink: 0 }} />
+            ) : (
+              <span style={{ width: 24, height: 18, background: C.border, borderRadius: 2, display: 'inline-block', textAlign: 'center', fontSize: 10, color: C.muted, lineHeight: '18px', flexShrink: 0 }}>?</span>
+            )}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {player.club ?? player.nationality}
+            </span>
+          </div>
+        </div>
+        <div style={{ flexShrink: 0 }}>
+          <PosPill position={player.position} />
+        </div>
+      </div>
+
+      {/* Toggle row */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+        gap: '0.5rem', marginTop: '0.85rem', paddingTop: '0.7rem',
+        borderTop: `1px solid ${C.border}`,
+      }}>
+        <ToggleWithLabel
+          on={pick.drafted}
+          label="Drafted"
+          onColor={C.muted}
+          onClick={() => onToggle(player.id, 'drafted')}
+        />
+        <ToggleWithLabel
+          on={pick.my_team}
+          label="My Team"
+          onColor={C.green}
+          onClick={() => onToggle(player.id, 'my_team')}
+        />
+        <ToggleWithLabel
+          on={pick.favorite}
+          label="Favorite"
+          onColor={C.star}
+          onClick={() => onToggle(player.id, 'favorite')}
+        />
+      </div>
+
+      {/* Metrics row */}
+      <div style={{
+        marginTop: '0.7rem', fontSize: 12, color: C.muted,
+        display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
+        alignItems: 'center',
+      }}>
+        <span style={{ color: C.gold, fontWeight: 700 }}>#{player.t90_rank}</span>
+        <span style={{ color: C.border }}>·</span>
+        <span style={{ color: C.text, fontWeight: 700 }}>
+          T90 {player.t90_score != null ? Number(player.t90_score).toFixed(1) : '—'}
+        </span>
+        {xiColor && (
+          <>
+            <span style={{ color: C.border }}>·</span>
+            <span title={xiColor.label}>
+              XI <span style={{ color: xiColor.bg, fontWeight: 700 }}>{xi}</span>
+            </span>
+          </>
+        )}
+        {strength != null && (
+          <>
+            <span style={{ color: C.border }}>·</span>
+            <span>
+              GS <span style={{ color: strengthColor, fontWeight: 700 }}>{strength.toFixed(1)}</span>
+              {group && <span style={{ color: C.muted }}> ({group})</span>}
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Shared pill + toggles
+// ─────────────────────────────────────────────────────────────────────────
+
+function PosPill({ position }: { position: string }) {
+  const pp = posPill(position)
+  return (
+    <span style={{
+      display: 'inline-block', padding: '3px 9px',
+      borderRadius: 4, fontSize: 11, fontWeight: 800,
+      background: pp.bg, color: pp.fg,
+      letterSpacing: '0.04em',
+      minWidth: 36, textAlign: 'center',
+    }}>{pp.label}</span>
+  )
+}
 
 function Toggle({ on, label, onColor, onClick }: {
   on: boolean
@@ -548,6 +735,38 @@ function Toggle({ on, label, onColor, onClick }: {
   )
 }
 
+function ToggleWithLabel({ on, label, onColor, onClick }: {
+  on: boolean
+  label: string
+  onColor: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`${label}: ${on ? 'on' : 'off'}`}
+      className="draft-toggle-mobile"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'transparent', border: 'none',
+        cursor: 'pointer', padding: '0.25rem 0.35rem',
+        color: on ? onColor : C.muted,
+        fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+        letterSpacing: '0.01em',
+      }}
+    >
+      <span style={{
+        width: 18, height: 18, borderRadius: '50%',
+        border: `2px ${on ? 'solid' : 'dashed'} ${on ? onColor : '#3A4F7E'}`,
+        background: on ? onColor : 'transparent',
+        display: 'inline-block',
+        transition: 'background 0.12s, border 0.12s',
+      }} />
+      <span>{label}</span>
+    </button>
+  )
+}
+
 function CounterChip({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <span style={{
@@ -563,16 +782,72 @@ function CounterChip({ label, value, color }: { label: string; value: number; co
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Print stylesheet — landscape, ~50 rows / page
+// Styles — desktop/mobile layout + print
 // ─────────────────────────────────────────────────────────────────────────
 
-function PrintStyles() {
+function DraftStyles() {
   return (
     <style dangerouslySetInnerHTML={{ __html: `
+      /* Header layout — desktop default (3 columns). */
+      .draft-page-header {
+        max-width: 1280px; margin: 0 auto; padding: 1.5rem 1.25rem 1rem;
+        display: grid; grid-template-columns: 1fr auto 1fr;
+        align-items: center; gap: 1rem;
+      }
+      .draft-page-header .dph-logo {
+        display: flex; align-items: center; gap: 0.6rem;
+      }
+      .draft-page-header .dph-title { text-align: center; }
+      .draft-page-header .dph-title h1 {
+        margin: 0; font-size: clamp(1.1rem, 2.6vw, 1.65rem);
+        font-weight: 900; letter-spacing: -0.02em; color: #F0F4FF;
+      }
+      .draft-page-header .dph-title p {
+        margin: 0.25rem 0 0; color: #8899CC; font-size: 0.78rem;
+      }
+      .draft-page-header .dph-opta { justify-self: end; }
+
+      /* Mobile cards hidden on desktop; desktop table hidden on mobile. */
+      .draft-cards { display: none; }
+      .draft-table-wrap { display: block; }
+
+      @media (max-width: 700px) {
+        /* Stack header: Row 1 = logo + opta, Row 2 = title, Row 3 = sub. */
+        .draft-page-header {
+          grid-template-columns: 1fr auto;
+          grid-template-areas:
+            "logo opta"
+            "title title";
+          row-gap: 0.85rem;
+          padding: 1rem 1rem 0.75rem;
+        }
+        .draft-page-header .dph-logo  { grid-area: logo; justify-self: start; }
+        .draft-page-header .dph-opta  { grid-area: opta; justify-self: end; }
+        .draft-page-header .dph-title { grid-area: title; }
+        .draft-page-header .dph-title h1 {
+          font-size: 1.15rem;
+          line-height: 1.25;
+        }
+        .draft-page-header .dph-title p { font-size: 0.72rem; }
+
+        /* Swap table for cards. */
+        .draft-table-wrap { display: none; }
+        .draft-cards { display: block; }
+
+        /* Hide the site-wide Fantasy App floating CTA on /s3/draft (mobile). */
+        #floating-fantasy-cta { display: none !important; }
+      }
+
+      /* Always hide the floating CTA on this page — desktop too, per spec.
+         (Spec: "hide on /s3/draft only".) */
+      #floating-fantasy-cta { display: none !important; }
+
       @media print {
         @page { size: landscape; margin: 0.4in; }
         body { background: white !important; color: #111 !important; }
         .draft-toolbar { display: none !important; }
+        .draft-cards { display: none !important; }
+        .draft-table-wrap { display: block !important; }
         .draft-page-header { color: #111 !important; }
         .draft-page-header h1, .draft-page-header p, .draft-page-header span {
           color: #111 !important;
@@ -596,11 +871,10 @@ function PrintStyles() {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        .draft-toggle {
+        .draft-toggle, .draft-toggle-mobile {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
-        /* Drafted: keep readable, strike the name */
         .draft-row[style*="opacity: 0.42"] {
           opacity: 1 !important;
         }

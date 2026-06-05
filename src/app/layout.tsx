@@ -174,8 +174,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <AppLaunchBanner />
         <SiteNav />
         {children}
-        {/* Floating app button - always visible */}
+        {/* Floating app button - always visible (can be hidden per-page via #floating-fantasy-cta { display: none }) */}
         <a
+          id="floating-fantasy-cta"
           href="https://apps.apple.com/us/app/total90/id6749282785"
           target="_blank"
           rel="noopener noreferrer"
