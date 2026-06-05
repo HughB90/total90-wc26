@@ -380,9 +380,24 @@ export default function S3Page() {
 
           {/* Header */}
           <div style={{ marginBottom: '1.75rem' }}>
-            <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', fontWeight: 900, margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>
-              📊 S³ Ratings
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', fontWeight: 900, margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>
+                📊 S³ Ratings
+              </h1>
+              <a
+                href="/s3/draft"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                  padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
+                  border: '1px solid #1E3A6E', background: 'rgba(251,191,36,0.08)',
+                  color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem',
+                  textDecoration: 'none', fontFamily: 'inherit',
+                }}
+                title="Build your top-250 shortlist, fantasy XI, and favorites"
+              >
+                📋 My Draft
+              </a>
+            </div>
             <p style={{ color: '#8899CC', fontSize: '0.95rem', margin: '0 0 0.3rem' }}>
               Sign · Sell · Sack — Total90 player valuations for World Cup 2026
             </p>
