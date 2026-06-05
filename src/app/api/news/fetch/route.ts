@@ -1,7 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-export async function POST() {
+// Guards POST + cron GET so only Vercel Cron (Bearer CRON_SECRET) or an authed
+// caller can trigger a paid Grok pull. Public refresh button is gone.
+function isAuthorized(req: Request): boolean {
+  const secret = process.env.CRON_SECRET
+  if (!secret) return false // fail closed if not configured
+  const header = req.headers.get('authorization') || ''
+  return header === `Bearer ${secret}`
+}
+
+export async function POST(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,33 +101,12 @@ Return as JSON array, no markdown:
   }
 }
 
+// Vercel Cron hits this with GET + Authorization: Bearer ${CRON_SECRET}.
+// We route it to POST so the existing fetch+insert logic runs unchanged.
+// `?read=true` legacy public path is retired — the page reads /api/news directly.
 export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const read = url.searchParams.get('read')
-
-  if (read === 'true') {
-    try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-      )
-      const { data } = await (supabase.from('news_articles' as never) as never as {
-        select: (cols: string) => {
-          order: (col: string, opts: { ascending: boolean }) => {
-            limit: (n: number) => Promise<{ data: unknown[] | null }>
-          }
-        }
-      })
-        .select('id, headline, summary, category, players, teams, is_breaking, published_at, source')
-        .order('published_at', { ascending: false })
-        .limit(20)
-      return NextResponse.json(data ?? [])
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error'
-      return NextResponse.json({ error: message }, { status: 500 })
-    }
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
-
-  return POST()
+  return POST(request)
 }

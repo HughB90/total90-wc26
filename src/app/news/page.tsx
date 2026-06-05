@@ -27,32 +27,19 @@ const categoryColors: Record<string, { bg: string; color: string; label: string 
 export default function NewsPage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
   const [lastFetch, setLastFetch] = useState<string | null>(null)
 
   const loadArticles = async () => {
     try {
-      const res = await fetch('/api/news/fetch?read=true')
+      const res = await fetch('/api/news?limit=30')
       const data = await res.json()
-      if (Array.isArray(data)) {
-        setArticles(data)
-        if (data.length > 0) setLastFetch(data[0].published_at)
-      }
+      const list: Article[] = Array.isArray(data?.articles) ? data.articles : []
+      setArticles(list)
+      if (list.length > 0) setLastFetch(list[0].published_at)
     } catch {
       // silent
     }
     setLoading(false)
-  }
-
-  const triggerFetch = async () => {
-    setFetching(true)
-    try {
-      await fetch('/api/news/fetch', { method: 'POST' })
-      await loadArticles()
-    } catch {
-      // silent
-    }
-    setFetching(false)
   }
 
   useEffect(() => { loadArticles() }, [])
@@ -71,22 +58,6 @@ export default function NewsPage() {
               Updated {new Date(lastFetch).toLocaleDateString("en-US", {month:"short",day:"numeric"})} at {new Date(lastFetch).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}
             </span>
           )}
-          <button
-            onClick={triggerFetch}
-            disabled={fetching}
-            style={{
-              backgroundColor: fetching ? '#162040' : '#00E676',
-              color: fetching ? '#8899CC' : '#0A0F2E',
-              fontWeight: 700,
-              fontSize: '0.8rem',
-              padding: '0.4rem 1rem',
-              borderRadius: '0.75rem',
-              border: 'none',
-              cursor: fetching ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {fetching ? '⌛ Fetching...' : '🔄 Refresh'}
-          </button>
         </div>
       </nav>
 
@@ -96,7 +67,7 @@ export default function NewsPage() {
             ⚽ World Cup 2026 Intelligence
           </h1>
           <p style={{ color: '#8899CC', fontSize: '0.85rem', margin: 0 }}>
-            {articles.length} {articles.length === 1 ? 'article' : 'articles'}
+            {articles.length} {articles.length === 1 ? 'article' : 'articles'} · Morning &amp; afternoon updates
             {lastFetch && (
               <> · Last updated {new Date(lastFetch).toLocaleDateString("en-US", {month:"short",day:"numeric"})} at {new Date(lastFetch).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}</>
             )}
@@ -107,23 +78,7 @@ export default function NewsPage() {
           <p style={{ color: '#8899CC', textAlign: 'center', padding: '3rem 0' }}>Loading…</p>
         ) : articles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 0' }}>
-            <p style={{ color: '#8899CC', marginBottom: '1rem' }}>No articles yet. Click Refresh to load the latest.</p>
-            <button
-              onClick={triggerFetch}
-              disabled={fetching}
-              style={{
-                backgroundColor: '#00E676',
-                color: '#0A0F2E',
-                fontWeight: 700,
-                padding: '0.75rem 1.5rem',
-                borderRadius: '0.875rem',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.95rem',
-              }}
-            >
-              {fetching ? 'Fetching from Grok...' : '🤖 Fetch News Now'}
-            </button>
+            <p style={{ color: '#8899CC', marginBottom: '1rem' }}>No articles yet — next update lands this morning or afternoon.</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
