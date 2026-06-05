@@ -259,14 +259,14 @@ export default function EditProfileForm({
 
           <div style={{ textAlign: 'center', marginTop: '0.25rem' }}>
             <a
-              href="/auth/picker"
+              href="/predictor"
               style={{
                 color: C.muted,
                 fontSize: '0.78rem',
                 textDecoration: 'underline',
               }}
             >
-              ← Back to profiles
+              ← Back to dashboard
             </a>
           </div>
         </form>
