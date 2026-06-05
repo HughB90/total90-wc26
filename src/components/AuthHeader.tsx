@@ -30,6 +30,7 @@ interface MeResponse {
   profile: {
     id: string
     first_name: string
+    last_name: string | null
     manager_name: string
     display_name: string | null
     is_owner: boolean
@@ -39,6 +40,7 @@ interface MeResponse {
 interface SiblingProfile {
   id: string
   first_name: string
+  last_name: string | null
   manager_name: string
   display_name: string | null
   is_owner: boolean
@@ -52,9 +54,14 @@ export default function AuthHeader() {
   const [siblingsLoading, setSiblingsLoading] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [addFirstName, setAddFirstName] = useState('')
+  const [addLastName, setAddLastName] = useState('')
   const [addManager, setAddManager] = useState('')
   const [addError, setAddError] = useState('')
   const [addBusy, setAddBusy] = useState(false)
+  // Delete confirmation state. profile id of the row pending confirm + busy flag.
+  const [deletePendingId, setDeletePendingId] = useState<string | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string>('')
 
   const refresh = useCallback(async () => {
     try {
@@ -138,10 +145,35 @@ export default function AuthHeader() {
     if (typeof window !== 'undefined') window.location.reload()
   }
 
+  const confirmDelete = async (profile_id: string) => {
+    setDeleteBusy(true)
+    setDeleteError('')
+    try {
+      const res = await fetch(`/api/auth/profiles/${profile_id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setDeleteError(data?.error ?? `Couldn’t delete (HTTP ${res.status}).`)
+        setDeleteBusy(false)
+        return
+      }
+      // Drop the row from local state; if the caller somehow nuked themselves
+      // the server returns 400, so we never end up here for self-delete.
+      setSiblings(prev => prev ? prev.filter(p => p.id !== profile_id) : prev)
+      setDeletePendingId(null)
+      setDeleteBusy(false)
+    } catch {
+      setDeleteError('Network error. Try again.')
+      setDeleteBusy(false)
+    }
+  }
+
   const submitAdd = async () => {
     setAddError('')
-    if (!addFirstName.trim() || !addManager.trim()) {
-      setAddError('First name and team name are required.')
+    if (!addFirstName.trim() || !addLastName.trim() || !addManager.trim()) {
+      setAddError('First name, last name, and team name are required.')
       return
     }
     setAddBusy(true)
@@ -152,6 +184,7 @@ export default function AuthHeader() {
         credentials: 'include',
         body: JSON.stringify({
           first_name: addFirstName.trim(),
+          last_name: addLastName.trim(),
           manager_name: addManager.trim(),
         }),
       })
@@ -164,6 +197,7 @@ export default function AuthHeader() {
       // Append to local list, reset form, close add panel.
       setSiblings(prev => prev ? [...prev, data.profile] : [data.profile])
       setAddFirstName('')
+      setAddLastName('')
       setAddManager('')
       setAddOpen(false)
       setAddBusy(false)
@@ -270,36 +304,137 @@ export default function AuthHeader() {
                     )}
                     {siblings?.map(p => {
                       const active = p.id === me.profile?.id
+                      const callerIsOwner = me.profile?.is_owner ?? false
+                      const canDelete = callerIsOwner && !p.is_owner
+                      const pendingDelete = deletePendingId === p.id
+                      const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+                      const subtitle = (p.display_name || fullName || p.first_name) + (p.is_owner ? ' · Owner' : '')
                       return (
-                        <button
+                        <div
                           key={p.id}
-                          onClick={() => switchProfile(p.id)}
                           style={{
-                            background: active ? C.borderSoft : 'none',
-                            border: 'none',
-                            color: C.text,
-                            fontSize: '0.85rem',
-                            padding: '0.55rem 0.6rem',
-                            width: '100%',
-                            textAlign: 'left',
-                            cursor: active ? 'default' : 'pointer',
+                            background: active ? C.borderSoft : 'transparent',
                             borderRadius: '0.4rem',
-                            fontFamily: 'inherit',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '0.5rem',
+                            padding: '0.1rem',
+                            marginBottom: '0.1rem',
                           }}
-                          disabled={active}
                         >
-                          <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
-                            <span style={{ fontWeight: 700 }}>{p.manager_name}</span>
-                            <span style={{ color: C.muted, fontSize: '0.72rem' }}>
-                              {p.display_name || p.first_name}{p.is_owner ? ' · Owner' : ''}
-                            </span>
-                          </span>
-                          {active && <span style={{ color: C.green, fontSize: '0.72rem', fontWeight: 700 }}>•</span>}
-                        </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <button
+                              onClick={() => switchProfile(p.id)}
+                              disabled={active}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: C.text,
+                                fontSize: '0.85rem',
+                                padding: '0.45rem 0.55rem',
+                                flex: 1,
+                                minWidth: 0,
+                                textAlign: 'left',
+                                cursor: active ? 'default' : 'pointer',
+                                borderRadius: '0.4rem',
+                                fontFamily: 'inherit',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.5rem',
+                              }}
+                            >
+                              <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', minWidth: 0 }}>
+                                <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.manager_name}</span>
+                                <span style={{ color: C.muted, fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subtitle}</span>
+                              </span>
+                              {active && <span style={{ color: C.green, fontSize: '0.72rem', fontWeight: 700 }}>•</span>}
+                            </button>
+                            {callerIsOwner && (
+                              <a
+                                href={`/auth/profiles/${p.id}/edit`}
+                                style={{
+                                  color: C.muted,
+                                  fontSize: '0.72rem',
+                                  padding: '0.25rem 0.4rem',
+                                  textDecoration: 'underline',
+                                  fontFamily: 'inherit',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                Edit
+                              </a>
+                            )}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={() => { setDeletePendingId(p.id); setDeleteError('') }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: C.red,
+                                  fontSize: '0.72rem',
+                                  padding: '0.25rem 0.4rem',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  fontFamily: 'inherit',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                          {pendingDelete && (
+                            <div style={{
+                              padding: '0.5rem 0.55rem',
+                              borderTop: `1px solid ${C.border}`,
+                              marginTop: '0.15rem',
+                              fontSize: '0.74rem',
+                              color: C.text,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.4rem',
+                            }}>
+                              <span>Delete <strong>{p.manager_name}</strong>? This wipes their picks and league memberships.</span>
+                              {deleteError && (
+                                <span style={{ color: C.red, fontSize: '0.72rem' }}>{deleteError}</span>
+                              )}
+                              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                <button
+                                  onClick={() => confirmDelete(p.id)}
+                                  disabled={deleteBusy}
+                                  style={{
+                                    flex: 1,
+                                    background: C.red,
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '0.35rem',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    padding: '0.4rem',
+                                    cursor: deleteBusy ? 'not-allowed' : 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                >
+                                  {deleteBusy ? 'Deleting…' : 'Yes, delete'}
+                                </button>
+                                <button
+                                  onClick={() => { setDeletePendingId(null); setDeleteError('') }}
+                                  style={{
+                                    background: 'transparent',
+                                    color: C.muted,
+                                    border: `1px solid ${C.border}`,
+                                    borderRadius: '0.35rem',
+                                    fontSize: '0.74rem',
+                                    padding: '0.4rem 0.6rem',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )
                     })}
 
@@ -341,6 +476,12 @@ export default function AuthHeader() {
                           placeholder="First name (e.g. Lucas)"
                           value={addFirstName}
                           onChange={e => setAddFirstName(e.target.value)}
+                          style={inp}
+                        />
+                        <input
+                          placeholder="Last name (e.g. Brown)"
+                          value={addLastName}
+                          onChange={e => setAddLastName(e.target.value)}
                           style={inp}
                         />
                         <input
