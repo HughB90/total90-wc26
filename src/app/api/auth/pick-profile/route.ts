@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const admin = createAdminSupabase()
     const { data: profile } = await admin
       .from('profiles')
-      .select('id, first_name, manager_name, display_name, is_owner, account_id')
+      .select('id, first_name, last_name, manager_name, display_name, is_owner, account_id')
       .eq('id', profile_id)
       .eq('account_id', userId)
       .is('deleted_at', null)
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       profile: {
         id: profile.id,
         first_name: profile.first_name,
+        last_name: profile.last_name,
         manager_name: profile.manager_name,
         display_name: profile.display_name,
         is_owner: profile.is_owner,

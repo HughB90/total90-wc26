@@ -1,9 +1,9 @@
 /**
  * POST /api/auth/create-account — Supabase signUp + create owner profile.
  *
- * Body: { email, password, first_name, manager_name, display_name?, pin? }
+ * Body: { email, password, first_name, last_name, manager_name, display_name?, pin? }
  *   - email/password: Supabase Auth credentials
- *   - first_name + manager_name: required for the initial owner profile
+ *   - first_name + last_name + manager_name: required for the initial owner profile
  *   - display_name: optional friendly name (falls back to manager_name in UI)
  *   - pin: optional 4-digit PIN for the profile picker quick-switch.
  *     If omitted, defaults to '0000' (parent can change in account settings).
@@ -66,11 +66,12 @@ async function sendWelcomeEmail(
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, first_name, manager_name, display_name, pin } =
+    const { email, password, first_name, last_name, manager_name, display_name, pin } =
       (await req.json()) as {
         email?: string
         password?: string
         first_name?: string
+        last_name?: string
         manager_name?: string
         display_name?: string
         pin?: string
@@ -79,6 +80,12 @@ export async function POST(req: NextRequest) {
     if (!email || !password || !first_name || !manager_name) {
       return NextResponse.json(
         { error: 'Missing required fields: email, password, first_name, manager_name' },
+        { status: 400 }
+      )
+    }
+    if (!last_name || !last_name.trim()) {
+      return NextResponse.json(
+        { error: 'Missing required field: last_name' },
         { status: 400 }
       )
     }
@@ -134,12 +141,13 @@ export async function POST(req: NextRequest) {
       .insert({
         account_id: userId,
         first_name: first_name.trim(),
+        last_name: last_name.trim(),
         pin_hash: hashPin(finalPin),
         manager_name: manager_name.trim(),
         display_name: display_name?.trim() || null,
         is_owner: true,
       })
-      .select('id, first_name, manager_name, display_name, is_owner')
+      .select('id, first_name, last_name, manager_name, display_name, is_owner')
       .single()
 
     if (profileErr || !profile) {

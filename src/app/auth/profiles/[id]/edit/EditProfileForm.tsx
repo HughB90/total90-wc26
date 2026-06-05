@@ -1,17 +1,5 @@
 'use client'
 
-/**
- * /auth/profiles/new — Create a new sub-profile under the current account.
- *
- * Restyled 2026-06-04 to match the AuthForm.tsx / Bracket Challenge design
- * language (navy card, gold accents, inline styles). `last_name` is now a
- * required field for any brand-new profile.
- *
- * Requires an account-level Supabase Auth session. PIN is no longer asked
- * for at create time — the server generates a placeholder; PINs are reserved
- * for a future kid-quick-switch challenge.
- */
-
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -24,18 +12,19 @@ const C = {
   muted: '#8899CC',
 }
 
-const inp: React.CSSProperties = {
+const inp = (locked: boolean): React.CSSProperties => ({
   width: '100%',
-  backgroundColor: '#162040',
+  backgroundColor: locked ? '#0F1C4D' : '#162040',
   border: '1px solid #1E3A6E',
   borderRadius: '0.625rem',
   padding: '0.7rem 1rem',
-  color: '#F0F4FF',
+  color: locked ? '#8899CC' : '#F0F4FF',
   fontSize: '0.9rem',
   outline: 'none',
   boxSizing: 'border-box',
   fontFamily: 'inherit',
-}
+  cursor: locked ? 'not-allowed' : 'text',
+})
 
 const labelStyle: React.CSSProperties = {
   color: C.muted,
@@ -44,52 +33,81 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '0.4rem',
 }
 
-export default function NewProfilePage() {
-  const router = useRouter()
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [managerName, setManagerName] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+const lockedHelper: React.CSSProperties = {
+  color: '#FBBF24',
+  fontSize: '0.72rem',
+  margin: '0.35rem 0 0',
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
+interface Props {
+  profileId: string
+  initialFirstName: string
+  initialLastName: string
+  initialManagerName: string
+  isOwnerTarget: boolean
+  nameLocked: boolean
+}
+
+export default function EditProfileForm({
+  profileId,
+  initialFirstName,
+  initialLastName,
+  initialManagerName,
+  isOwnerTarget,
+  nameLocked,
+}: Props) {
+  const router = useRouter()
+  const [firstName, setFirstName] = useState(initialFirstName)
+  const [lastName, setLastName] = useState(initialLastName)
+  const [managerName, setManagerName] = useState(initialManagerName)
+  const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    setInfo('')
 
-    if (!firstName.trim() || !lastName.trim() || !managerName.trim()) {
-      setError('First name, last name, and team name are required.')
+    if (!managerName.trim()) {
+      setError('Team / manager name cannot be empty.')
+      return
+    }
+    if (!nameLocked && (!firstName.trim() || !lastName.trim())) {
+      setError('First and last name are required.')
       return
     }
 
-    setLoading(true)
+    setSaving(true)
     try {
-      const res = await fetch('/api/auth/profiles', {
-        method: 'POST',
+      const body: Record<string, string> = {
+        manager_name: managerName.trim(),
+      }
+      if (!nameLocked) {
+        body.first_name = firstName.trim()
+        body.last_name = lastName.trim()
+      }
+
+      const res = await fetch(`/api/auth/profiles/${profileId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          manager_name: managerName.trim(),
-          display_name: displayName.trim() || null,
-        }),
+        body: JSON.stringify(body),
       })
-
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'Failed to create profile')
+        setError(data.error ?? 'Could not save changes.')
         return
       }
 
-      router.push('/auth/picker')
+      setInfo('Saved.')
       router.refresh()
     } catch (err) {
+      console.error(err)
       setError('Network error. Please try again.')
-      console.error('Profile creation error:', err)
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
@@ -122,11 +140,28 @@ export default function NewProfilePage() {
               margin: '0 0 0.25rem',
             }}
           >
-            Add Profile
+            Edit Profile
           </h1>
           <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
-            Add a new player to your account
+            {isOwnerTarget
+              ? 'Update your account profile'
+              : 'Update this player profile'}
           </p>
+          {nameLocked && (
+            <p
+              style={{
+                color: '#FBBF24',
+                fontSize: '0.78rem',
+                margin: '0.75rem 0 0',
+                background: '#1E3A6E',
+                padding: '0.5rem 0.75rem',
+                borderRadius: '0.5rem',
+              }}
+            >
+              Round 1 has started — names are locked. You can still update your
+              team name.
+            </p>
+          )}
         </div>
 
         <form
@@ -142,10 +177,13 @@ export default function NewProfilePage() {
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              required
-              style={inp}
-              placeholder="e.g. Alex"
+              readOnly={nameLocked}
+              disabled={nameLocked}
+              style={inp(nameLocked)}
             />
+            {nameLocked && (
+              <p style={lockedHelper}>Locked — Round 1 has started.</p>
+            )}
           </div>
 
           <div>
@@ -157,10 +195,14 @@ export default function NewProfilePage() {
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              required
-              style={inp}
-              placeholder="e.g. Diaz"
+              readOnly={nameLocked}
+              disabled={nameLocked}
+              style={inp(nameLocked)}
+              placeholder={nameLocked ? '' : 'Add a last name'}
             />
+            {nameLocked && (
+              <p style={lockedHelper}>Locked — Round 1 has started.</p>
+            )}
           </div>
 
           <div>
@@ -172,9 +214,7 @@ export default function NewProfilePage() {
               type="text"
               value={managerName}
               onChange={(e) => setManagerName(e.target.value)}
-              required
-              style={inp}
-              placeholder="e.g. Alex's All-Stars"
+              style={inp(false)}
             />
             <p
               style={{
@@ -187,43 +227,34 @@ export default function NewProfilePage() {
             </p>
           </div>
 
-          <div>
-            <label htmlFor="displayName" style={labelStyle}>
-              Display Name (optional)
-            </label>
-            <input
-              id="displayName"
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              style={inp}
-              placeholder="e.g. Alex D."
-            />
-          </div>
-
           {error && (
             <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>
               {error}
             </p>
           )}
+          {info && (
+            <p style={{ color: '#34d399', fontSize: '0.82rem', margin: 0 }}>
+              {info}
+            </p>
+          )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={saving}
             style={{
               width: '100%',
-              backgroundColor: loading ? '#162040' : C.gold,
+              backgroundColor: saving ? '#162040' : C.gold,
               color: '#0A0F2E',
               fontWeight: 800,
               fontSize: '1rem',
               padding: '0.875rem',
               borderRadius: '0.875rem',
               border: 'none',
-              cursor: loading ? 'not-allowed' : 'pointer',
+              cursor: saving ? 'not-allowed' : 'pointer',
               fontFamily: 'inherit',
             }}
           >
-            {loading ? 'Creating…' : 'Create Profile →'}
+            {saving ? 'Saving…' : 'Save Changes →'}
           </button>
 
           <div style={{ textAlign: 'center', marginTop: '0.25rem' }}>
