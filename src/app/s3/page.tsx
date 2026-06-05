@@ -26,6 +26,11 @@ interface Player {
   ea_physical?: number
   ea_mental?: number
   ea_defending?: number
+  t90_score?: number | null
+  cat_score?: number | null
+  tenk_score?: number | null
+  starting_xi?: number | null
+  t90_rank?: number | null
 }
 
 type Vote = 'sign' | 'sell' | 'sack'
@@ -341,7 +346,11 @@ export default function S3Page() {
       const matchPos = posFilter === 'All' || p.position === posFilter
       return matchSearch && matchPos
     })
-    .sort((a, b) => sortKey === 't90' ? b.s3_value - a.s3_value : (a.age ?? 99) - (b.age ?? 99))
+    .sort((a, b) => sortKey === 't90'
+      // Sort by real T90 score (was incorrectly s3_value before 2026-06-05). Players without
+      // T90 (rank > 250) fall to the bottom.
+      ? ((b.t90_score ?? -1) - (a.t90_score ?? -1))
+      : ((a.age ?? 99) - (b.age ?? 99)))
 
   const totalPages = Math.ceil(filtered.length / pageSize)
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -432,6 +441,10 @@ export default function S3Page() {
             <div ref={playerListRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               {paginated.map((p) => {
                 const globalRank = filtered.indexOf(p) + 1
+                // When sorting by T90, display T90 score (rounded). Otherwise display S3 value.
+                const displayScore = sortKey === 't90'
+                  ? (p.t90_score != null ? Math.round(Number(p.t90_score) * 10) / 10 : p.s3_value)
+                  : p.s3_value
                 const tier = t90Tier(p.s3_value)
                 const posStyle = posColors[p.position] || posColors.MID
                 const hasVoted = !!detailVotes[p.id]
@@ -460,8 +473,8 @@ export default function S3Page() {
                       </span>
                     )}
                     <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '60px' }}>
-                      <div style={{ color: tier.color, fontWeight: 800, fontSize: '0.95rem' }}>{p.s3_value}</div>
-                      <div style={{ color: '#4A6080', fontSize: '0.62rem' }}>{tier.label}</div>
+                      <div style={{ color: tier.color, fontWeight: 800, fontSize: '0.95rem' }}>{displayScore}</div>
+                      <div style={{ color: '#4A6080', fontSize: '0.62rem' }}>{sortKey === 't90' ? 'T90' : tier.label}</div>
                     </div>
                   </div>
                 )

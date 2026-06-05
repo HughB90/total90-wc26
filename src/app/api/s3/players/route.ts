@@ -33,10 +33,11 @@ export async function GET(request: Request) {
       return NextResponse.json(shuffled.slice(0, 3))
     }
 
-    // Default: return leaderboard
+    // Default: return leaderboard (now ordered by T90 score; falls back to s3_value)
     const { data, error } = await supabase
       .from('s3_players')
-      .select('id, name, short_name, nationality, position, s3_value, age, photo_url, is_active, sign_count, sell_count, sack_count, vote_count, market_value_eur, club')
+      .select('id, name, short_name, nationality, position, s3_value, age, photo_url, is_active, sign_count, sell_count, sack_count, vote_count, market_value_eur, club, t90_score, cat_score, tenk_score, starting_xi, t90_rank')
+      .order('t90_score', { ascending: false, nullsFirst: false })
       .order('s3_value', { ascending: false }) as any
 
     if (error) {
