@@ -9,6 +9,9 @@ interface Player {
   short_name?: string
   nationality: string
   position: string
+  /** @deprecated 2026-06-06 — Hugh killed S3 value. Use t90_score. Kept on the type
+   * only because the legacy DB column still ships in the API payload. Do not
+   * surface in new UI or scoring. */
   s3_value: number
   age?: number
   photo_url?: string
