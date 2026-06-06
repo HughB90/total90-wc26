@@ -139,11 +139,11 @@ const voteConfig = {
 // next ≈60, etc.
 const t90Tier = (score: number | null | undefined) => {
   const s = typeof score === 'number' ? score : 0
-  if (s >= 100) return { label: 'Elite',       color: '#FFD700' } // gold
-  if (s >= 85)  return { label: 'World Class', color: '#C084FC' } // purple
-  if (s >= 70)  return { label: 'Top Tier',    color: '#60A5FA' } // blue
-  if (s >= 55)  return { label: 'Quality',     color: '#00E676' } // green
-  return              { label: 'Solid',        color: '#8899CC' } // grey
+  if (s >= 100) return { label: 'Elite',       color: '#FFD700', letter: 'A+' } // gold
+  if (s >= 85)  return { label: 'World Class', color: '#C084FC', letter: 'A'  } // purple
+  if (s >= 70)  return { label: 'Top Tier',    color: '#60A5FA', letter: 'B'  } // blue
+  if (s >= 55)  return { label: 'Quality',     color: '#00E676', letter: 'C'  } // green
+  return              { label: 'Solid',        color: '#8899CC', letter: 'D'  } // grey
 }
 const t90TierDetail = t90Tier
 
@@ -524,7 +524,10 @@ export default function S3Page() {
                       </span>
                     )}
                     <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '60px' }}>
-                      <div style={{ color: tier.color, fontWeight: 800, fontSize: '0.95rem' }}>{displayScore}</div>
+                      <div style={{ color: tier.color, fontWeight: 800, fontSize: '0.95rem', display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '0.3rem' }}>
+                        <span>{displayScore}</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 900, letterSpacing: '-0.02em' }}>{tier.letter}</span>
+                      </div>
                       <div style={{ color: tier.color, fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.02em' }}>{tier.label}</div>
                     </div>
                   </div>
@@ -737,7 +740,7 @@ export default function S3Page() {
                   </div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, fontSize: '1.25rem', color: '#F0F4FF', marginBottom: '0.25rem', lineHeight: 1.2 }}>{p.name}</div>
+                  <div style={{ fontWeight: 900, fontSize: '1.25rem', color: '#F0F4FF', marginBottom: '0.25rem', lineHeight: 1.2 }}>{p.short_name || p.name}</div>
                   <div style={{ color: '#8899CC', fontSize: '0.82rem', marginBottom: '0.2rem' }}>
                     {p.nationality}
                     {' · '}

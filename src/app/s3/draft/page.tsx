@@ -128,6 +128,30 @@ function formatDate(iso: string | null): string {
   }
 }
 
+// Display name on cards/tables: prefer short_name (Rodri, Pedri, Raphinha) so
+// the rendered name matches the jersey rather than the official full name.
+// Falls back to name when short_name is null/blank.
+function displayName(p: { name: string; short_name?: string | null }): string {
+  const s = (p.short_name ?? '').trim()
+  return s || p.name
+}
+
+// Letter grade — 5 grades matching the 5 S³ T90 tiers exactly so player and
+// team grades use the same visual language. Hugh 2026-06-05.
+export function letterGrade(t90: number | null | undefined): {
+  letter: 'A+' | 'A' | 'B' | 'C' | 'D' | '—'
+  tier: string
+  color: string
+} {
+  if (t90 == null || !isFinite(Number(t90))) return { letter: '—', tier: 'No data', color: C.muted }
+  const s = Number(t90)
+  if (s >= 100) return { letter: 'A+', tier: 'Elite',       color: '#FFD700' }
+  if (s >= 85)  return { letter: 'A',  tier: 'World Class', color: '#C084FC' }
+  if (s >= 70)  return { letter: 'B',  tier: 'Top Tier',    color: '#60A5FA' }
+  if (s >= 55)  return { letter: 'C',  tier: 'Quality',     color: '#00E676' }
+  return            { letter: 'D',  tier: 'Solid',       color: '#8899CC' }
+}
+
 export default function S3DraftPage() {
   const [me, setMe] = useState<MeResponse['profile']>(null)
   const [authedReady, setAuthedReady] = useState(false)
@@ -224,6 +248,7 @@ export default function S3DraftPage() {
   // as clickable filters so a tap re-populates the list with only the
   // matching picks. 'All' is the default.
   const [viewFilter, setViewFilter] = useState<'all' | 'my_team' | 'favorite'>('all')
+  const [showGradePanel, setShowGradePanel] = useState(false)
   const visiblePlayers = useMemo(() => {
     if (viewFilter === 'all') return players
     return players.filter(p => {
@@ -232,6 +257,27 @@ export default function S3DraftPage() {
       return viewFilter === 'my_team' ? !!pick.my_team : !!pick.favorite
     })
   }, [players, picks, viewFilter])
+
+  // ── Team grade (My Team only) ────────────────────────────────────
+  // Letter grade = letterGrade(avg T90 of My Team picks). Same 5-band scale
+  // as individual player grades so they read consistently.
+  const teamGrade = useMemo(() => {
+    const team = players.filter(p => picks[p.id]?.my_team)
+    const scored = team.filter(p => p.t90_score != null).map(p => Number(p.t90_score))
+    if (team.length === 0) return null
+    if (scored.length === 0) return { grade: letterGrade(null), count: team.length, avg: null, top: [], shape: { GK:0, DEF:0, MID:0, FWD:0 }, best: null }
+    const avg = scored.reduce((a, b) => a + b, 0) / scored.length
+    const grade = letterGrade(avg)
+    const top = [...team].sort((a, b) => (b.t90_score ?? 0) - (a.t90_score ?? 0)).slice(0, 5)
+    const shape = { GK: 0, DEF: 0, MID: 0, FWD: 0 }
+    for (const p of team) {
+      const pos = (p.position || '').toUpperCase()
+      if (pos === 'GK' || pos === 'DEF' || pos === 'MID' || pos === 'FWD') {
+        shape[pos as 'GK'|'DEF'|'MID'|'FWD']++
+      }
+    }
+    return { grade, count: team.length, avg, top, shape, best: top[0] ?? null }
+  }, [players, picks])
 
   const togglePick = useCallback((player_id: string, key: keyof Pick) => {
     setPicks(prev => {
@@ -357,6 +403,22 @@ export default function S3DraftPage() {
               active={viewFilter === 'favorite'}
               onClick={() => setViewFilter('favorite')}
             />
+            {viewFilter === 'my_team' && counts.my_team > 0 && (
+              <button
+                onClick={() => setShowGradePanel(s => !s)}
+                style={{
+                  padding: '0.4rem 0.85rem', borderRadius: 999,
+                  border: `1px solid ${C.gold}`,
+                  background: showGradePanel ? C.gold : 'rgba(251,191,36,0.08)',
+                  color: showGradePanel ? '#0A0F2E' : C.gold,
+                  fontSize: '0.8rem', fontWeight: 800,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.12s, color 0.12s',
+                }}
+              >
+                {showGradePanel ? 'Hide Grade' : '🎯 Grade My Team'}
+              </button>
+            )}
             <div style={{ flex: 1, minWidth: 8 }} />
             {savedToast && (
               <span style={{
@@ -383,6 +445,11 @@ export default function S3DraftPage() {
               {saving ? 'Saving…' : '💾 Save Progress'}
             </button>
           </div>
+        )}
+
+        {/* Team grade panel — visible only when My Team filter is active + button clicked */}
+        {me && viewFilter === 'my_team' && showGradePanel && teamGrade && (
+          <TeamGradePanel grade={teamGrade} />
         )}
 
         {/* Desktop table — hidden on mobile via CSS */}
@@ -520,7 +587,7 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
         {player.photo_url ? (
           <img
             src={player.photo_url}
-            alt={player.name}
+            alt={displayName(player)}
             width={36}
             height={36}
             referrerPolicy="no-referrer"
@@ -533,13 +600,13 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
             background: C.border, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             color: C.muted, fontSize: 13,
-          }}>{player.name?.[0] ?? '?'}</div>
+          }}>{displayName(player)?.[0] ?? '?'}</div>
         )}
       </td>
       <td style={{ padding: '8px 10px', minWidth: 180 }}>
         <span style={nameStyle}>
           {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
-          {player.name}
+          {displayName(player)}
         </span>
         {player.club && (
           <div style={{ color: C.muted, fontSize: 11, marginTop: 1 }}>{player.club}</div>
@@ -640,7 +707,7 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
             {player.photo_url ? (
               <img
                 src={player.photo_url}
-                alt={player.name}
+                alt={displayName(player)}
                 width={44}
                 height={44}
                 referrerPolicy="no-referrer"
@@ -653,12 +720,16 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
                 background: C.border, display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
                 color: C.muted, fontSize: 16, fontWeight: 700, flexShrink: 0,
-              }}>{player.name?.[0] ?? '?'}</div>
+              }}>{displayName(player)?.[0] ?? '?'}</div>
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={nameStyle}>
-                {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
-                {player.name}
+              {/* Position pill inline before the name, per Hugh 2026-06-05 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <PosPill position={player.position} />
+                <span style={nameStyle}>
+                  {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
+                  {displayName(player)}
+                </span>
               </div>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -707,27 +778,24 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
           </div>
         </div>
 
-        {/* RIGHT: pos pill + vertical toggle column (saves vertical space) */}
+        {/* RIGHT: vertical toggle column. Position pill moved inline next to name. */}
         <div style={{
           flexShrink: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between',
+          alignItems: 'center', gap: '0.4rem', justifyContent: 'center',
           paddingLeft: '0.5rem', borderLeft: `1px solid ${C.border}`,
         }}>
-          <PosPill position={player.position} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'center' }}>
-            <ToggleWithLabel
-              on={pick.my_team}
-              label="My Team"
-              onColor={C.green}
-              onClick={() => onToggle(player.id, 'my_team')}
-            />
-            <ToggleWithLabel
-              on={pick.favorite}
-              label="Favorite"
-              onColor={C.star}
-              onClick={() => onToggle(player.id, 'favorite')}
-            />
-          </div>
+          <ToggleWithLabel
+            on={pick.my_team}
+            label="My Team"
+            onColor={C.green}
+            onClick={() => onToggle(player.id, 'my_team')}
+          />
+          <ToggleWithLabel
+            on={pick.favorite}
+            label="Favorite"
+            onColor={C.star}
+            onClick={() => onToggle(player.id, 'favorite')}
+          />
         </div>
       </div>
     </div>
@@ -855,6 +923,100 @@ function FilterChip({ label, value, color, active, onClick }: {
 // ─────────────────────────────────────────────────────────────────────────
 // Styles — desktop/mobile layout + print
 // ─────────────────────────────────────────────────────────────────────────
+
+// Inline team grade panel — shows above the player list when 'Grade My Team'
+// is clicked. Same color/label scale as individual S³ player grades.
+function TeamGradePanel({ grade }: {
+  grade: {
+    grade: { letter: string; tier: string; color: string }
+    count: number
+    avg: number | null
+    top: Player[]
+    shape: { GK: number; DEF: number; MID: number; FWD: number }
+    best: Player | null
+  }
+}) {
+  const { grade: g, count, avg, top, shape, best } = grade
+  return (
+    <div style={{
+      marginTop: '0.75rem',
+      background: C.card, border: `1px solid ${g.color}55`,
+      borderRadius: 12, padding: '1.25rem',
+      display: 'grid',
+      gridTemplateColumns: 'auto 1fr',
+      gap: '1.5rem',
+      alignItems: 'center',
+    }}>
+      {/* Big letter grade */}
+      <div style={{
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '0.5rem 1.25rem',
+        borderRadius: 12,
+        background: `${g.color}15`,
+        border: `2px solid ${g.color}`,
+        minWidth: 110,
+      }}>
+        <div style={{ fontSize: '3.25rem', fontWeight: 900, color: g.color, lineHeight: 1, letterSpacing: '-0.04em' }}>
+          {g.letter}
+        </div>
+        <div style={{ fontSize: '0.78rem', color: g.color, fontWeight: 700, marginTop: 4 }}>
+          {g.tier}
+        </div>
+      </div>
+
+      {/* Stats column */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', minWidth: 0 }}>
+        <div style={{ fontSize: '0.78rem', color: C.muted }}>
+          <strong style={{ color: C.text, fontWeight: 700 }}>{count}</strong> {count === 1 ? 'player' : 'players'}
+          {avg != null && (
+            <> · Avg T90 <strong style={{ color: C.text, fontWeight: 700 }}>{avg.toFixed(1)}</strong></>
+          )}
+        </div>
+
+        {best && (
+          <div style={{ fontSize: '0.78rem', color: C.muted }}>
+            Best: <strong style={{ color: C.text, fontWeight: 700 }}>{displayName(best)}</strong>
+            {best.t90_score != null && <> <span style={{ color: g.color, fontWeight: 700 }}>{Number(best.t90_score).toFixed(1)}</span></>}
+          </div>
+        )}
+
+        <div style={{ fontSize: '0.78rem', color: C.muted, display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+          <span>Shape:</span>
+          {(['GK', 'DEF', 'MID', 'FWD'] as const).map(pos => (
+            <span key={pos} style={{ color: shape[pos] > 0 ? C.text : C.muted }}>
+              <strong style={{ color: shape[pos] > 0 ? C.text : C.muted, fontWeight: 700 }}>{shape[pos]}</strong> {pos}
+            </span>
+          )).reduce((acc: React.ReactNode[], el, i) => {
+            if (i > 0) acc.push(<span key={`s${i}`} style={{ color: C.border }}>·</span>)
+            acc.push(el)
+            return acc
+          }, [])}
+        </div>
+
+        {top.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
+            <div style={{ fontSize: '0.7rem', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 700 }}>
+              Top {top.length}
+            </div>
+            {top.map(p => {
+              const pg = letterGrade(p.t90_score)
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem' }}>
+                  <span style={{ color: pg.color, fontWeight: 800, minWidth: 22 }}>{pg.letter}</span>
+                  <span style={{ color: C.text, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(p)}</span>
+                  <span style={{ color: pg.color, fontWeight: 700 }}>
+                    {p.t90_score != null ? Number(p.t90_score).toFixed(1) : '—'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function DraftStyles() {
   return (
