@@ -645,13 +645,13 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
       <td style={{ padding: '8px 10px', color: C.text, fontWeight: 800, fontSize: 14 }}>
         {player.t90_score != null ? Number(player.t90_score).toFixed(1) : '—'}
       </td>
-      <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+      <td className="draft-toggle-cell" style={{ padding: '8px 4px', textAlign: 'center' }}>
         <Toggle on={pick.drafted} label="Drafted" onColor={C.muted} onClick={() => onToggle(player.id, 'drafted')} />
       </td>
-      <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+      <td className="draft-toggle-cell" style={{ padding: '8px 4px', textAlign: 'center' }}>
         <Toggle on={pick.my_team} label="My Team" onColor={C.green} onClick={() => onToggle(player.id, 'my_team')} />
       </td>
-      <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+      <td className="draft-toggle-cell" style={{ padding: '8px 4px', textAlign: 'center' }}>
         <Toggle on={pick.favorite} label="Favorite" onColor={C.star} onClick={() => onToggle(player.id, 'favorite')} />
       </td>
     </tr>
@@ -886,6 +886,8 @@ function Toggle({ on, label, onColor, onClick }: {
   onColor: string
   onClick: () => void
 }) {
+  // 2026-06-06: shrunk 22→16 (Hugh: "make buttons smaller so they fit in the row").
+  // Mobile CSS shrinks further to 14px via .draft-table .draft-toggle override.
   return (
     <button
       onClick={onClick}
@@ -893,7 +895,7 @@ function Toggle({ on, label, onColor, onClick }: {
       aria-label={`${label}: ${on ? 'on' : 'off'}`}
       className="draft-toggle"
       style={{
-        width: 22, height: 22, borderRadius: '50%',
+        width: 16, height: 16, borderRadius: '50%',
         border: `2px ${on ? 'solid' : 'dashed'} ${on ? onColor : '#3A4F7E'}`,
         background: on ? onColor : 'transparent',
         cursor: 'pointer', padding: 0,
@@ -1101,7 +1103,10 @@ function DraftStyles() {
       }
       .draft-page-header .dph-opta { justify-self: end; }
 
-      /* Mobile cards hidden on desktop; desktop table hidden on mobile. */
+      /* 2026-06-06: mobile now ALSO uses the desktop table with horizontal scroll.
+         (Per Hugh: "go back to the single horizontal rows where the user has to
+         scroll left and right to see all the information.") The .draft-cards
+         layout is kept as dead code under display:none everywhere. */
       .draft-cards { display: none; }
       .draft-table-wrap { display: block; }
 
@@ -1124,34 +1129,16 @@ function DraftStyles() {
         }
         .draft-page-header .dph-title p { font-size: 0.72rem; }
 
-        /* Swap table for cards. */
-        .draft-table-wrap { display: none; }
-        .draft-cards {
-          display: block;
-          background: ${C.card};
-          border: 1px solid ${C.border};
-          border-radius: 12px;
-          overflow: hidden;
-        }
+        /* Keep table visible on mobile, let it scroll horizontally. */
+        .draft-cards { display: none !important; }
+        .draft-table-wrap { display: block; }
 
-        /* Each row owns its own horizontal scroll context so sticky-left works
-           per-row (rows scroll independently — see Hugh's spec 2026-06-05). */
-        .draft-card {
-          scrollbar-width: none;            /* Firefox */
-          -ms-overflow-style: none;          /* IE/Edge */
-        }
-        .draft-card::-webkit-scrollbar { display: none; height: 0; }
-        .draft-cards > .draft-card:last-child { border-bottom: none; }
-
-        /* Compact toggle labels for the narrow sticky-right column. */
-        .draft-card .draft-toggle-mobile {
-          padding: 2px 4px;
-          gap: 4px;
-          font-size: 11px;
-        }
-        .draft-card .draft-toggle-mobile > span:first-child {
-          width: 14px; height: 14px;
-        }
+        /* Tighten the table for mobile so more fits before the scroll. */
+        .draft-table { font-size: 12px; }
+        .draft-table th { padding: 8px 6px !important; font-size: 10px !important; letter-spacing: 0.5px; }
+        .draft-table td { padding: 6px 6px !important; }
+        .draft-table .draft-toggle-cell { padding: 6px 3px !important; }
+        .draft-table .draft-toggle { width: 14px !important; height: 14px !important; }
 
         /* Hide the site-wide Fantasy App floating CTA on /s3/draft (mobile). */
         #floating-fantasy-cta { display: none !important; }
