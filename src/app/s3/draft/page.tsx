@@ -219,6 +219,20 @@ export default function S3DraftPage() {
     return { drafted, my_team, favorite }
   }, [picks])
 
+  // ── View filter (All / My Team / Favorited) ─────────────────────────────
+  // 2026-06-05: drop the Drafted chip per Hugh; surface My Team + Favorited
+  // as clickable filters so a tap re-populates the list with only the
+  // matching picks. 'All' is the default.
+  const [viewFilter, setViewFilter] = useState<'all' | 'my_team' | 'favorite'>('all')
+  const visiblePlayers = useMemo(() => {
+    if (viewFilter === 'all') return players
+    return players.filter(p => {
+      const pick = picks[p.id]
+      if (!pick) return false
+      return viewFilter === 'my_team' ? !!pick.my_team : !!pick.favorite
+    })
+  }, [players, picks, viewFilter])
+
   const togglePick = useCallback((player_id: string, key: keyof Pick) => {
     setPicks(prev => {
       const cur = prev[player_id] ?? defaultPick()
@@ -322,9 +336,27 @@ export default function S3DraftPage() {
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             flexWrap: 'wrap',
           }}>
-            <CounterChip label="Drafted" value={counts.drafted} color={C.muted} />
-            <CounterChip label="My Team" value={counts.my_team} color={C.green} />
-            <CounterChip label="Favorited" value={counts.favorite} color={C.star} />
+            <FilterChip
+              label="All"
+              value={players.length}
+              color={C.text}
+              active={viewFilter === 'all'}
+              onClick={() => setViewFilter('all')}
+            />
+            <FilterChip
+              label="My Team"
+              value={counts.my_team}
+              color={C.green}
+              active={viewFilter === 'my_team'}
+              onClick={() => setViewFilter('my_team')}
+            />
+            <FilterChip
+              label="Favorited"
+              value={counts.favorite}
+              color={C.star}
+              active={viewFilter === 'favorite'}
+              onClick={() => setViewFilter('favorite')}
+            />
             <div style={{ flex: 1, minWidth: 8 }} />
             {savedToast && (
               <span style={{
@@ -377,10 +409,14 @@ export default function S3DraftPage() {
                   {loadingPlayers && (
                     <tr><td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: C.muted }}>Loading top 250…</td></tr>
                   )}
-                  {!loadingPlayers && players.length === 0 && (
-                    <tr><td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: C.muted }}>No ranked players found.</td></tr>
+                  {!loadingPlayers && visiblePlayers.length === 0 && (
+                    <tr><td colSpan={11} style={{ padding: '3rem', textAlign: 'center', color: C.muted }}>
+                      {viewFilter === 'all'
+                        ? 'No ranked players found.'
+                        : `No players tagged as ${viewFilter === 'my_team' ? 'My Team' : 'Favorite'} yet.`}
+                    </td></tr>
                   )}
-                  {!loadingPlayers && players.map(p => {
+                  {!loadingPlayers && visiblePlayers.map(p => {
                     const pick = picks[p.id] ?? defaultPick()
                     const iso = nationToIso(p.nationality)
                     const group = nationGroup(p.nationality)
@@ -411,12 +447,14 @@ export default function S3DraftPage() {
                 Loading top 250…
               </div>
             )}
-            {!loadingPlayers && players.length === 0 && (
+            {!loadingPlayers && visiblePlayers.length === 0 && (
               <div style={{ padding: '3rem 1rem', textAlign: 'center', color: C.muted }}>
-                No ranked players found.
+                {viewFilter === 'all'
+                  ? 'No ranked players found.'
+                  : `No players tagged as ${viewFilter === 'my_team' ? 'My Team' : 'Favorite'} yet.`}
               </div>
             )}
-            {!loadingPlayers && players.map(p => {
+            {!loadingPlayers && visiblePlayers.map(p => {
               const pick = picks[p.id] ?? defaultPick()
               const iso = nationToIso(p.nationality)
               const group = nationGroup(p.nationality)
@@ -590,85 +628,60 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
     lineHeight: 1.2,
   }
 
+  // 2026-06-05 layout: photo+name on the left, vertical toggle column on the right.
+  // Saves ~80px per card vs the old horizontal toggle row. Drafted toggle removed
+  // per Hugh — keeping just My Team + Favorite.
   return (
     <div className="draft-card" style={cardStyle}>
-      {/* Line 1: photo + name + pos pill */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-        {player.photo_url ? (
-          <img
-            src={player.photo_url}
-            alt={player.name}
-            width={44}
-            height={44}
-            referrerPolicy="no-referrer"
-            style={{ borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        ) : (
-          <div style={{
-            width: 44, height: 44, borderRadius: '50%',
-            background: C.border, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            color: C.muted, fontSize: 16, fontWeight: 700, flexShrink: 0,
-          }}>{player.name?.[0] ?? '?'}</div>
-        )}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.7rem' }}>
+        {/* LEFT: photo + name + flag/club + metrics + pos pill */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={nameStyle}>
-            {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
-            {player.name}
-          </div>
-          {/* Line 2: flag + club on the same row */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            marginTop: 3, color: C.muted, fontSize: 12,
-          }}>
-            {iso ? (
-              <span className={`fi fi-${iso}`} style={{ width: 24, height: 18, borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)', flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+            {player.photo_url ? (
+              <img
+                src={player.photo_url}
+                alt={player.name}
+                width={44}
+                height={44}
+                referrerPolicy="no-referrer"
+                style={{ borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              />
             ) : (
-              <span style={{ width: 24, height: 18, background: C.border, borderRadius: 2, display: 'inline-block', textAlign: 'center', fontSize: 10, color: C.muted, lineHeight: '18px', flexShrink: 0 }}>?</span>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%',
+                background: C.border, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                color: C.muted, fontSize: 16, fontWeight: 700, flexShrink: 0,
+              }}>{player.name?.[0] ?? '?'}</div>
             )}
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {player.club ?? player.nationality}
-            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={nameStyle}>
+                {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
+                {player.name}
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                marginTop: 3, color: C.muted, fontSize: 12,
+              }}>
+                {iso ? (
+                  <span className={`fi fi-${iso}`} style={{ width: 24, height: 18, borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)', flexShrink: 0 }} />
+                ) : (
+                  <span style={{ width: 24, height: 18, background: C.border, borderRadius: 2, display: 'inline-block', textAlign: 'center', fontSize: 10, color: C.muted, lineHeight: '18px', flexShrink: 0 }}>?</span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {player.club ?? player.nationality}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-        <div style={{ flexShrink: 0 }}>
-          <PosPill position={player.position} />
-        </div>
-      </div>
 
-      {/* Toggle row */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
-        gap: '0.5rem', marginTop: '0.85rem', paddingTop: '0.7rem',
-        borderTop: `1px solid ${C.border}`,
-      }}>
-        <ToggleWithLabel
-          on={pick.drafted}
-          label="Drafted"
-          onColor={C.muted}
-          onClick={() => onToggle(player.id, 'drafted')}
-        />
-        <ToggleWithLabel
-          on={pick.my_team}
-          label="My Team"
-          onColor={C.green}
-          onClick={() => onToggle(player.id, 'my_team')}
-        />
-        <ToggleWithLabel
-          on={pick.favorite}
-          label="Favorite"
-          onColor={C.star}
-          onClick={() => onToggle(player.id, 'favorite')}
-        />
-      </div>
-
-      {/* Metrics row */}
-      <div style={{
-        marginTop: '0.7rem', fontSize: 12, color: C.muted,
-        display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
-        alignItems: 'center',
-      }}>
+          {/* Metrics row */}
+          <div style={{
+            marginTop: '0.55rem', fontSize: 12, color: C.muted,
+            display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
+            alignItems: 'center',
+          }}>
         <span style={{ color: C.gold, fontWeight: 700 }}>#{player.t90_rank}</span>
         <span style={{ color: C.border }}>·</span>
         <span style={{ color: C.text, fontWeight: 700 }}>
@@ -691,6 +704,31 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
             </span>
           </>
         )}
+          </div>
+        </div>
+
+        {/* RIGHT: pos pill + vertical toggle column (saves vertical space) */}
+        <div style={{
+          flexShrink: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between',
+          paddingLeft: '0.5rem', borderLeft: `1px solid ${C.border}`,
+        }}>
+          <PosPill position={player.position} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'center' }}>
+            <ToggleWithLabel
+              on={pick.my_team}
+              label="My Team"
+              onColor={C.green}
+              onClick={() => onToggle(player.id, 'my_team')}
+            />
+            <ToggleWithLabel
+              on={pick.favorite}
+              label="Favorite"
+              onColor={C.star}
+              onClick={() => onToggle(player.id, 'favorite')}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -780,6 +818,37 @@ function CounterChip({ label, value, color }: { label: string; value: number; co
       <span style={{ color, fontWeight: 800 }}>{value}</span>
       <span>{label}</span>
     </span>
+  )
+}
+
+// Same look as CounterChip but clickable + supports an active (selected) state.
+// Used for the All / My Team / Favorited filter row added 2026-06-05.
+function FilterChip({ label, value, color, active, onClick }: {
+  label: string
+  value: number
+  color: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '0.4rem 0.75rem', borderRadius: 999,
+        background: active ? color : C.card,
+        border: `1px solid ${active ? color : C.border}`,
+        fontSize: '0.8rem',
+        color: active ? '#0A0F2E' : C.muted,
+        fontWeight: 700,
+        cursor: 'pointer', fontFamily: 'inherit',
+        transition: 'background 0.12s, border 0.12s, color 0.12s',
+      }}
+    >
+      <span style={{ color: active ? '#0A0F2E' : color, fontWeight: 800 }}>{value}</span>
+      <span>{label}</span>
+    </button>
   )
 }
 
