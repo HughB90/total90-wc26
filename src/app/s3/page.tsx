@@ -33,9 +33,9 @@ interface Player {
 }
 
 type Vote = 'sign' | 'sell' | 'sack'
-type SortKey = 't90' | 'age'
 type PosFilter = 'All' | 'FWD' | 'MID' | 'DEF' | 'GK'
 type PageSize = 25 | 50 | 100
+type GroupFilter = 'All' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L'
 
 const WC_GROUPS: Record<string, string[]> = {
   A: ['Mexico', 'South Korea', 'South Africa', 'Czech Republic'],
@@ -197,8 +197,9 @@ export default function S3Page() {
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('t90')
   const [posFilter, setPosFilter] = useState<PosFilter>('All')
+  const [groupFilter, setGroupFilter] = useState<GroupFilter>('All')
+  const [teamFilter, setTeamFilter] = useState<string>('All')
   const [pageSize, setPageSize] = useState<PageSize>(50)
   const [page, setPage] = useState(1)
 
@@ -244,7 +245,15 @@ export default function S3Page() {
   }, [])
 
   // ── Reset to page 1 on filter change ─────────────────────────────
-  useEffect(() => { setPage(1) }, [search, posFilter, sortKey, pageSize])
+  useEffect(() => { setPage(1) }, [search, posFilter, groupFilter, teamFilter, pageSize])
+
+  // When group changes, reset team filter (the prior team likely isn't in the new group)
+  useEffect(() => { setTeamFilter('All') }, [groupFilter])
+
+  // Teams available in the team dropdown — driven by selected group
+  const availableTeams = groupFilter === 'All'
+    ? Object.values(WC_GROUPS).flat().sort()
+    : (WC_GROUPS[groupFilter] ?? []).slice().sort()
 
   // ── Pre-load overlay players (picks from loaded players) ──────────
   const refreshOverlayPlayers = useCallback((allPlayers: Player[]) => {
@@ -356,13 +365,14 @@ export default function S3Page() {
       const q = search.toLowerCase()
       const matchSearch = !q || p.name.toLowerCase().includes(q) || p.nationality.toLowerCase().includes(q)
       const matchPos = posFilter === 'All' || p.position === posFilter
-      return matchSearch && matchPos
+      // Group/Team filter — use NATIONALITY_TO_WC mapping so 'Côte d’Ivoire' etc. resolve.
+      const wcTeam = NATIONALITY_TO_WC[p.nationality] ?? p.nationality
+      const matchGroup = groupFilter === 'All' || (WC_GROUPS[groupFilter] ?? []).includes(wcTeam)
+      const matchTeam = teamFilter === 'All' || wcTeam === teamFilter
+      return matchSearch && matchPos && matchGroup && matchTeam
     })
-    .sort((a, b) => sortKey === 't90'
-      // Sort by real T90 score (was incorrectly s3_value before 2026-06-05). Players without
-      // T90 (rank > 250) fall to the bottom.
-      ? ((b.t90_score ?? -1) - (a.t90_score ?? -1))
-      : ((a.age ?? 99) - (b.age ?? 99)))
+    // Sort by real T90 score. Players without T90 (rank > 250) fall to the bottom.
+    .sort((a, b) => (b.t90_score ?? -1) - (a.t90_score ?? -1))
 
   const totalPages = Math.ceil(filtered.length / pageSize)
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize)
@@ -446,10 +456,27 @@ export default function S3Page() {
                 <button key={p} onClick={() => setPosFilter(p)} style={{ padding: '0.4rem 0.7rem', borderRadius: '0.5rem', border: '1px solid', borderColor: posFilter === p ? '#00E676' : '#1E3A6E', backgroundColor: posFilter === p ? 'rgba(0,230,118,0.1)' : 'transparent', color: posFilter === p ? '#00E676' : '#8899CC', cursor: 'pointer', fontSize: '0.75rem', fontWeight: posFilter === p ? 700 : 400, fontFamily: 'inherit' }}>{p}</button>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: '0.35rem' }}>
-              {([['t90', 'T90'], ['age', 'Age']] as [SortKey, string][]).map(([k, label]) => (
-                <button key={k} onClick={() => setSortKey(k)} style={{ padding: '0.4rem 0.7rem', borderRadius: '0.5rem', border: '1px solid', borderColor: sortKey === k ? '#FBBF24' : '#1E3A6E', backgroundColor: sortKey === k ? 'rgba(251,191,36,0.08)' : 'transparent', color: sortKey === k ? '#FBBF24' : '#8899CC', cursor: 'pointer', fontSize: '0.75rem', fontWeight: sortKey === k ? 700 : 400, fontFamily: 'inherit' }}>{label}</button>
-              ))}
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+              <select
+                value={groupFilter}
+                onChange={e => setGroupFilter(e.target.value as GroupFilter)}
+                style={{ padding: '0.4rem 0.6rem', borderRadius: '0.5rem', border: '1px solid', borderColor: groupFilter !== 'All' ? '#FBBF24' : '#1E3A6E', backgroundColor: groupFilter !== 'All' ? 'rgba(251,191,36,0.08)' : '#0F1C4D', color: groupFilter !== 'All' ? '#FBBF24' : '#8899CC', cursor: 'pointer', fontSize: '0.75rem', fontWeight: groupFilter !== 'All' ? 700 : 400, fontFamily: 'inherit', outline: 'none' }}
+              >
+                <option value="All">All Groups</option>
+                {(['A','B','C','D','E','F','G','H','I','J','K','L'] as const).map(g => (
+                  <option key={g} value={g}>Group {g}</option>
+                ))}
+              </select>
+              <select
+                value={teamFilter}
+                onChange={e => setTeamFilter(e.target.value)}
+                style={{ padding: '0.4rem 0.6rem', borderRadius: '0.5rem', border: '1px solid', borderColor: teamFilter !== 'All' ? '#FBBF24' : '#1E3A6E', backgroundColor: teamFilter !== 'All' ? 'rgba(251,191,36,0.08)' : '#0F1C4D', color: teamFilter !== 'All' ? '#FBBF24' : '#8899CC', cursor: 'pointer', fontSize: '0.75rem', fontWeight: teamFilter !== 'All' ? 700 : 400, fontFamily: 'inherit', outline: 'none', maxWidth: '180px' }}
+              >
+                <option value="All">{groupFilter === 'All' ? 'All Teams' : `All in Group ${groupFilter}`}</option>
+                {availableTeams.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -482,9 +509,9 @@ export default function S3Page() {
             <div ref={playerListRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
               {paginated.map((p) => {
                 const globalRank = filtered.indexOf(p) + 1
-                // When sorting by T90, display T90 score (rounded). Otherwise display S3 value.
-                const displayScore = sortKey === 't90'
-                  ? (p.t90_score != null ? Math.round(Number(p.t90_score) * 10) / 10 : p.s3_value)
+                // Always display T90 score (rounded); fall back to S3 value when T90 missing (rank > 250).
+                const displayScore = p.t90_score != null
+                  ? Math.round(Number(p.t90_score) * 10) / 10
                   : p.s3_value
                 // FIX (Jun 5 2026): tier must be computed from the score we're DISPLAYING,
                 // not always s3_value. Was causing T90=107 (Elite) to render in purple
