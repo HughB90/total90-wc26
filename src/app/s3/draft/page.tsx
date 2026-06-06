@@ -659,9 +659,22 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Mobile card
+// Mobile card — sticky three-region row (2026-06-05 spec)
 // ─────────────────────────────────────────────────────────────────────────
-
+//
+// Each player is one ~64px tall flex row with its OWN horizontal scroll context
+// (each row scrolls independently — see Hugh's spec). Layout:
+//
+//   ┌──────────────────┬────────────────────────────────────────┬─────────────┐
+//   │  LEFT (sticky)   │  MIDDLE (overflow-x scroll)            │ RIGHT (st.) │
+//   │  rank + photo    │  pos · flag/nation · club · T90+grade  │  My Team    │
+//   │  name           │  · XI · GS strength                    │  Favorite   │
+//   └──────────────────┴────────────────────────────────────────┴─────────────┘
+//
+// Sticky technique: the SCROLL CONTEXT is the row itself (overflow-x:auto on
+// .draft-card). Left and right cells are position:sticky with solid backgrounds
+// + inner box-shadows so the middle column visually slides behind them.
+//
 function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
   player: Player
   pick: Pick
@@ -677,126 +690,174 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
   const xi = player.starting_xi
   const xiColor = xi && XI_COLORS[xi] ? XI_COLORS[xi] : null
   const strengthColor = groupStrengthColor(strength)
+  const grade = letterGrade(player.t90_score)
 
-  const cardStyle: React.CSSProperties = {
+  // The row itself is the scroll context. Borders + tint live here so the
+  // sticky cells don't have to repeat them. No outer padding — it's a tight row.
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'stretch',
+    width: '100%',
+    minHeight: 64,
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
     background: myTeamTint ? 'rgba(21,128,61,0.14)' : C.card,
-    border: `1px solid ${C.border}`,
-    borderLeft: myTeamTint ? `4px solid ${C.green}` : `1px solid ${C.border}`,
-    borderRadius: 12,
-    padding: '0.85rem 0.9rem',
-    marginBottom: '0.6rem',
-    opacity: draftedDim ? 0.35 : 1,
+    borderBottom: `1px solid ${C.border}`,
+    borderLeft: myTeamTint ? `3px solid ${C.green}` : '3px solid transparent',
+    opacity: draftedDim ? 0.42 : 1,
     transition: 'opacity 0.15s, background 0.15s',
   }
 
-  const nameStyle: React.CSSProperties = {
-    fontWeight: 800, color: C.text, fontSize: '0.98rem',
-    textDecoration: draftedDim ? 'line-through' : 'none',
-    lineHeight: 1.2,
+  // Solid bg matches row state so middle scrolls behind cleanly.
+  const stickyBg = myTeamTint ? '#0F2540' /* C.card mixed with green tint */ : C.card
+
+  const leftStyle: React.CSSProperties = {
+    position: 'sticky',
+    left: 0,
+    zIndex: 2,
+    flexShrink: 0,
+    width: 90,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 2,
+    padding: '6px 8px',
+    background: stickyBg,
+    boxShadow: '6px 0 8px -4px rgba(0,0,0,0.4)',
   }
 
-  // 2026-06-05 layout: photo+name on the left, vertical toggle column on the right.
-  // Saves ~80px per card vs the old horizontal toggle row. Drafted toggle removed
-  // per Hugh — keeping just My Team + Favorite.
-  return (
-    <div className="draft-card" style={cardStyle}>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: '0.7rem' }}>
-        {/* LEFT: photo + name + flag/club + metrics + pos pill */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-            {player.photo_url ? (
-              <img
-                src={player.photo_url}
-                alt={displayName(player)}
-                width={44}
-                height={44}
-                referrerPolicy="no-referrer"
-                style={{ borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-              />
-            ) : (
-              <div style={{
-                width: 44, height: 44, borderRadius: '50%',
-                background: C.border, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                color: C.muted, fontSize: 16, fontWeight: 700, flexShrink: 0,
-              }}>{displayName(player)?.[0] ?? '?'}</div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {/* Position pill inline before the name, per Hugh 2026-06-05 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <PosPill position={player.position} />
-                <span style={nameStyle}>
-                  {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
-                  {displayName(player)}
-                </span>
-              </div>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                marginTop: 3, color: C.muted, fontSize: 12,
-              }}>
-                {iso ? (
-                  <span className={`fi fi-${iso}`} style={{ width: 24, height: 18, borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)', flexShrink: 0 }} />
-                ) : (
-                  <span style={{ width: 24, height: 18, background: C.border, borderRadius: 2, display: 'inline-block', textAlign: 'center', fontSize: 10, color: C.muted, lineHeight: '18px', flexShrink: 0 }}>?</span>
-                )}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {player.club ?? player.nationality}
-                </span>
-              </div>
-            </div>
-          </div>
+  const rightStyle: React.CSSProperties = {
+    position: 'sticky',
+    right: 0,
+    zIndex: 2,
+    flexShrink: 0,
+    width: 80,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 2,
+    padding: '4px 6px',
+    background: stickyBg,
+    boxShadow: '-6px 0 8px -4px rgba(0,0,0,0.4)',
+  }
 
-          {/* Metrics row */}
-          <div style={{
-            marginTop: '0.55rem', fontSize: 12, color: C.muted,
-            display: 'flex', flexWrap: 'wrap', gap: '0.35rem',
-            alignItems: 'center',
-          }}>
-        <span style={{ color: C.gold, fontWeight: 700 }}>#{player.t90_rank}</span>
-        <span style={{ color: C.border }}>·</span>
-        <span style={{ color: C.text, fontWeight: 700 }}>
-          T90 {player.t90_score != null ? Number(player.t90_score).toFixed(1) : '—'}
+  const middleStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '0 10px',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: C.muted,
+  }
+
+  const nameStyle: React.CSSProperties = {
+    fontWeight: 700,
+    color: C.text,
+    fontSize: '0.78rem',
+    lineHeight: 1.15,
+    textDecoration: draftedDim ? 'line-through' : 'none',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
+
+  const sep = <span style={{ color: C.border, flexShrink: 0 }}>·</span>
+
+  return (
+    <div className="draft-card" style={rowStyle}>
+      {/* LEFT — sticky: rank + photo on top, name below */}
+      <div style={leftStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ color: C.muted, fontSize: 10, fontWeight: 700, minWidth: 18 }}>
+            #{player.t90_rank}
+          </span>
+          {player.photo_url ? (
+            <img
+              src={player.photo_url}
+              alt={displayName(player)}
+              width={36}
+              height={36}
+              referrerPolicy="no-referrer"
+              style={{ borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <div style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: C.border, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: C.muted, fontSize: 13, fontWeight: 700, flexShrink: 0,
+            }}>{displayName(player)?.[0] ?? '?'}</div>
+          )}
+        </div>
+        <span style={nameStyle} title={displayName(player)}>
+          {favorite && <span style={{ color: C.star, marginRight: 2 }}>★</span>}
+          {displayName(player)}
+        </span>
+      </div>
+
+      {/* MIDDLE — horizontally scrollable stats line */}
+      <div style={middleStyle}>
+        <PosPill position={player.position} />
+        {sep}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+          {iso ? (
+            <span className={`fi fi-${iso}`} style={{ width: 22, height: 16, borderRadius: 2, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)' }} />
+          ) : (
+            <span style={{ width: 22, height: 16, background: C.border, borderRadius: 2, display: 'inline-block', textAlign: 'center', fontSize: 9, color: C.muted, lineHeight: '16px' }}>?</span>
+          )}
+          <span style={{ color: C.text, fontWeight: 600 }}>{player.nationality}</span>
+        </span>
+        {player.club && (
+          <>
+            {sep}
+            <span style={{ color: C.muted, flexShrink: 0 }}>{player.club}</span>
+          </>
+        )}
+        {sep}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+          <span style={{ color: C.text, fontWeight: 700 }}>
+            T90 {player.t90_score != null ? Number(player.t90_score).toFixed(1) : '—'}
+          </span>
+          <span style={{ color: grade.color, fontWeight: 800 }}>{grade.letter}</span>
         </span>
         {xiColor && (
           <>
-            <span style={{ color: C.border }}>·</span>
-            <span title={xiColor.label}>
+            {sep}
+            <span title={xiColor.label} style={{ flexShrink: 0 }}>
               XI <span style={{ color: xiColor.bg, fontWeight: 700 }}>{xi}</span>
             </span>
           </>
         )}
         {strength != null && (
           <>
-            <span style={{ color: C.border }}>·</span>
-            <span>
+            {sep}
+            <span style={{ flexShrink: 0 }}>
               GS <span style={{ color: strengthColor, fontWeight: 700 }}>{strength.toFixed(1)}</span>
               {group && <span style={{ color: C.muted }}> ({group})</span>}
             </span>
           </>
         )}
-          </div>
-        </div>
+      </div>
 
-        {/* RIGHT: vertical toggle column. Position pill moved inline next to name. */}
-        <div style={{
-          flexShrink: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', gap: '0.4rem', justifyContent: 'center',
-          paddingLeft: '0.5rem', borderLeft: `1px solid ${C.border}`,
-        }}>
-          <ToggleWithLabel
-            on={pick.my_team}
-            label="My Team"
-            onColor={C.green}
-            onClick={() => onToggle(player.id, 'my_team')}
-          />
-          <ToggleWithLabel
-            on={pick.favorite}
-            label="Favorite"
-            onColor={C.star}
-            onClick={() => onToggle(player.id, 'favorite')}
-          />
-        </div>
+      {/* RIGHT — sticky: My Team + Favorite toggles stacked */}
+      <div style={rightStyle}>
+        <ToggleWithLabel
+          on={pick.my_team}
+          label="My Team"
+          onColor={C.green}
+          onClick={() => onToggle(player.id, 'my_team')}
+        />
+        <ToggleWithLabel
+          on={pick.favorite}
+          label="Favorite"
+          onColor={C.star}
+          onClick={() => onToggle(player.id, 'favorite')}
+        />
       </div>
     </div>
   )
@@ -1065,7 +1126,32 @@ function DraftStyles() {
 
         /* Swap table for cards. */
         .draft-table-wrap { display: none; }
-        .draft-cards { display: block; }
+        .draft-cards {
+          display: block;
+          background: ${C.card};
+          border: 1px solid ${C.border};
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        /* Each row owns its own horizontal scroll context so sticky-left works
+           per-row (rows scroll independently — see Hugh's spec 2026-06-05). */
+        .draft-card {
+          scrollbar-width: none;            /* Firefox */
+          -ms-overflow-style: none;          /* IE/Edge */
+        }
+        .draft-card::-webkit-scrollbar { display: none; height: 0; }
+        .draft-cards > .draft-card:last-child { border-bottom: none; }
+
+        /* Compact toggle labels for the narrow sticky-right column. */
+        .draft-card .draft-toggle-mobile {
+          padding: 2px 4px;
+          gap: 4px;
+          font-size: 11px;
+        }
+        .draft-card .draft-toggle-mobile > span:first-child {
+          width: 14px; height: 14px;
+        }
 
         /* Hide the site-wide Fantasy App floating CTA on /s3/draft (mobile). */
         #floating-fantasy-cta { display: none !important; }
