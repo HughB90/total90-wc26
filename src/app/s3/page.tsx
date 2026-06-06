@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import VotingCard from './VotingCard'
 import AuthHeader from '@/components/AuthHeader'
 
 interface Player {
@@ -375,34 +374,48 @@ export default function S3Page() {
 
       <div>
         <AuthHeader />
-        <VotingCard />
         <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '1rem 1rem 2rem' }}>
 
           {/* Header */}
           <div style={{ marginBottom: '1.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
               <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.25rem)', fontWeight: 900, margin: '0 0 0.4rem', letterSpacing: '-0.02em' }}>
-                📊 S³ Ratings
+                ⚽ Players
               </h1>
-              <a
-                href="/s3/draft"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                  padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
-                  border: '1px solid #1E3A6E', background: 'rgba(251,191,36,0.08)',
-                  color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem',
-                  textDecoration: 'none', fontFamily: 'inherit',
-                }}
-                title="Build your top-250 shortlist, fantasy XI, and favorites"
-              >
-                📋 My Draft
-              </a>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <a
+                  href="/s3/vote"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
+                    border: '1px solid #00E676', background: 'rgba(0,230,118,0.1)',
+                    color: '#00E676', fontWeight: 700, fontSize: '0.85rem',
+                    textDecoration: 'none', fontFamily: 'inherit',
+                  }}
+                  title="Vote Sign / Sell / Sack to shape player rankings"
+                >
+                  S³ →
+                </a>
+                <a
+                  href="/s3/draft"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
+                    border: '1px solid #1E3A6E', background: 'rgba(251,191,36,0.08)',
+                    color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem',
+                    textDecoration: 'none', fontFamily: 'inherit',
+                  }}
+                  title="Build your top-250 shortlist, fantasy XI, and favorites"
+                >
+                  📋 Draft Tools
+                </a>
+              </div>
             </div>
             <p style={{ color: '#8899CC', fontSize: '0.95rem', margin: '0 0 0.3rem' }}>
-              Sign · Sell · Sack — Total90 player valuations for World Cup 2026
+              Ranked players for World Cup 2026 — powered by Total90 fans
             </p>
             <p style={{ color: '#4A6080', fontSize: '0.78rem', margin: 0 }}>
-              {players.length} players ranked · Click any player to vote
+              {players.length} players ranked · Click any player for details
             </p>
           </div>
 
