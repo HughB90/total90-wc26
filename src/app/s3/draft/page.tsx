@@ -462,13 +462,32 @@ export default function S3DraftPage() {
               <table className="draft-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: C.cardAlt, borderBottom: `1px solid ${C.border}` }}>
-                    {['Rank', 'Player', '', 'Nation', 'Pos', 'XI', 'Group Str', 'T90', 'Drafted', 'My Team', '⭐'].map(col => (
-                      <th key={col} style={{
-                        padding: '12px 10px', textAlign: 'left',
-                        color: C.muted, fontWeight: 600, fontSize: 11,
-                        textTransform: 'uppercase', letterSpacing: 0.8,
-                        whiteSpace: 'nowrap',
-                      }}>{col}</th>
+                    {(
+                      [
+                        ['Rank',     'rank'],
+                        ['Player',   'photo'],
+                        ['',         'name'],
+                        ['Nation',   null],
+                        ['Pos',      null],
+                        ['XI',       null],
+                        ['Group Str',null],
+                        ['T90',      null],
+                        ['Drafted',  null],
+                        ['My Team',  null],
+                        ['⭐',       null],
+                      ] as [string, string | null][]
+                    ).map(([col, stick], i) => (
+                      <th
+                        key={`${col}-${i}`}
+                        data-stick={stick ?? undefined}
+                        style={{
+                          padding: '12px 10px', textAlign: 'left',
+                          color: C.muted, fontWeight: 600, fontSize: 11,
+                          textTransform: 'uppercase', letterSpacing: 0.8,
+                          whiteSpace: 'nowrap',
+                          background: C.cardAlt,
+                        }}
+                      >{col}</th>
                     ))}
                   </tr>
                 </thead>
@@ -578,12 +597,17 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
   const xiColor = xi && XI_COLORS[xi] ? XI_COLORS[xi] : null
   const strengthColor = groupStrengthColor(strength)
 
+  // 2026-06-06: Rank / Photo / Name are sticky-left on mobile. Each frozen cell
+  // sets its own background (matching the row's draftedDim/myTeamTint state) so
+  // the scrolling columns visually slide behind them. data-stick attr drives
+  // the CSS position:sticky + left offsets in the mobile media query.
+  const stickyBg = myTeamTint ? '#0F2540' : C.card
   return (
     <tr className="draft-row" style={rowStyle}>
-      <td style={{ padding: '8px 10px', color: C.muted, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      <td data-stick="rank" style={{ padding: '8px 10px', color: C.muted, fontWeight: 600, whiteSpace: 'nowrap', background: stickyBg }}>
         #{player.t90_rank}
       </td>
-      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+      <td data-stick="photo" style={{ padding: '8px 10px', whiteSpace: 'nowrap', background: stickyBg }}>
         {player.photo_url ? (
           <img
             src={player.photo_url}
@@ -603,7 +627,7 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
           }}>{displayName(player)?.[0] ?? '?'}</div>
         )}
       </td>
-      <td style={{ padding: '8px 10px', minWidth: 180 }}>
+      <td data-stick="name" style={{ padding: '8px 10px', minWidth: 180, background: stickyBg }}>
         <span style={nameStyle}>
           {favorite && <span style={{ color: C.star, marginRight: 4 }}>★</span>}
           {displayName(player)}
@@ -1133,12 +1157,41 @@ function DraftStyles() {
         .draft-cards { display: none !important; }
         .draft-table-wrap { display: block; }
 
+        /* 2026-06-06: edge-to-edge — kill <main> horizontal padding + table
+           border/radius so rows bleed to the screen edge with no rounded
+           corners. Per Hugh: "infinite row without an end." */
+        main { padding-left: 0 !important; padding-right: 0 !important; }
+        .draft-table-wrap {
+          border-left: none !important;
+          border-right: none !important;
+          border-radius: 0 !important;
+        }
+
         /* Tighten the table for mobile so more fits before the scroll. */
         .draft-table { font-size: 12px; }
         .draft-table th { padding: 8px 6px !important; font-size: 10px !important; letter-spacing: 0.5px; }
         .draft-table td { padding: 6px 6px !important; }
         .draft-table .draft-toggle-cell { padding: 6px 3px !important; }
         .draft-table .draft-toggle { width: 14px !important; height: 14px !important; }
+
+        /* Sticky-left frozen columns: Rank, Photo, Name. Each cell carries its
+           own background (set inline, matches row state) and a right-edge box
+           shadow so the scrolling middle columns visually slide behind. */
+        .draft-table th[data-stick],
+        .draft-table td[data-stick] {
+          position: sticky;
+          z-index: 2;
+        }
+        .draft-table th[data-stick="rank"],
+        .draft-table td[data-stick="rank"]  { left: 0;    }
+        .draft-table th[data-stick="photo"],
+        .draft-table td[data-stick="photo"] { left: 38px; }
+        .draft-table th[data-stick="name"],
+        .draft-table td[data-stick="name"]  {
+          left: 88px;
+          box-shadow: 6px 0 8px -4px rgba(0,0,0,0.4);
+        }
+        .draft-table thead th[data-stick] { z-index: 3; }
 
         /* Hide the site-wide Fantasy App floating CTA on /s3/draft (mobile). */
         #floating-fantasy-cta { display: none !important; }
