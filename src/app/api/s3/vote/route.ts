@@ -7,8 +7,8 @@ import { createClient } from '@supabase/supabase-js'
  * POST { votes: [{ playerId, vote: 'sign'|'sell'|'sack' }] }
  *
  * `playerId` is the LEGACY s3_players.id UUID (back-compat — the players API returns
- * legacy_player_uuid as `id`). Post 2026-06-06 schema split we look up the canonical
- * opta_id via t90_players.legacy_player_uuid and write counters to t90_player_intelligence.
+ * legacy_player_uuid as `id`). Post 2026-06-06 schema split + rename we look up the canonical
+ * opta_id via players.legacy_player_uuid and write counters to player_intelligence.
  */
 
 // Simple in-memory rate limiter
@@ -46,15 +46,15 @@ export async function POST(request: Request) {
 
       // Look up the canonical opta_id via legacy UUID
       const { data: player } = (await supabase
-        .from('t90_players')
-        .select('opta_id, wc26_active, t90_player_intelligence(vote_count, sign_count, sell_count, sack_count)')
+        .from('players')
+        .select('opta_id, wc26_active, player_intelligence(vote_count, sign_count, sell_count, sack_count)')
         .eq('legacy_player_uuid', playerId)
         .eq('wc26_active', true)
         .single()) as {
         data: {
           opta_id: string
           wc26_active: boolean
-          t90_player_intelligence: {
+          player_intelligence: {
             vote_count: number | null
             sign_count: number | null
             sell_count: number | null
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       }
 
       if (!player) continue
-      const intel = player.t90_player_intelligence
+      const intel = player.player_intelligence
       const updates = {
         vote_count: (intel?.vote_count || 0) + 1,
         sign_count: (intel?.sign_count || 0) + (vote === 'sign' ? 1 : 0),
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         sack_count: (intel?.sack_count || 0) + (vote === 'sack' ? 1 : 0),
         updated_at: new Date().toISOString(),
       }
-      await supabase.from('t90_player_intelligence').update(updates).eq('opta_id', player.opta_id)
+      await supabase.from('player_intelligence').update(updates).eq('opta_id', player.opta_id)
     }
 
     return NextResponse.json({ ok: true })
