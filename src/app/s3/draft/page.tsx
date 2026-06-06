@@ -1176,22 +1176,36 @@ function DraftStyles() {
 
         /* Sticky-left frozen columns: Rank, Photo, Name. Each cell carries its
            own background (set inline, matches row state) and a right-edge box
-           shadow so the scrolling middle columns visually slide behind. */
+           shadow so the scrolling middle columns visually slide behind.
+           2026-06-06 (round 2): tightened paddings + name col min-width to
+           pull the sticky region back to ~50% of viewport. Rank/photo cells
+           now use 2-4px horizontal padding to kill the dead space. */
         .draft-table th[data-stick],
         .draft-table td[data-stick] {
           position: sticky;
           z-index: 2;
         }
         .draft-table th[data-stick="rank"],
-        .draft-table td[data-stick="rank"]  { left: 0;    }
+        .draft-table td[data-stick="rank"]  { left: 0; padding-left: 6px !important; padding-right: 2px !important; }
         .draft-table th[data-stick="photo"],
-        .draft-table td[data-stick="photo"] { left: 38px; }
+        .draft-table td[data-stick="photo"] { left: 34px; padding-left: 2px !important; padding-right: 4px !important; }
         .draft-table th[data-stick="name"],
         .draft-table td[data-stick="name"]  {
-          left: 88px;
+          left: 70px;
+          min-width: 0 !important;
+          max-width: 140px;
+          padding-left: 4px !important;
           box-shadow: 6px 0 8px -4px rgba(0,0,0,0.4);
         }
         .draft-table thead th[data-stick] { z-index: 3; }
+
+        /* Shrink the photo on mobile (36 → 28) so the photo cell sits at 36px. */
+        .draft-table td[data-stick="photo"] img,
+        .draft-table td[data-stick="photo"] > div {
+          width: 28px !important;
+          height: 28px !important;
+          font-size: 11px !important;
+        }
 
         /* Hide the site-wide Fantasy App floating CTA on /s3/draft (mobile). */
         #floating-fantasy-cta { display: none !important; }
