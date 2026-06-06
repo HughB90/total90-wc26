@@ -83,7 +83,7 @@ export default function VotePage() {
                   <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.45rem 0.5rem', borderRadius: '0.5rem', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                     <span style={{ color: '#4A6080', fontSize: '0.68rem', fontWeight: 700, width: '18px', flexShrink: 0, textAlign: 'right' }}>{i+1}</span>
                     {p.photo_url ? (
-                      <img src={p.photo_url} alt="" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #1E3A6E' }} onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3' }} />
+                      <img src={p.photo_url} alt="" referrerPolicy="no-referrer" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #1E3A6E' }} onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3' }} />
                     ) : (
                       <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#162040', border: '1px solid #1E3A6E', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontSize: '0.7rem', fontWeight: 700 }}>{(p.short_name||p.name).charAt(0)}</div>
                     )}

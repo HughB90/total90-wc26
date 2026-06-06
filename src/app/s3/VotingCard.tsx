@@ -181,7 +181,7 @@ export default function VotingCard({ onVoted }: { onVoted?: (count: number) => v
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '0.6rem 0.875rem' }}>
                     {/* Photo */}
                     <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <img src={p.photo_url || 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png'} alt="" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }} />
+                      <img src={p.photo_url || 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png'} alt="" referrerPolicy="no-referrer" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }} onError={(e) => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }} />
                       {/* Flag */}
                       <div style={{ position: 'absolute', bottom: '-3px', right: '-3px', width: '17px', height: '17px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #0A0F2E' }}>
                         <img src={getFlagUrl(p.nationality)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />

@@ -94,6 +94,20 @@ const posColors: Record<string, { bg: string; color: string }> = {
   GK:  { bg: 'rgba(251,191,36,0.15)', color: '#FBBF24' },
 }
 
+// Normalize long-form Opta position strings (Defender, Midfielder, Forward,
+// Goalkeeper) to our 4-bucket codes. The s3_players table has 35 rows still
+// holding the long form — we normalize at render so positions are consistent
+// while a DB cleanup catches up.
+const normalizePosition = (raw: string | undefined | null): string => {
+  if (!raw) return ''
+  const v = raw.trim().toLowerCase()
+  if (v.startsWith('def')) return 'DEF'
+  if (v.startsWith('mid')) return 'MID'
+  if (v.startsWith('fwd') || v.startsWith('forward') || v.startsWith('att') || v.startsWith('str')) return 'FWD'
+  if (v.startsWith('gk')  || v.startsWith('goal')) return 'GK'
+  return raw.toUpperCase()
+}
+
 const voteConfig = {
   sign: {
     label: 'SIGN', icon: '↑',
@@ -118,21 +132,20 @@ const voteConfig = {
   },
 }
 
-const t90Tier = (score: number) => {
-  if (score >= 100) return { label: 'Elite',       color: '#FFD700' }
-  if (score >= 80)  return { label: 'World Class', color: '#C084FC' }
-  if (score >= 60)  return { label: 'Top Tier',    color: '#60A5FA' }
-  if (score >= 40)  return { label: 'Quality',     color: '#00E676' }
-  return              { label: 'Solid',        color: '#8899CC' }
+// SINGLE tier function (June 5 2026): list view + detail modal both use the
+// same thresholds + labels so colors are consistent everywhere. Bands tuned to
+// the live T90 score distribution: top T90 in the DB ≈ 110, so the Elite cut at
+// 100 covers ≈20 players (proper Elite scarcity), World Class at 85 covers
+// next ≈60, etc.
+const t90Tier = (score: number | null | undefined) => {
+  const s = typeof score === 'number' ? score : 0
+  if (s >= 100) return { label: 'Elite',       color: '#FFD700' } // gold
+  if (s >= 85)  return { label: 'World Class', color: '#C084FC' } // purple
+  if (s >= 70)  return { label: 'Top Tier',    color: '#60A5FA' } // blue
+  if (s >= 55)  return { label: 'Quality',     color: '#00E676' } // green
+  return              { label: 'Solid',        color: '#8899CC' } // grey
 }
-
-const t90TierDetail = (score: number) => {
-  if (score >= 100) return { label: 'Elite',   color: '#FFD700' }
-  if (score >= 85)  return { label: 'Premium', color: '#C084FC' }
-  if (score >= 70)  return { label: 'Solid',   color: '#60A5FA' }
-  if (score >= 55)  return { label: 'Depth',   color: '#00E676' }
-  return              { label: 'Fringe',  color: '#8899CC' }
-}
+const t90TierDetail = t90Tier
 
 function formatMarketValue(v?: number | null): string | null {
   if (v == null || v === 0) return null
@@ -473,8 +486,12 @@ export default function S3Page() {
                 const displayScore = sortKey === 't90'
                   ? (p.t90_score != null ? Math.round(Number(p.t90_score) * 10) / 10 : p.s3_value)
                   : p.s3_value
-                const tier = t90Tier(p.s3_value)
-                const posStyle = posColors[p.position] || posColors.MID
+                // FIX (Jun 5 2026): tier must be computed from the score we're DISPLAYING,
+                // not always s3_value. Was causing T90=107 (Elite) to render in purple
+                // because s3_value landed in the World Class band. Yellow + purple chaos.
+                const tier = t90Tier(typeof displayScore === 'number' ? displayScore : Number(displayScore))
+                const pos = normalizePosition(p.position)
+                const posStyle = posColors[pos] || posColors.MID
                 const hasVoted = !!detailVotes[p.id]
                 return (
                   <div
@@ -486,7 +503,13 @@ export default function S3Page() {
                   >
                     <span style={{ color: '#4A6080', fontSize: '0.7rem', fontWeight: 700, width: '28px', flexShrink: 0, textAlign: 'right' }}>#{globalRank}</span>
                     {p.photo_url ? (
-                      <img src={p.photo_url} alt={p.short_name || p.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #1E3A6E', backgroundColor: '#162040' }} />
+                      <img
+                        src={p.photo_url}
+                        alt={p.short_name || p.name}
+                        referrerPolicy="no-referrer"
+                        style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #1E3A6E', backgroundColor: '#162040' }}
+                        onError={e => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }}
+                      />
                     ) : (
                       <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#162040', border: '1px solid #1E3A6E', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6080', fontSize: '0.7rem', fontWeight: 700 }}>{(p.short_name || p.name).charAt(0)}</div>
                     )}
@@ -494,7 +517,7 @@ export default function S3Page() {
                       <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.short_name || p.name}</div>
                       <div style={{ color: '#8899CC', fontSize: '0.7rem', marginTop: '0.1rem' }}>{p.nationality}{p.age ? ` · Age ${p.age}` : ''}</div>
                     </div>
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: '0.4rem', backgroundColor: posStyle.bg, color: posStyle.color, flexShrink: 0 }}>{p.position}</span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: '0.4rem', backgroundColor: posStyle.bg, color: posStyle.color, flexShrink: 0 }}>{pos}</span>
                     {hasVoted && (
                       <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.18rem 0.5rem', borderRadius: '0.4rem', backgroundColor: voteConfig[detailVotes[p.id]].selectedBg + '22', color: voteConfig[detailVotes[p.id]].barColor, flexShrink: 0, border: `1px solid ${voteConfig[detailVotes[p.id]].barColor}44` }}>
                         {detailVotes[p.id].toUpperCase()}
@@ -502,7 +525,7 @@ export default function S3Page() {
                     )}
                     <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '60px' }}>
                       <div style={{ color: tier.color, fontWeight: 800, fontSize: '0.95rem' }}>{displayScore}</div>
-                      <div style={{ color: '#4A6080', fontSize: '0.62rem' }}>{sortKey === 't90' ? 'T90' : tier.label}</div>
+                      <div style={{ color: tier.color, fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.02em' }}>{tier.label}</div>
                     </div>
                   </div>
                 )
@@ -580,6 +603,7 @@ export default function S3Page() {
                         <img
                           src={p.photo_url || 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png'}
                           alt=""
+                          referrerPolicy="no-referrer"
                           style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', display: 'block' }}
                           onError={e => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }}
                         />
@@ -704,7 +728,7 @@ export default function S3Page() {
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', paddingBottom: '1rem', borderBottom: '1px solid #1E3A6E', marginBottom: '1rem' }}>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   {p.photo_url ? (
-                    <img src={p.photo_url} alt={p.short_name || p.name} style={{ width: '88px', height: '88px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', backgroundColor: '#162040', display: 'block' }} onError={e => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }} />
+                    <img src={p.photo_url} alt={p.short_name || p.name} referrerPolicy="no-referrer" style={{ width: '88px', height: '88px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #1E3A6E', backgroundColor: '#162040', display: 'block' }} onError={e => { (e.target as HTMLImageElement).src = 'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png' }} />
                   ) : (
                     <div style={{ width: '88px', height: '88px', borderRadius: '50%', backgroundColor: '#162040', border: '2px solid #1E3A6E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', color: '#4A6080', fontWeight: 700 }}>{(p.short_name || p.name).charAt(0)}</div>
                   )}

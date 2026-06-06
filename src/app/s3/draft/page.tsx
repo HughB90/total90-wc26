@@ -485,6 +485,7 @@ function PlayerRow({ player, pick, iso, group, strength, onToggle }: {
             alt={player.name}
             width={36}
             height={36}
+            referrerPolicy="no-referrer"
             style={{ borderRadius: '50%', objectFit: 'cover', display: 'block' }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
@@ -599,6 +600,7 @@ function PlayerCard({ player, pick, iso, group, strength, onToggle }: {
             alt={player.name}
             width={44}
             height={44}
+            referrerPolicy="no-referrer"
             style={{ borderRadius: '50%', objectFit: 'cover', display: 'block', flexShrink: 0 }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
           />
