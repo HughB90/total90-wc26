@@ -4,9 +4,9 @@ import { createClient } from '@supabase/supabase-js'
 /**
  * /api/s3/players
  *
- * Source of truth (post 2026-06-06 schema split):
- *   - t90_players              (identity, demographics, photo, wc26_group, wc26_active, wc26_participant, legacy_player_uuid)
- *   - t90_player_intelligence  (T90, FIFA, vote counters)
+ * Source of truth (post 2026-06-06 schema split + rename):
+ *   - players              (identity, demographics, photo, wc26_group, wc26_active, wc26_participant, legacy_player_uuid)
+ *   - player_intelligence  (T90, FIFA, vote counters)
  *
  * Frontend response shape is preserved 1:1 with the pre-split s3_players response.
  * Extra fields added: wc26_group, wc26_active.
@@ -16,6 +16,8 @@ import { createClient } from '@supabase/supabase-js'
  *
  * Voting pool filter: wc26_participant=true AND wc26_active=true (excludes deprecated
  * legacy-numeric-opta duplicates whose votes have been merged into the canonical row).
+ *
+ * NOTE on s3_value: stopped reading entirely 2026-06-06. Returned as null for back-compat.
  */
 
 type PlayerJoinRow = {
@@ -32,7 +34,7 @@ type PlayerJoinRow = {
   wc26_active: boolean
   wc26_participant: boolean
   legacy_player_uuid: string | null
-  t90_player_intelligence: {
+  player_intelligence: {
     t90_score: number | null
     cat_score: number | null
     tenk_score: number | null
@@ -46,7 +48,7 @@ type PlayerJoinRow = {
 }
 
 function shapeRow(r: PlayerJoinRow) {
-  const intel = r.t90_player_intelligence
+  const intel = r.player_intelligence
   return {
     // back-compat: frontend + /api/s3/vote both expect `id` to be the UUID
     id: r.legacy_player_uuid,
@@ -94,9 +96,9 @@ export async function GET(request: Request) {
 
     if (mode === 'random') {
       let query = supabase
-        .from('t90_players')
+        .from('players')
         .select(
-          'opta_id, full_name, short_name, nationality, position, pos_short, club, age, photo_url, wc26_group, wc26_active, wc26_participant, legacy_player_uuid, t90_player_intelligence(t90_score, cat_score, tenk_score, starting_xi, t90_rank, sign_count, sell_count, sack_count, vote_count)',
+          'opta_id, full_name, short_name, nationality, position, pos_short, club, age, photo_url, wc26_group, wc26_active, wc26_participant, legacy_player_uuid, player_intelligence(t90_score, cat_score, tenk_score, starting_xi, t90_rank, sign_count, sell_count, sack_count, vote_count)',
         )
         .eq('wc26_active', true)
         .eq('wc26_participant', true)
@@ -106,7 +108,7 @@ export async function GET(request: Request) {
       }
 
       const { data: rows, error } = (await query
-        .order('t90_score', { ascending: false, nullsFirst: false, foreignTable: 't90_player_intelligence' })
+        .order('t90_score', { ascending: false, nullsFirst: false, foreignTable: 'player_intelligence' })
         .limit(150)) as { data: PlayerJoinRow[] | null; error: { message: string } | null }
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -118,13 +120,13 @@ export async function GET(request: Request) {
 
     // Default: leaderboard, T90 desc
     const { data: rows, error } = (await supabase
-      .from('t90_players')
+      .from('players')
       .select(
-        'opta_id, full_name, short_name, nationality, position, pos_short, club, age, photo_url, wc26_group, wc26_active, wc26_participant, legacy_player_uuid, t90_player_intelligence(t90_score, cat_score, tenk_score, starting_xi, t90_rank, sign_count, sell_count, sack_count, vote_count)',
+        'opta_id, full_name, short_name, nationality, position, pos_short, club, age, photo_url, wc26_group, wc26_active, wc26_participant, legacy_player_uuid, player_intelligence(t90_score, cat_score, tenk_score, starting_xi, t90_rank, sign_count, sell_count, sack_count, vote_count)',
       )
       .eq('wc26_active', true)
       .eq('wc26_participant', true)
-      .order('t90_score', { ascending: false, nullsFirst: false, foreignTable: 't90_player_intelligence' })) as {
+      .order('t90_score', { ascending: false, nullsFirst: false, foreignTable: 'player_intelligence' })) as {
       data: PlayerJoinRow[] | null
       error: { message: string } | null
     }
