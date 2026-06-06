@@ -16,14 +16,17 @@ export async function GET(request: Request) {
     if (mode === 'random') {
       let query = supabase
         .from('s3_players')
-        .select('id, name, short_name, nationality, position, s3_value, age, photo_url, sign_count, sell_count, sack_count, vote_count')
+        .select('id, opta_id, name, short_name, nationality, position, age, photo_url, sign_count, sell_count, sack_count, vote_count, t90_score')
         .eq('is_active', true)
 
       if (exclude.length > 0) {
         query = query.not('id', 'in', `(${exclude.join(',')})`)
       }
 
-      const { data: allPlayers, error } = await query.order('s3_value', { ascending: false }).limit(150) as any
+      // 2026-06-06: stopped reading s3_value entirely. Pull top 150 by T90.
+      const { data: allPlayers, error } = await query
+        .order('t90_score', { ascending: false, nullsFirst: false })
+        .limit(150) as any
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
@@ -33,12 +36,11 @@ export async function GET(request: Request) {
       return NextResponse.json(shuffled.slice(0, 3))
     }
 
-    // Default: return leaderboard (now ordered by T90 score; falls back to s3_value)
+    // Default: return leaderboard ordered by T90 score (s3_value removed 2026-06-06).
     const { data, error } = await supabase
       .from('s3_players')
-      .select('id, name, short_name, nationality, position, s3_value, age, photo_url, is_active, sign_count, sell_count, sack_count, vote_count, market_value_eur, club, t90_score, cat_score, tenk_score, starting_xi, t90_rank')
-      .order('t90_score', { ascending: false, nullsFirst: false })
-      .order('s3_value', { ascending: false }) as any
+      .select('id, opta_id, name, short_name, nationality, position, age, photo_url, is_active, sign_count, sell_count, sack_count, vote_count, market_value_eur, club, t90_score, cat_score, tenk_score, starting_xi, t90_rank')
+      .order('t90_score', { ascending: false, nullsFirst: false }) as any
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
