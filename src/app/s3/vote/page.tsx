@@ -48,7 +48,7 @@ export default function VotePage() {
           </Link>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
-          {[['News','/news'],['S³ Ratings','/s3'],['Bracket','/bracket'],['Scores','/scores']].map(([l,h]) => (
+          {[['News','/news'],['Players','/s3'],['Bracket','/bracket'],['Scores','/scores']].map(([l,h]) => (
             <Link key={h} href={h} style={{ color: '#8899CC', fontSize: '0.78rem', fontWeight: 500, textDecoration: 'none' }}>{l}</Link>
           ))}
         </div>

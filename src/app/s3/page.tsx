@@ -814,11 +814,11 @@ export default function S3Page() {
                 )
               })()}
 
-              {/* App launch CTA — replaces vote buttons */}
+              {/* App CTA — replaces vote buttons */}
               <div style={{ backgroundColor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '0.875rem', padding: '1rem', textAlign: 'center' as const, marginTop: '0.75rem' }}>
                 <p style={{ color: '#FBBF24', fontWeight: 800, fontSize: '1rem', margin: '0 0 0.35rem' }}>📱 Total90 Fantasy App</p>
                 <p style={{ color: '#8899CC', fontSize: '0.82rem', margin: '0 0 0.75rem' }}>S³ ratings, trade calculator & more</p>
-                <p style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem', margin: '0 0 0.75rem' }}>Launching June 1, 2026</p>
+                <p style={{ color: '#FBBF24', fontWeight: 700, fontSize: '0.85rem', margin: '0 0 0.75rem' }}>Out now on iOS</p>
                 <a href="https://apps.apple.com/us/app/total90/id6749282785" target="_blank" rel="noopener noreferrer"
                   style={{ display: 'inline-block', backgroundColor: '#00E676', color: '#0A0F2E', fontWeight: 800, fontSize: '0.9rem', padding: '0.65rem 1.5rem', borderRadius: '0.75rem', textDecoration: 'none' }}>
                   Download Free on iOS →

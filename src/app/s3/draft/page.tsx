@@ -836,11 +836,13 @@ function DraftStyles() {
 
         /* Hide the site-wide Fantasy App floating CTA on /s3/draft (mobile). */
         #floating-fantasy-cta { display: none !important; }
+        #app-launch-banner   { display: none !important; }
       }
 
-      /* Always hide the floating CTA on this page — desktop too, per spec.
-         (Spec: "hide on /s3/draft only".) */
+      /* Always hide the floating CTA + top app banner on this page — desktop too.
+         (Spec 2026-06-05: draft-tools visitors already have the app, don't pitch them.) */
       #floating-fantasy-cta { display: none !important; }
+      #app-launch-banner   { display: none !important; }
 
       @media print {
         @page { size: landscape; margin: 0.4in; }

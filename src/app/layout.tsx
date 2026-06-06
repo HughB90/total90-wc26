@@ -39,7 +39,7 @@ export const metadata: Metadata = {
 
 const NAV_LINKS = [
   { label: 'News', href: '/news' },
-  { label: 'S³ Ratings', href: '/s3' },
+  { label: 'Players', href: '/s3' },
   { label: 'Bracket', href: '/bracket' },
   { label: 'Predictor', href: '/predictor' },
   { label: 'Scores', href: '/scores' },
@@ -107,7 +107,7 @@ function AppLaunchBanner() {
         Total90 Fantasy App
       </span>
       <span style={{ color: '#FBBF24', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-        launching June 1st
+        out now on iOS
       </span>
       <a
         href="https://apps.apple.com/us/app/total90/id6749282785"
@@ -121,7 +121,7 @@ function AppLaunchBanner() {
           whiteSpace: 'nowrap',
         }}
       >
-        Download free on iOS →
+        Download free →
       </a>
     </div>
   )
