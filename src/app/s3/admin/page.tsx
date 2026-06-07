@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { EditableRow } from './EditableRow';
 
 const SUPABASE_URL = 'https://tituygkbondyjhzomwji.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_nYugb5FDdgYbKauTAmh0oQ_QtfOJjHI';
@@ -35,6 +36,9 @@ type Player = {
   tenk_score: number | null;
   starting_xi: number | null;
   t90_rank: number | null;
+  admin_override_cat?: boolean;
+  admin_override_t90?: boolean;
+  admin_override_xi?: boolean;
 };
 
 type SortOption = 'most_voted' | 'most_signed' | 'most_sold' | 'most_sacked' | 't90_score';
@@ -122,17 +126,15 @@ export default function S3AdminPage() {
     }
   }
 
-  useEffect(() => {
-    if (!authed) return;
+  const fetchData = async () => {
     setLoading(true);
     setError(null);
-
-    const fetchData = async () => {
+    try {
       const { createClient } = await import('@supabase/supabase-js');
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       const { data, error: fetchError } = await supabase
         .from('s3_players')
-        .select('id, name, short_name, nationality, position, s3_value, sign_count, sell_count, sack_count, vote_count, photo_url, club, t90_score, cat_score, tenk_score, starting_xi, t90_rank')
+        .select('id, name, short_name, nationality, position, s3_value, sign_count, sell_count, sack_count, vote_count, photo_url, club, t90_score, cat_score, tenk_score, starting_xi, t90_rank, admin_override_cat, admin_override_t90, admin_override_xi')
         .order('vote_count', { ascending: false });
 
       if (fetchError) {
@@ -140,9 +142,15 @@ export default function S3AdminPage() {
       } else {
         setPlayers(data || []);
       }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
       setLoading(false);
-    };
+    }
+  };
 
+  useEffect(() => {
+    if (!authed) return;
     fetchData();
   }, [authed]);
 
@@ -480,7 +488,7 @@ export default function S3AdminPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: '#0A1535', borderBottom: `1px solid ${COLORS.border}` }}>
-                  {['#', 'Player', 'Nationality', 'Club', 'Pos', 'XI', 'T90', 'Cat', '10k', 'S³ Score', 'Sign', 'Sell', 'Sack', 'Total Votes', 'Sign %', 'Sell %', 'Sack %'].map((col) => (
+                  {['#', 'Player', 'Nationality', 'XI', 'T90', 'Cat', '10k', 'S³ Score', 'Sign', 'Sell', 'Sack', 'Total Votes', 'Actions'].map((col) => (
                     <th
                       key={col}
                       style={{
@@ -502,147 +510,14 @@ export default function S3AdminPage() {
               <tbody>
                 {paginated.map((player, idx) => {
                   const globalIdx = page * PAGE_SIZE + idx + 1;
-                  const signPct = pct(player.sign_count, player.vote_count);
-                  const sellPct = pct(player.sell_count, player.vote_count);
-                  const sackPct = pct(player.sack_count, player.vote_count);
-
                   return (
-                    <tr
+                    <EditableRow
                       key={player.id}
-                      style={{
-                        borderBottom: `1px solid ${COLORS.border}`,
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLTableRowElement).style.background = '#111E52';
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLTableRowElement).style.background = 'transparent';
-                      }}
-                    >
-                      <td style={{ padding: '10px 14px', color: COLORS.muted, width: 40 }}>
-                        {globalIdx}
-                      </td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          {player.photo_url ? (
-                            <img
-                              src={player.photo_url}
-                              alt={player.name}
-                              width={32}
-                              height={32}
-                              style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: 32,
-                                height: 32,
-                                borderRadius: '50%',
-                                background: COLORS.border,
-                                flexShrink: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: 12,
-                                color: COLORS.muted,
-                              }}
-                            >
-                              {player.name?.[0] ?? '?'}
-                            </div>
-                          )}
-                          <span style={{ fontWeight: 600, color: COLORS.text }}>
-                            {player.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.muted }}>
-                        {player.nationality}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.muted, fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {player.club ?? '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '2px 8px',
-                            borderRadius: 4,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            background:
-                              player.position === 'GK' ? '#4A1D96' :
-                              player.position === 'DEF' ? '#1E40AF' :
-                              player.position === 'MID' ? '#065F46' :
-                              '#92400E',
-                            color: '#fff',
-                          }}
-                        >
-                          {player.position}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        {player.starting_xi != null ? (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              minWidth: 22,
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              background:
-                                player.starting_xi === 1 ? '#15803D' :
-                                player.starting_xi === 2 ? '#A16207' :
-                                '#7F1D1D',
-                              color: '#fff',
-                            }}
-                            title={
-                              player.starting_xi === 1 ? 'Likely starter' :
-                              player.starting_xi === 2 ? 'Rotation' : 'Deep bench'
-                            }
-                          >
-                            {player.starting_xi}
-                          </span>
-                        ) : <span style={{ color: COLORS.muted }}>—</span>}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.text, fontWeight: 600 }}>
-                        {player.t90_score != null ? Number(player.t90_score).toFixed(1) : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.muted }}>
-                        {player.cat_score != null ? Number(player.cat_score).toFixed(1) : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.muted }}>
-                        {player.tenk_score != null ? player.tenk_score.toLocaleString() : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.gold, fontWeight: 700 }}>
-                        {player.s3_value ?? '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.green }}>
-                        {player.sign_count ?? 0}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.yellow }}>
-                        {player.sell_count ?? 0}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.red }}>
-                        {player.sack_count ?? 0}
-                      </td>
-                      <td style={{ padding: '10px 14px', color: COLORS.text, fontWeight: 600 }}>
-                        {player.vote_count ?? 0}
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: 140 }}>
-                        <ProgressBar value={signPct} color={COLORS.green} />
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: 140 }}>
-                        <ProgressBar value={sellPct} color={COLORS.yellow} />
-                      </td>
-                      <td style={{ padding: '10px 14px', minWidth: 140 }}>
-                        <ProgressBar value={sackPct} color={COLORS.red} />
-                      </td>
-                    </tr>
+                      player={player}
+                      globalIdx={globalIdx}
+                      adminPassword={password}
+                      onUpdate={fetchData}
+                    />
                   );
                 })}
                 {paginated.length === 0 && (
