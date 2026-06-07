@@ -193,9 +193,14 @@ export default function S3DraftPage() {
       .then(r => r.json())
       .then((data: Player[]) => {
         if (cancelled || !Array.isArray(data)) return
+        // Sort by t90_score DESC (single-match output) NOT by t90_rank
+        // (tenk_score-based, heavily age-weighted). The dynasty rank pushes
+        // Messi (38) and Ronaldo (40) outside the top 250 even though their
+        // T90 is elite. For a WC draft tool the single-tournament T90 is the
+        // right metric. (Hugh 2026-06-07.)
         const ranked = data
-          .filter(p => p.t90_rank != null)
-          .sort((a, b) => (a.t90_rank ?? 9999) - (b.t90_rank ?? 9999))
+          .filter(p => p.t90_score != null && Number(p.t90_score) > 0)
+          .sort((a, b) => Number(b.t90_score ?? 0) - Number(a.t90_score ?? 0))
           .slice(0, MAX_ROWS)
         setPlayers(ranked)
         setLastSync(new Date().toISOString())

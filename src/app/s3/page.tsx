@@ -227,11 +227,10 @@ export default function S3Page() {
   const playersRef = useRef<Player[]>([])        // mirror for use in scroll handler
 
   // ── Load players ──────────────────────────────────────────────────
-  // Cap voting pool at top 100 by T90 (2026-06-06) — Hugh: "see players that no
-  // one will every know" in the long tail. Server returns rows sorted t90_score
-  // DESC. Both the leaderboard list AND the overlay/triple-vote pool draw from
-  // `players`, so a single slice here trims everything in one place.
-  const VOTING_POOL_SIZE = 100
+  // Cap voting pool at top 250 by T90 (Hugh 2026-06-07). Server returns rows
+  // sorted t90_score DESC. Both the leaderboard list AND the overlay/triple-vote
+  // pool draw from `players`, so a single slice here trims everything in one place.
+  const VOTING_POOL_SIZE = 250
   useEffect(() => {
     fetch('/api/s3/players')
       .then(r => r.json())
