@@ -93,14 +93,14 @@ async function reRankAllPlayers(): Promise<void> {
 // --- PATCH handler ---
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   // Auth check
   if (!checkAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = params;
+  const { id } = await params;
   const body = await req.json();
   const { cat_score, t90_score, starting_xi } = body;
 
@@ -188,14 +188,14 @@ export async function PATCH(
 // --- DELETE handler (clear overrides) ---
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   // Auth check
   if (!checkAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { id } = params;
+  const { id } = await params;
   const url = new URL(req.url);
   const isOverrideReset = url.pathname.endsWith('/override');
 
