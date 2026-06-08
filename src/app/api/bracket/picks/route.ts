@@ -21,15 +21,19 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
  */
 
 interface ResolvedCaller {
-  userId: string       // canonical legacy bracket_users.id (or profile.id if no shim)
-  profileId: string    // always the new profile.id when known
+  // user_id to stamp on bracket_entries. NULL for post Pass 2+5 profile-only
+  // users (bracket_entries.user_id no longer FKs to bracket_users and is now
+  // nullable — see migration 2026-06-08-bracket-entries-profile-fk.sql).
+  userId: string | null
+  profileId: string   // always the new profile.id when known
 }
 
 async function resolveCaller(
   supabase: SupabaseClient,
   callerId: string,
 ): Promise<ResolvedCaller | null> {
-  // 1. Existing entry keyed on this profile_id → use its user_id as canonical.
+  // 1. Existing entry keyed on this profile_id → reuse its user_id (may be NULL
+  //    for rows written post-migration; that's fine).
   const { data: byProfile } = await supabase
     .from('bracket_entries')
     .select('user_id, profile_id')
@@ -37,7 +41,7 @@ async function resolveCaller(
     .limit(1)
 
   if (byProfile && byProfile.length > 0) {
-    return { userId: byProfile[0].user_id, profileId: callerId }
+    return { userId: byProfile[0].user_id ?? null, profileId: callerId }
   }
 
   // 2. Legacy bracket_users row directly matches (un-migrated user).
@@ -48,13 +52,14 @@ async function resolveCaller(
     return { userId: callerId, profileId: callerId }
   }
 
-  // 3. Maybe the caller is a brand-new migrated profile with no entries yet.
-  //    Confirm against profiles table; if real, treat profile.id as user_id.
+  // 3. Brand-new post Pass 2+5 profile with no entries yet. Confirm against
+  //    profiles; if real, leave user_id NULL (would FK-fail otherwise) and
+  //    stamp profile_id only.
   const { data: profile } = await (
     supabase.from('profiles').select('id').eq('id', callerId).maybeSingle() as any
   )
   if (profile) {
-    return { userId: callerId, profileId: callerId }
+    return { userId: null, profileId: callerId }
   }
 
   return null
@@ -84,26 +89,33 @@ export async function POST(request: Request) {
     }
 
     // Check if entry exists for this user + phase (match by either id).
+    const orParts = [`profile_id.eq.${resolved.profileId}`]
+    if (resolved.userId) orParts.unshift(`user_id.eq.${resolved.userId}`)
     const { data: existing } = await supabase
       .from('bracket_entries')
       .select('id')
-      .or(`user_id.eq.${resolved.userId},profile_id.eq.${resolved.profileId}`)
+      .or(orParts.join(','))
       .eq('phase', phase)
       .limit(1)
 
     const existingRow = existing && existing.length > 0 ? existing[0] : null
 
+    // Only stamp user_id when we have a real one (legacy bracket_users.id);
+    // post Pass 2+5 profiles set it to NULL to avoid the dropped FK.
+    const writeRow: Record<string, unknown> = { picks, profile_id: resolved.profileId }
+    if (resolved.userId) writeRow.user_id = resolved.userId
+
     if (existingRow) {
       const { error } = await supabase
         .from('bracket_entries')
-        .update({ picks, user_id: resolved.userId, profile_id: resolved.profileId })
+        .update(writeRow)
         .eq('id', existingRow.id)
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     } else {
       const { error } = await supabase
         .from('bracket_entries')
-        .insert({ user_id: resolved.userId, profile_id: resolved.profileId, phase, picks, score: 0 })
+        .insert({ ...writeRow, phase, score: 0 })
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
