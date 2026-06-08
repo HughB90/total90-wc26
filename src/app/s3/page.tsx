@@ -227,18 +227,21 @@ export default function S3Page() {
   const playersRef = useRef<Player[]>([])        // mirror for use in scroll handler
 
   // ── Load players ──────────────────────────────────────────────────
-  // Cap voting pool at top 250 by T90 (Hugh 2026-06-07). Server returns rows
-  // sorted t90_score DESC. Both the leaderboard list AND the overlay/triple-vote
-  // pool draw from `players`, so a single slice here trims everything in one place.
-  const VOTING_POOL_SIZE = 250
+  // Split pools (Hugh 2026-06-07):
+  //   • Leaderboard table  → top 250 by T90 (browse / rank visibility)
+  //   • Voting overlay     → top 100 by T90 (avoid long-tail unknowns in 3-up vote)
+  // Server returns rows sorted t90_score DESC.
+  const LEADERBOARD_SIZE = 250
+  const VOTING_POOL_SIZE = 100
   useEffect(() => {
     fetch('/api/s3/players')
       .then(r => r.json())
       .then(d => {
         if (Array.isArray(d)) {
-          const top = d.slice(0, VOTING_POOL_SIZE)
-          setPlayers(top)
-          playersRef.current = top
+          const leaderboard = d.slice(0, LEADERBOARD_SIZE)
+          const votingPool = d.slice(0, VOTING_POOL_SIZE)
+          setPlayers(leaderboard)
+          playersRef.current = votingPool
         }
       })
       .finally(() => setLoading(false))
