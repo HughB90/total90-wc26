@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 function randomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -8,6 +8,26 @@ function randomCode(): string {
     code += chars[Math.floor(Math.random() * chars.length)]
   }
   return code
+}
+
+// `userId` from the client is the active *profile id* (post Pass 2+5 multi-profile).
+// Bracket league tables FK `user_id` → auth.users and `creator_id` → auth.users,
+// so we must resolve profile.id → profile.account_id (= auth.users.id) before writing.
+// If the id passed in is NOT found in `profiles`, we assume it's already an auth.users
+// id (legacy bracket_users path) and pass it through as both.
+async function resolveAuthAndProfile(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ authUserId: string; profileId: string | null }> {
+  const { data: prof } = await (supabase
+    .from('profiles')
+    .select('id, account_id')
+    .eq('id', userId)
+    .maybeSingle() as any)
+  if (prof && prof.account_id) {
+    return { authUserId: prof.account_id as string, profileId: prof.id as string }
+  }
+  return { authUserId: userId, profileId: null }
 }
 
 export async function POST(request: Request) {
@@ -30,28 +50,35 @@ export async function POST(request: Request) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
+    const { authUserId, profileId } = await resolveAuthAndProfile(supabase, userId)
+
     // Delete league (creator only — removes all members + league)
     if (action === 'delete') {
       if (!leagueId) return NextResponse.json({ error: 'leagueId required' }, { status: 400 })
-      // Verify creator
+      // Verify creator (creator_id is an auth.users id)
       const { data: lg } = await (supabase.from('wc26_leagues').select('creator_id').eq('id', leagueId).maybeSingle() as any)
-      if (!lg || lg.creator_id !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+      if (!lg || lg.creator_id !== authUserId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
       await (supabase.from('wc26_league_members').delete().eq('league_id', leagueId) as any)
       await (supabase.from('wc26_leagues').delete().eq('id', leagueId) as any)
       return NextResponse.json({ ok: true })
     }
 
-    // Leave league
+    // Leave league — match by profile_id when available so a single auth user
+    // (parent) with multiple kid profiles can leave on behalf of just one profile.
     if (action === 'leave') {
       if (!leagueId) return NextResponse.json({ error: 'leagueId required' }, { status: 400 })
-      await (supabase.from('wc26_league_members').delete().match({ league_id: leagueId, user_id: userId }) as any)
+      if (profileId) {
+        await (supabase.from('wc26_league_members').delete().match({ league_id: leagueId, profile_id: profileId }) as any)
+      } else {
+        await (supabase.from('wc26_league_members').delete().match({ league_id: leagueId, user_id: authUserId }) as any)
+      }
       return NextResponse.json({ ok: true })
     }
 
     // Rename league (creator only)
     if (action === 'rename') {
       if (!leagueId || !name) return NextResponse.json({ error: 'leagueId and name required' }, { status: 400 })
-      const { error } = await (supabase.from('wc26_leagues').update({ name: name.trim() }).match({ id: leagueId, creator_id: userId }) as any)
+      const { error } = await (supabase.from('wc26_leagues').update({ name: name.trim() }).match({ id: leagueId, creator_id: authUserId }) as any)
       if (error) return NextResponse.json({ error: 'Not authorized or league not found' }, { status: 403 })
       return NextResponse.json({ ok: true })
     }
@@ -75,7 +102,7 @@ export async function POST(request: Request) {
 
       const { data: league, error } = await supabase
         .from('wc26_leagues')
-        .insert({ name: name.trim(), invite_code: code, creator_id: userId })
+        .insert({ name: name.trim(), invite_code: code, creator_id: authUserId })
         .select('id, invite_code, name')
         .single()
 
@@ -83,10 +110,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: error?.message ?? 'Failed to create league' }, { status: 500 })
       }
 
-      // Add creator as member
-      await supabase
-        .from('wc26_league_members')
-        .insert({ league_id: league.id, user_id: userId })
+      // Add creator as member. Prefer profile_id (post Pass 2+5); fall back to
+      // user_id for legacy bracket_users callers (no profile match).
+      const memberRow: Record<string, unknown> = { league_id: league.id }
+      if (profileId) memberRow.profile_id = profileId
+      else memberRow.user_id = authUserId
+      await (supabase.from('wc26_league_members').insert(memberRow) as any)
 
       return NextResponse.json({ ok: true, league })
     }
@@ -104,9 +133,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'League not found' }, { status: 404 })
       }
 
-      const { error } = await supabase
+      // Write profile_id (post Pass 2+5) so a parent can join the same league
+      // once per kid profile. Legacy bracket_users callers fall back to user_id.
+      const memberRow: Record<string, unknown> = { league_id: league.id }
+      let onConflict: string
+      if (profileId) {
+        memberRow.profile_id = profileId
+        onConflict = 'league_id,profile_id'
+      } else {
+        memberRow.user_id = authUserId
+        onConflict = 'league_id,user_id'
+      }
+      const { error } = await (supabase
         .from('wc26_league_members')
-        .upsert({ league_id: league.id, user_id: userId }, { onConflict: 'league_id,user_id' })
+        .upsert(memberRow, { onConflict }) as any)
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -133,13 +173,19 @@ export async function GET(request: Request) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Get leagues user is in. `userId` from the client can be either a
-    // bracket_users.id (legacy) or a profiles.id (post-AuthHeader). Both are
-    // stored on wc26_league_members — try either.
+    // Resolve profile.id → account_id so isCreator comparison works for either id type.
+    const { authUserId, profileId } = await resolveAuthAndProfile(supabase, userId)
+
+    // Get leagues this caller is in. When the caller is a profile (post Pass 2+5),
+    // scope strictly to that profile so kid profiles only see their own leagues.
+    // For legacy (no profile match) fall back to user_id = auth.users.id.
+    const matchExpr = profileId
+      ? `profile_id.eq.${profileId}`
+      : `user_id.eq.${authUserId},profile_id.eq.${userId}`
     const { data: memberships } = await (supabase
       .from('wc26_league_members')
-      .select('league_id, wc26_leagues(id, name, invite_code, creator_id)')
-      .or(`user_id.eq.${userId},profile_id.eq.${userId}`) as any)
+      .select('league_id, user_id, profile_id, wc26_leagues(id, name, invite_code, creator_id)')
+      .or(matchExpr) as any)
 
     if (!memberships?.length) return NextResponse.json({ leagues: [] })
 
@@ -184,7 +230,7 @@ export async function GET(request: Request) {
         memberCount: memberUserIds.length || memberProfileIds.length,
         myRank: myRank || memberUserIds.length || memberProfileIds.length,
         myScore,
-        isCreator: league.creator_id === userId,
+        isCreator: league.creator_id === userId || league.creator_id === authUserId,
       }
     }))
 
