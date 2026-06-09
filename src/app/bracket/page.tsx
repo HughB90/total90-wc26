@@ -958,32 +958,55 @@ function LeaguesTab({ userId, onAuthRequired }: { userId: string | null; onAuthR
 
 
 // ─── Leaderboard Tab ──────────────────────────────────────────────────────────
+const LEADERBOARD_PAGE_SIZE = 10
+
 function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onAuthRequired?: () => void }) {
   const [rows, setRows] = useState<LeaderboardRow[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [me, setMe] = useState<{ rank: number; score: number; total: number; managerName: string; firstName: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
   const [leagueName, setLeagueName] = useState('')
   const [createdCode, setCreatedCode] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [joinMsg, setJoinMsg] = useState('')
-  const [leagueCode, setLeagueCode] = useState('')
   const [filterCode, setFilterCode] = useState('')
   const [copied, setCopied] = useState(false)
 
-  const fetchLeaderboard = useCallback(async (code?: string) => {
+  const fetchLeaderboard = useCallback(async (code: string | undefined, pageArg: number) => {
     setLoading(true)
     try {
-      const url = code ? `/api/bracket/leaderboard?leagueCode=${code}` : '/api/bracket/leaderboard'
-      const res = await fetch(url)
-      const data = await res.json() as { ok?: boolean; rows?: LeaderboardRow[] }
+      const qs = new URLSearchParams()
+      if (code) qs.set('leagueCode', code)
+      qs.set('page', String(pageArg))
+      qs.set('pageSize', String(LEADERBOARD_PAGE_SIZE))
+      if (userId) qs.set('meId', userId)
+      const res = await fetch(`/api/bracket/leaderboard?${qs.toString()}`)
+      const data = await res.json() as {
+        ok?: boolean
+        rows?: LeaderboardRow[]
+        total?: number
+        me?: { rank: number; score: number; total: number; managerName: string; firstName: string | null } | null
+      }
       setRows(data.rows ?? [])
+      setTotal(data.total ?? (data.rows?.length ?? 0))
+      setMe(data.me ?? null)
     } catch {
       setRows([])
+      setTotal(0)
+      setMe(null)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [userId])
 
-  useEffect(() => { fetchLeaderboard() }, [fetchLeaderboard])
+  // Reset to page 1 whenever the filter changes.
+  useEffect(() => { setPage(1) }, [filterCode])
+  useEffect(() => { fetchLeaderboard(filterCode || undefined, page) }, [fetchLeaderboard, filterCode, page])
+
+  const totalPages = Math.max(1, Math.ceil(total / LEADERBOARD_PAGE_SIZE))
+  const showingFrom = total === 0 ? 0 : (page - 1) * LEADERBOARD_PAGE_SIZE + 1
+  const showingTo = Math.min(total, page * LEADERBOARD_PAGE_SIZE)
 
   async function handleCreate() {
     if (!userId && onAuthRequired) {
@@ -1021,7 +1044,6 @@ function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onA
       if (data.ok) {
         setJoinMsg(`Joined "${data.league?.name}"!`)
         setFilterCode(joinCode.toUpperCase())
-        fetchLeaderboard(joinCode.toUpperCase())
         setJoinCode('')
       } else {
         setJoinMsg('League not found')
@@ -1082,56 +1104,156 @@ function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onA
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
         <span style={{ color: C.muted, fontSize: '0.8rem' }}>Filter by league:</span>
         <input value={filterCode} onChange={e => setFilterCode(e.target.value.toUpperCase())} placeholder="Code" maxLength={6} style={{ ...inputStyle, width: '90px' }} />
-        <button onClick={() => fetchLeaderboard(filterCode || undefined)} style={{
-          backgroundColor: 'transparent', border: `1px solid ${C.border}`, borderRadius: '0.5rem',
-          color: C.muted, fontSize: '0.75rem', padding: '0.3rem 0.7rem', cursor: 'pointer',
-        }}>Go</button>
         {filterCode && (
-          <button onClick={() => { setFilterCode(''); fetchLeaderboard() }} style={{
+          <button onClick={() => { setFilterCode('') }} style={{
             backgroundColor: 'transparent', border: 'none', color: C.muted, fontSize: '0.75rem', cursor: 'pointer',
           }}>✕ Clear</button>
         )}
       </div>
 
+      {/* Caller's standing — pinned above the paginated list so they always
+          see their place against the world even when paging away from it. */}
+      {!filterCode && me && (
+        <div style={{
+          backgroundColor: '#0F1C4D',
+          border: `1px solid ${me.rank <= 10 ? 'rgba(251,191,36,0.4)' : C.border}`,
+          borderRadius: '0.75rem',
+          padding: '0.75rem 1rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{
+              backgroundColor: me.rank <= 10 ? 'rgba(251,191,36,0.18)' : 'rgba(136,153,204,0.1)',
+              color: me.rank <= 10 ? C.gold : '#8899CC',
+              border: `1px solid ${me.rank <= 10 ? 'rgba(251,191,36,0.35)' : C.border}`,
+              borderRadius: '1rem',
+              padding: '0.2rem 0.7rem',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+            }}>
+              #{me.rank.toLocaleString()} of {me.total.toLocaleString()}
+            </span>
+            <span style={{ color: C.text, fontWeight: 700, fontSize: '0.9rem' }}>{me.managerName}</span>
+            <span style={{ color: C.muted, fontSize: '0.75rem' }}>(you)</span>
+          </div>
+          <span style={{ color: C.gold, fontWeight: 800, fontSize: '0.95rem' }}>{me.score.toLocaleString()} pts</span>
+        </div>
+      )}
+
       {/* Table */}
       {loading ? (
         <p style={{ color: C.muted }}>Loading…</p>
       ) : rows.length === 0 ? (
-        <p style={{ color: C.muted, fontStyle: 'italic' }}>No picks submitted yet. Be the first!</p>
+        <p style={{ color: C.muted, fontStyle: 'italic' }}>No participants yet. Be the first!</p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-            <thead>
-              <tr>
-                {['Rank', 'Manager', 'Name', 'Score'].map(h => (
-                  <th key={h} style={{
-                    textAlign: 'left', padding: '0.5rem 0.75rem', color: C.muted,
-                    fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em',
-                    borderBottom: `1px solid ${C.border}`,
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(row => (
-                <tr key={row.userId} style={{ borderBottom: `1px solid rgba(30,58,110,0.4)` }}>
-                  <td style={{ padding: '0.6rem 0.75rem', color: row.rank <= 3 ? C.gold : C.muted, fontWeight: 700 }}>
-                    {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
-                  </td>
-                  <td style={{ padding: '0.6rem 0.75rem', color: row.userId === userId ? C.green : C.text, fontWeight: row.userId === userId ? 700 : 600 }}>
-                    {row.managerName ?? row.displayName} {row.userId === userId && <span style={{ color: C.muted, fontSize: '0.7rem' }}>(you)</span>}
-                  </td>
-                  <td style={{ padding: '0.6rem 0.75rem', color: C.muted, fontWeight: 400 }}>
-                    {row.firstName ?? '—'}
-                  </td>
-                  <td style={{ padding: '0.6rem 0.75rem', color: C.gold, fontWeight: 700 }}>
-                    {row.score}
-                  </td>
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr>
+                  {['Rank', 'Manager', 'Name', 'Score'].map(h => (
+                    <th key={h} style={{
+                      textAlign: 'left', padding: '0.5rem 0.75rem', color: C.muted,
+                      fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+                      borderBottom: `1px solid ${C.border}`,
+                    }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map(row => {
+                  const isMe = row.userId === userId || row.profileId === userId
+                  return (
+                    <tr key={row.userId} style={{
+                      borderBottom: `1px solid rgba(30,58,110,0.4)`,
+                      backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent',
+                    }}>
+                      <td style={{ padding: '0.6rem 0.75rem', color: row.rank <= 3 ? C.gold : C.muted, fontWeight: 700 }}>
+                        {row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: isMe ? C.green : C.text, fontWeight: isMe ? 700 : 600 }}>
+                        {row.managerName ?? row.displayName} {isMe && <span style={{ color: C.muted, fontSize: '0.7rem' }}>(you)</span>}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: C.muted, fontWeight: 400 }}>
+                        {row.firstName ?? '—'}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.75rem', color: C.gold, fontWeight: 700 }}>
+                        {row.score}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: '0.9rem',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
+            }}>
+              <span style={{ color: C.muted, fontSize: '0.75rem' }}>
+                Showing {showingFrom.toLocaleString()}–{showingTo.toLocaleString()} of {total.toLocaleString()}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: `1px solid ${C.border}`,
+                    borderRadius: '0.5rem',
+                    color: page <= 1 ? C.border : C.text,
+                    fontSize: '0.75rem',
+                    padding: '0.35rem 0.75rem',
+                    cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                  }}
+                >← Prev</button>
+                <span style={{ color: C.muted, fontSize: '0.75rem', minWidth: '70px', textAlign: 'center' }}>
+                  Page {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: `1px solid ${C.border}`,
+                    borderRadius: '0.5rem',
+                    color: page >= totalPages ? C.border : C.text,
+                    fontSize: '0.75rem',
+                    padding: '0.35rem 0.75rem',
+                    cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                  }}
+                >Next →</button>
+                {me && (me.rank > showingTo || me.rank < showingFrom) ? (
+                  <button
+                    onClick={() => setPage(Math.max(1, Math.ceil(me.rank / LEADERBOARD_PAGE_SIZE)))}
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: `1px solid ${C.gold}`,
+                      borderRadius: '0.5rem',
+                      color: C.gold,
+                      fontSize: '0.72rem',
+                      padding: '0.35rem 0.7rem',
+                      cursor: 'pointer',
+                      marginLeft: '0.3rem',
+                    }}
+                  >Jump to me</button>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -1253,18 +1375,21 @@ export default function BracketPage() {
       .catch(() => {})
   }, [leagueView])
 
-  // Fetch my rank and total users. `userId` may be a bracket_users.id
-  // (legacy) or a profiles.id (post-AuthHeader), so match either.
+  // Fetch my rank and total participants. API now returns a `me` block
+  // computed server-side off the full participant list (every profile +
+  // every legacy bracket_users row), so the strip stays accurate even
+  // when the caller isn't on the first page of results.
   useEffect(() => {
     if (!userId) return
-    fetch('/api/bracket/leaderboard')
+    fetch(`/api/bracket/leaderboard?meId=${encodeURIComponent(userId)}&page=1&pageSize=1`)
       .then(r => r.json())
-      .then((data: { rows?: { userId: string; profileId?: string | null; score: number }[]; total?: number }) => {
-        const rows = data.rows ?? []
-        const total = data.total ?? rows.length
-        const myIdx = rows.findIndex((r) => r.userId === userId || r.profileId === userId)
-        const myScore = myIdx >= 0 ? rows[myIdx].score : 0
-        setMyRank({ rank: myIdx >= 0 ? myIdx + 1 : total + 1, total, score: myScore })
+      .then((data: { total?: number; me?: { rank: number; score: number; total: number } | null }) => {
+        const total = data.total ?? data.me?.total ?? 0
+        if (data.me) {
+          setMyRank({ rank: data.me.rank, total, score: data.me.score })
+        } else {
+          setMyRank({ rank: total + 1, total, score: 0 })
+        }
       })
       .catch(() => {})
   }, [userId])
