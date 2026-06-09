@@ -163,7 +163,7 @@ function SaveButton({ status, onClick, userId, onAuthRequired }: { status: SaveS
 // ─── Auth form ────────────────────────────────────────────────────────────────
 
 
-function GroupStageTab({ userId, savedPicks, onSaved, onAuthRequired, groupResults = {} }: { userId: string | null; savedPicks: GroupPicks; onSaved?: () => void; onAuthRequired?: () => void; groupResults?: GroupPicks }) {
+function GroupStageTab({ userId, savedPicks, onSaved, onPicksSaved, onAuthRequired, groupResults = {} }: { userId: string | null; savedPicks: GroupPicks; onSaved?: () => void; onPicksSaved?: (picks: GroupPicks) => void; onAuthRequired?: () => void; groupResults?: GroupPicks }) {
   const [picks, setPicks] = useState<GroupPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
 
@@ -215,7 +215,15 @@ function GroupStageTab({ userId, savedPicks, onSaved, onAuthRequired, groupResul
         window.location.reload()
         return
       }
-      setStatus(data.ok ? 'saved' : 'error')
+      if (data.ok) {
+        setStatus('saved')
+        // Bubble persisted picks to the parent so tab switches don't reset them.
+        onPicksSaved?.(picks)
+        // Briefly show ✓ Saved, then advance to the next phase tab.
+        setTimeout(() => { onSaved?.() }, 700)
+      } else {
+        setStatus('error')
+      }
     } catch {
       setStatus('error')
     }
@@ -311,11 +319,12 @@ function GroupStageTab({ userId, savedPicks, onSaved, onAuthRequired, groupResul
 }
 
 // ─── 3rd Place Tab ────────────────────────────────────────────────────────────
-function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onAuthRequired, thirdResults = [] }: {
+function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onPicksSaved, onAuthRequired, thirdResults = [] }: {
   userId: string | null
   savedPicks: ThirdPicks
   groupPicks: GroupPicks
   onSaved?: () => void
+  onPicksSaved?: (picks: ThirdPicks) => void
   onAuthRequired?: () => void
   thirdResults?: string[]
 }) {
@@ -355,7 +364,13 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onAuthRequired
         body: JSON.stringify({ userId, phase: 'third', picks: checked }),
       })
       const data = await res.json() as { ok?: boolean }
-      setStatus(data.ok ? 'saved' : 'error')
+      if (data.ok) {
+        setStatus('saved')
+        onPicksSaved?.(checked)
+        setTimeout(() => { onSaved?.() }, 700)
+      } else {
+        setStatus('error')
+      }
     } catch {
       setStatus('error')
     }
@@ -519,12 +534,13 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onAuthRequired
 }
 
 // ─── Knockout Tab ─────────────────────────────────────────────────────────────
-function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32', onSaved, onAuthRequired }: {
+function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32', onSaved, onPicksSaved, onAuthRequired }: {
   userId: string | null
   savedPicks: KnockoutPicks
   activeRound?: string
   groupPicks: GroupPicks
   thirdPicks: ThirdPicks
+  onPicksSaved?: (picks: KnockoutPicks) => void
   onSaved?: () => void
   onAuthRequired?: () => void
 }) {
@@ -579,7 +595,13 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
         body: JSON.stringify({ userId, phase: 'knockout', picks }),
       })
       const data = await res.json() as { ok?: boolean }
-      setStatus(data.ok ? 'saved' : 'error')
+      if (data.ok) {
+        setStatus('saved')
+        onPicksSaved?.(picks)
+        setTimeout(() => { onSaved?.() }, 700)
+      } else {
+        setStatus('error')
+      }
     } catch {
       setStatus('error')
     }
@@ -1536,10 +1558,28 @@ export default function BracketPage() {
           <LeaguesTab userId={userId} onAuthRequired={handleAuthRequired} />
         )}
         {activeTab === 'group' && (
-          <GroupStageTab userId={userId} savedPicks={groupPicks} onSaved={() => setActiveTab('third')} onAuthRequired={handleAuthRequired} groupResults={{}} />
+          <GroupStageTab
+            userId={userId}
+            savedPicks={groupPicks}
+            onSaved={() => setActiveTab('third')}
+            onPicksSaved={(p) => setGroupPicks(p)}
+            onAuthRequired={handleAuthRequired}
+            groupResults={{}}
+          />
         )}
         {activeTab === 'third' && (
-          <ThirdPlaceTab userId={userId} savedPicks={thirdPicks} groupPicks={groupPicks} onSaved={() => setActiveTab('r32')} onAuthRequired={handleAuthRequired} thirdResults={[]} />
+          <ThirdPlaceTab
+            userId={userId}
+            savedPicks={thirdPicks}
+            groupPicks={groupPicks}
+            // Pre-knockout (R32 still locked), don't kick the user into the
+            // locked screen — just show ✓ Saved and stay put. After unlock,
+            // auto-advance to R32 like the original design.
+            onSaved={knockoutLocked && !adminUnlock ? undefined : () => setActiveTab('r32')}
+            onPicksSaved={(p) => setThirdPicks(p)}
+            onAuthRequired={handleAuthRequired}
+            thirdResults={[]}
+          />
         )}
         {KNOCKOUT_TABS.includes(activeTab) && knockoutLocked && !adminUnlock && (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
@@ -1574,6 +1614,7 @@ export default function BracketPage() {
               const next = order[order.indexOf(activeTab) + 1]
               if (next) setActiveTab(next)
             }}
+            onPicksSaved={(p) => setKnockoutPicks(p)}
             onAuthRequired={handleAuthRequired}
           />
         )}
