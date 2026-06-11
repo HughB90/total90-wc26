@@ -87,6 +87,30 @@ function SiteNav() {
 
 
 
+function IncidentBanner() {
+  return (
+    <div
+      id="incident-banner"
+      role="alert"
+      style={{
+        backgroundColor: '#7F1D1D',
+        borderBottom: '1px solid rgba(252,165,165,0.4)',
+        padding: '0.55rem 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.6rem',
+        textAlign: 'center',
+      }}
+    >
+      <span style={{ fontSize: '0.9rem' }}>⚠️</span>
+      <span style={{ color: '#FECACA', fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.3 }}>
+        Some pages may be slow or unavailable due to an issue with our database provider. We’re monitoring it closely — thanks for your patience.
+      </span>
+    </div>
+  )
+}
+
 function AppLaunchBanner() {
   return (
     <div
@@ -142,6 +166,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         isolation: 'isolate',
         minHeight: '100vh',
       }}>
+        <IncidentBanner />
         {/* Site-wide stadium backdrop — blurred photo + 50% navy overlay.
             Lives in the body so every page inherits it. */}
         <div
