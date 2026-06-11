@@ -5,7 +5,7 @@
  * ordered by `match_num` for the /scores page (and any other surface that
  * wants the live schedule).
  *
- * Cache: edge cache for 15s, stale-while-revalidate for 60s. The page
+ * Cache: edge cache for 60s, stale-while-revalidate for 300s. The page
  * additionally polls every 30s while any match is in-play, so end-to-end
  * latency from Opta → user is ~45–90s worst case during live windows.
  *
@@ -77,7 +77,7 @@ export async function GET() {
       {
         headers: {
           'Cache-Control':
-            'public, s-maxage=15, stale-while-revalidate=60',
+            'public, s-maxage=60, stale-while-revalidate=300',
         },
       }
     )
