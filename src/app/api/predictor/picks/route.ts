@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
   // Pull matches for this round to validate ownership + kickoff lock
   const { data: matchRows, error: matchErr } = await sb
     .from('predictor_matches')
-    .select('id, round_code, home_team_code, away_team_code, kickoff_at')
+    .select('id, round_code, home_team_code, away_team_code, kickoff_at, status')
     .eq('round_code', roundCode)
   if (matchErr) return NextResponse.json({ error: matchErr.message }, { status: 500 })
 
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
   // match). UI is supposed to grey these out — this is the server guard.
   const lockSplit = splitByMatchLock(
     picks.map((p) => ({ match_id: p.match_id, is_star: p.is_star })),
-    (matchRows || []).map((m) => ({ id: m.id, round_code: m.round_code, kickoff_at: m.kickoff_at })),
+    (matchRows || []).map((m) => ({ id: m.id, round_code: m.round_code, kickoff_at: m.kickoff_at, status: m.status })),
   )
   if (lockSplit.lockedDetails.length > 0) {
     return NextResponse.json(
@@ -217,7 +217,7 @@ export async function POST(req: NextRequest) {
   const starCheck = checkStarRule({
     existing: existingPicks,
     incoming: picks.map((p) => ({ match_id: p.match_id, is_star: p.is_star })),
-    matches: (matchRows || []).map((m) => ({ id: m.id, round_code: m.round_code, kickoff_at: m.kickoff_at })),
+    matches: (matchRows || []).map((m) => ({ id: m.id, round_code: m.round_code, kickoff_at: m.kickoff_at, status: m.status })),
   })
   if (!starCheck.ok) {
     return NextResponse.json(

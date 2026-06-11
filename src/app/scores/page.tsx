@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AuthHeader from '@/components/AuthHeader'
 import { selectStyle } from '@/lib/select-style'
 
@@ -13,6 +13,7 @@ const C = {
   muted: '#8899CC',
   text: '#F0F4FF',
   green: '#00E676',
+  red: '#FF4D6D',
 }
 
 // ─── Country codes ────────────────────────────────────────────────────────────
@@ -78,23 +79,33 @@ function flagUrl(country: string) {
   return `https://flagcdn.com/w160/${code}.png`
 }
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00Z')
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
-type MatchStatus = 'fixture' | 'playing' | 'played'
 type Stage = 'group' | 'r32' | 'r16' | 'qf' | 'sf' | 'final'
 
 interface TeamSlot {
   name: string
   placeholder?: boolean
+}
+
+interface ApiMatch {
+  id: string
+  match_num: number
+  round_code: string
+  group_code: string | null
+  home_team_code: string
+  away_team_code: string
+  kickoff_at: string
+  venue: string | null
+  home_score: number | null
+  away_score: number | null
+  status: 'scheduled' | 'live' | 'final' | 'cancelled'
+  period: string | null
+  minute: number | null
+  is_knockout: boolean
+  went_to_pks: boolean
+  pk_winner_team_code: string | null
+  goalscorers: unknown[]
+  last_synced_at: string | null
 }
 
 interface Match {
@@ -108,134 +119,99 @@ interface Match {
   away: TeamSlot
   venue: string
   score: { home: number; away: number } | null
-  status: MatchStatus
+  status: 'fixture' | 'playing' | 'played'
+  period: string | null
+  minute: number | null
+  wentToPks: boolean
+  pkWinner: string | null
 }
 
-const t = (name: string): TeamSlot => ({ name })
-const p = (name: string): TeamSlot => ({ name, placeholder: true })
+// ─── DB → UI mapping ──────────────────────────────────────────────────────────
+const ROUND_CODE_TO_STAGE: Record<string, Stage> = {
+  group_r1: 'group',
+  group_r2: 'group',
+  group_r3: 'group',
+  r32: 'r32',
+  r16: 'r16',
+  qf: 'qf',
+  sf: 'sf',
+  '3rd': 'final',
+  final: 'final',
+}
 
-// ─── Complete 104-match schedule ──────────────────────────────────────────────
-const MATCHES: Match[] = [
-  // ── GROUP STAGE ROUND 1 ────────────────────────────────────────────────────
-  { num: 1,  stage: 'group', round: 1, group: 'A', date: '2026-06-11', time: '2:00 PM CT',  home: t('Mexico'),              away: t('South Africa'),           venue: 'Estadio Azteca, Mexico City',             score: null, status: 'fixture' },
-  { num: 2,  stage: 'group', round: 1, group: 'A', date: '2026-06-11', time: '9:00 PM CT',  home: t('South Korea'),         away: t('Czechia'),                 venue: 'Estadio Akron, Zapopan',                  score: null, status: 'fixture' },
-  { num: 3,  stage: 'group', round: 1, group: 'B', date: '2026-06-12', time: '2:00 PM CT',  home: t('Canada'),              away: t('Bosnia & Herzegovina'),    venue: 'BMO Field, Toronto',                      score: null, status: 'fixture' },
-  { num: 4,  stage: 'group', round: 1, group: 'D', date: '2026-06-12', time: '8:00 PM CT',  home: t('USA'),                 away: t('Paraguay'),                venue: 'SoFi Stadium, Los Angeles',               score: null, status: 'fixture' },
-  { num: 5,  stage: 'group', round: 1, group: 'B', date: '2026-06-13', time: '2:00 PM CT',  home: t('Qatar'),               away: t('Switzerland'),             venue: "Levi's Stadium, Santa Clara",             score: null, status: 'fixture' },
-  { num: 6,  stage: 'group', round: 1, group: 'C', date: '2026-06-13', time: '5:00 PM CT',  home: t('Brazil'),              away: t('Morocco'),                 venue: 'MetLife Stadium, New York',               score: null, status: 'fixture' },
-  { num: 7,  stage: 'group', round: 1, group: 'C', date: '2026-06-13', time: '8:00 PM CT',  home: t('Haiti'),               away: t('Scotland'),                venue: 'Gillette Stadium, Boston',                score: null, status: 'fixture' },
-  { num: 8,  stage: 'group', round: 1, group: 'D', date: '2026-06-13', time: '11:00 PM CT', home: t('Australia'),           away: t('Turkey'),                  venue: 'BC Place, Vancouver',                     score: null, status: 'fixture' },
-  { num: 9,  stage: 'group', round: 1, group: 'E', date: '2026-06-14', time: '12:00 PM CT', home: t('Germany'),             away: t('Curaçao'),                 venue: 'NRG Stadium, Houston',                    score: null, status: 'fixture' },
-  { num: 10, stage: 'group', round: 1, group: 'F', date: '2026-06-14', time: '3:00 PM CT',  home: t('Netherlands'),         away: t('Japan'),                   venue: 'AT&T Stadium, Arlington',                 score: null, status: 'fixture' },
-  { num: 11, stage: 'group', round: 1, group: 'E', date: '2026-06-14', time: '6:00 PM CT',  home: t('Ivory Coast'),         away: t('Ecuador'),                 venue: 'Lincoln Financial Field, Philadelphia',   score: null, status: 'fixture' },
-  { num: 12, stage: 'group', round: 1, group: 'F', date: '2026-06-14', time: '9:00 PM CT',  home: t('Sweden'),              away: t('Tunisia'),                 venue: 'Estadio BBVA, Monterrey',                 score: null, status: 'fixture' },
-  { num: 13, stage: 'group', round: 1, group: 'H', date: '2026-06-15', time: '11:00 AM CT', home: t('Spain'),               away: t('Cape Verde'),              venue: 'Mercedes-Benz Stadium, Atlanta',          score: null, status: 'fixture' },
-  { num: 14, stage: 'group', round: 1, group: 'G', date: '2026-06-15', time: '2:00 PM CT',  home: t('Belgium'),             away: t('Egypt'),                   venue: 'Lumen Field, Seattle',                    score: null, status: 'fixture' },
-  { num: 15, stage: 'group', round: 1, group: 'H', date: '2026-06-15', time: '5:00 PM CT',  home: t('Saudi Arabia'),        away: t('Uruguay'),                 venue: 'Hard Rock Stadium, Miami',                score: null, status: 'fixture' },
-  { num: 16, stage: 'group', round: 1, group: 'G', date: '2026-06-15', time: '8:00 PM CT',  home: t('Iran'),                away: t('New Zealand'),             venue: 'SoFi Stadium, Los Angeles',               score: null, status: 'fixture' },
-  { num: 17, stage: 'group', round: 1, group: 'I', date: '2026-06-16', time: '2:00 PM CT',  home: t('France'),              away: t('Senegal'),                 venue: 'MetLife Stadium, New York',               score: null, status: 'fixture' },
-  { num: 18, stage: 'group', round: 1, group: 'I', date: '2026-06-16', time: '5:00 PM CT',  home: t('Iraq'),                away: t('Norway'),                  venue: 'Gillette Stadium, Boston',                score: null, status: 'fixture' },
-  { num: 19, stage: 'group', round: 1, group: 'J', date: '2026-06-16', time: '8:00 PM CT',  home: t('Argentina'),           away: t('Algeria'),                 venue: 'Arrowhead Stadium, Kansas City',          score: null, status: 'fixture' },
-  { num: 20, stage: 'group', round: 1, group: 'J', date: '2026-06-16', time: '11:00 PM CT', home: t('Austria'),             away: t('Jordan'),                  venue: "Levi's Stadium, Santa Clara",             score: null, status: 'fixture' },
-  { num: 21, stage: 'group', round: 1, group: 'K', date: '2026-06-17', time: '12:00 PM CT', home: t('Portugal'),            away: t('DR Congo'),                venue: 'NRG Stadium, Houston',                    score: null, status: 'fixture' },
-  { num: 22, stage: 'group', round: 1, group: 'L', date: '2026-06-17', time: '3:00 PM CT',  home: t('England'),             away: t('Croatia'),                 venue: 'AT&T Stadium, Arlington',                 score: null, status: 'fixture' },
-  { num: 23, stage: 'group', round: 1, group: 'L', date: '2026-06-17', time: '6:00 PM CT',  home: t('Ghana'),               away: t('Panama'),                  venue: 'BMO Field, Toronto',                      score: null, status: 'fixture' },
-  { num: 24, stage: 'group', round: 1, group: 'K', date: '2026-06-17', time: '9:00 PM CT',  home: t('Uzbekistan'),          away: t('Colombia'),                venue: 'Estadio Azteca, Mexico City',             score: null, status: 'fixture' },
+const ROUND_CODE_TO_ROUND: Record<string, 1 | 2 | 3 | undefined> = {
+  group_r1: 1,
+  group_r2: 2,
+  group_r3: 3,
+}
 
-  // ── GROUP STAGE ROUND 2 ────────────────────────────────────────────────────
-  { num: 25, stage: 'group', round: 2, group: 'A', date: '2026-06-18', time: '11:00 AM CT', home: t('Czechia'),             away: t('South Africa'),            venue: 'Mercedes-Benz Stadium, Atlanta',          score: null, status: 'fixture' },
-  { num: 26, stage: 'group', round: 2, group: 'B', date: '2026-06-18', time: '2:00 PM CT',  home: t('Switzerland'),         away: t('Bosnia & Herzegovina'),    venue: 'SoFi Stadium, Los Angeles',               score: null, status: 'fixture' },
-  { num: 27, stage: 'group', round: 2, group: 'B', date: '2026-06-18', time: '5:00 PM CT',  home: t('Canada'),              away: t('Qatar'),                   venue: 'BC Place, Vancouver',                     score: null, status: 'fixture' },
-  { num: 28, stage: 'group', round: 2, group: 'A', date: '2026-06-18', time: '8:00 PM CT',  home: t('Mexico'),              away: t('South Korea'),             venue: 'Estadio Akron, Zapopan',                  score: null, status: 'fixture' },
-  { num: 29, stage: 'group', round: 2, group: 'D', date: '2026-06-19', time: '2:00 PM CT',  home: t('USA'),                 away: t('Australia'),               venue: 'Lumen Field, Seattle',                    score: null, status: 'fixture' },
-  { num: 30, stage: 'group', round: 2, group: 'C', date: '2026-06-19', time: '5:00 PM CT',  home: t('Scotland'),            away: t('Morocco'),                 venue: 'Gillette Stadium, Boston',                score: null, status: 'fixture' },
-  { num: 31, stage: 'group', round: 2, group: 'C', date: '2026-06-19', time: '7:30 PM CT',  home: t('Brazil'),              away: t('Haiti'),                   venue: 'Lincoln Financial Field, Philadelphia',   score: null, status: 'fixture' },
-  { num: 32, stage: 'group', round: 2, group: 'D', date: '2026-06-19', time: '10:00 PM CT', home: t('Turkey'),              away: t('Paraguay'),                venue: "Levi's Stadium, Santa Clara",             score: null, status: 'fixture' },
-  { num: 33, stage: 'group', round: 2, group: 'F', date: '2026-06-20', time: '12:00 PM CT', home: t('Netherlands'),         away: t('Sweden'),                  venue: 'NRG Stadium, Houston',                    score: null, status: 'fixture' },
-  { num: 34, stage: 'group', round: 2, group: 'E', date: '2026-06-20', time: '3:00 PM CT',  home: t('Germany'),             away: t('Ivory Coast'),             venue: 'BMO Field, Toronto',                      score: null, status: 'fixture' },
-  { num: 35, stage: 'group', round: 2, group: 'E', date: '2026-06-20', time: '7:00 PM CT',  home: t('Ecuador'),             away: t('Curaçao'),                 venue: 'Arrowhead Stadium, Kansas City',          score: null, status: 'fixture' },
-  { num: 36, stage: 'group', round: 2, group: 'F', date: '2026-06-20', time: '11:00 PM CT', home: t('Tunisia'),             away: t('Japan'),                   venue: 'Estadio BBVA, Monterrey',                 score: null, status: 'fixture' },
-  { num: 37, stage: 'group', round: 2, group: 'H', date: '2026-06-21', time: '11:00 AM CT', home: t('Spain'),               away: t('Saudi Arabia'),            venue: 'Mercedes-Benz Stadium, Atlanta',          score: null, status: 'fixture' },
-  { num: 38, stage: 'group', round: 2, group: 'G', date: '2026-06-21', time: '2:00 PM CT',  home: t('Belgium'),             away: t('Iran'),                    venue: 'SoFi Stadium, Los Angeles',               score: null, status: 'fixture' },
-  { num: 39, stage: 'group', round: 2, group: 'H', date: '2026-06-21', time: '5:00 PM CT',  home: t('Uruguay'),             away: t('Cape Verde'),              venue: 'Hard Rock Stadium, Miami',                score: null, status: 'fixture' },
-  { num: 40, stage: 'group', round: 2, group: 'G', date: '2026-06-21', time: '8:00 PM CT',  home: t('New Zealand'),         away: t('Egypt'),                   venue: 'BC Place, Vancouver',                     score: null, status: 'fixture' },
-  { num: 41, stage: 'group', round: 2, group: 'J', date: '2026-06-22', time: '12:00 PM CT', home: t('Argentina'),           away: t('Austria'),                 venue: 'AT&T Stadium, Arlington',                 score: null, status: 'fixture' },
-  { num: 42, stage: 'group', round: 2, group: 'I', date: '2026-06-22', time: '4:00 PM CT',  home: t('France'),              away: t('Iraq'),                    venue: 'Lincoln Financial Field, Philadelphia',   score: null, status: 'fixture' },
-  { num: 43, stage: 'group', round: 2, group: 'I', date: '2026-06-22', time: '7:00 PM CT',  home: t('Norway'),              away: t('Senegal'),                 venue: 'MetLife Stadium, New York',               score: null, status: 'fixture' },
-  { num: 44, stage: 'group', round: 2, group: 'J', date: '2026-06-22', time: '10:00 PM CT', home: t('Jordan'),              away: t('Algeria'),                 venue: "Levi's Stadium, Santa Clara",             score: null, status: 'fixture' },
-  { num: 45, stage: 'group', round: 2, group: 'K', date: '2026-06-23', time: '12:00 PM CT', home: t('Portugal'),            away: t('Uzbekistan'),              venue: 'NRG Stadium, Houston',                    score: null, status: 'fixture' },
-  { num: 46, stage: 'group', round: 2, group: 'L', date: '2026-06-23', time: '3:00 PM CT',  home: t('England'),             away: t('Ghana'),                   venue: 'Gillette Stadium, Boston',                score: null, status: 'fixture' },
-  { num: 47, stage: 'group', round: 2, group: 'L', date: '2026-06-23', time: '6:00 PM CT',  home: t('Panama'),              away: t('Croatia'),                 venue: 'BMO Field, Toronto',                      score: null, status: 'fixture' },
-  { num: 48, stage: 'group', round: 2, group: 'K', date: '2026-06-23', time: '9:00 PM CT',  home: t('Colombia'),            away: t('DR Congo'),                venue: 'Estadio Akron, Zapopan',                  score: null, status: 'fixture' },
+const PLACEHOLDER_RE = /^(Winner|Runner-up|Loser|Best 3rd) /
 
-  // ── GROUP STAGE ROUND 3 ────────────────────────────────────────────────────
-  { num: 49, stage: 'group', round: 3, group: 'B', date: '2026-06-24', time: '2:00 PM CT',  home: t('Switzerland'),         away: t('Canada'),                  venue: 'BC Place, Vancouver',                     score: null, status: 'fixture' },
-  { num: 50, stage: 'group', round: 3, group: 'B', date: '2026-06-24', time: '2:00 PM CT',  home: t('Bosnia & Herzegovina'),away: t('Qatar'),                   venue: 'Lumen Field, Seattle',                    score: null, status: 'fixture' },
-  { num: 51, stage: 'group', round: 3, group: 'C', date: '2026-06-24', time: '5:00 PM CT',  home: t('Scotland'),            away: t('Brazil'),                  venue: 'Hard Rock Stadium, Miami',                score: null, status: 'fixture' },
-  { num: 52, stage: 'group', round: 3, group: 'C', date: '2026-06-24', time: '5:00 PM CT',  home: t('Morocco'),             away: t('Haiti'),                   venue: 'Mercedes-Benz Stadium, Atlanta',          score: null, status: 'fixture' },
-  { num: 53, stage: 'group', round: 3, group: 'A', date: '2026-06-24', time: '8:00 PM CT',  home: t('Czechia'),             away: t('Mexico'),                  venue: 'Estadio Azteca, Mexico City',             score: null, status: 'fixture' },
-  { num: 54, stage: 'group', round: 3, group: 'A', date: '2026-06-24', time: '8:00 PM CT',  home: t('South Africa'),        away: t('South Korea'),             venue: 'Estadio BBVA, Monterrey',                 score: null, status: 'fixture' },
-  { num: 55, stage: 'group', round: 3, group: 'E', date: '2026-06-25', time: '3:00 PM CT',  home: t('Curaçao'),             away: t('Ivory Coast'),             venue: 'Lincoln Financial Field, Philadelphia',   score: null, status: 'fixture' },
-  { num: 56, stage: 'group', round: 3, group: 'E', date: '2026-06-25', time: '3:00 PM CT',  home: t('Ecuador'),             away: t('Germany'),                 venue: 'MetLife Stadium, New York',               score: null, status: 'fixture' },
-  { num: 57, stage: 'group', round: 3, group: 'F', date: '2026-06-25', time: '6:00 PM CT',  home: t('Japan'),               away: t('Sweden'),                  venue: 'AT&T Stadium, Arlington',                 score: null, status: 'fixture' },
-  { num: 58, stage: 'group', round: 3, group: 'F', date: '2026-06-25', time: '6:00 PM CT',  home: t('Tunisia'),             away: t('Netherlands'),             venue: 'Arrowhead Stadium, Kansas City',          score: null, status: 'fixture' },
-  { num: 59, stage: 'group', round: 3, group: 'D', date: '2026-06-25', time: '9:00 PM CT',  home: t('Turkey'),              away: t('USA'),                     venue: 'SoFi Stadium, Los Angeles',               score: null, status: 'fixture' },
-  { num: 60, stage: 'group', round: 3, group: 'D', date: '2026-06-25', time: '9:00 PM CT',  home: t('Paraguay'),            away: t('Australia'),               venue: "Levi's Stadium, Santa Clara",             score: null, status: 'fixture' },
-  { num: 61, stage: 'group', round: 3, group: 'I', date: '2026-06-26', time: '2:00 PM CT',  home: t('Norway'),              away: t('France'),                  venue: 'Gillette Stadium, Boston',                score: null, status: 'fixture' },
-  { num: 62, stage: 'group', round: 3, group: 'I', date: '2026-06-26', time: '2:00 PM CT',  home: t('Senegal'),             away: t('Iraq'),                    venue: 'BMO Field, Toronto',                      score: null, status: 'fixture' },
-  { num: 63, stage: 'group', round: 3, group: 'H', date: '2026-06-26', time: '7:00 PM CT',  home: t('Cape Verde'),          away: t('Saudi Arabia'),            venue: 'NRG Stadium, Houston',                    score: null, status: 'fixture' },
-  { num: 64, stage: 'group', round: 3, group: 'H', date: '2026-06-26', time: '7:00 PM CT',  home: t('Uruguay'),             away: t('Spain'),                   venue: 'Estadio Akron, Zapopan',                  score: null, status: 'fixture' },
-  { num: 65, stage: 'group', round: 3, group: 'G', date: '2026-06-26', time: '10:00 PM CT', home: t('Egypt'),               away: t('Iran'),                    venue: 'Lumen Field, Seattle',                    score: null, status: 'fixture' },
-  { num: 66, stage: 'group', round: 3, group: 'G', date: '2026-06-26', time: '10:00 PM CT', home: t('New Zealand'),         away: t('Belgium'),                 venue: 'BC Place, Vancouver',                     score: null, status: 'fixture' },
-  { num: 67, stage: 'group', round: 3, group: 'L', date: '2026-06-27', time: '4:00 PM CT',  home: t('Panama'),              away: t('England'),                 venue: 'MetLife Stadium, New York',               score: null, status: 'fixture' },
-  { num: 68, stage: 'group', round: 3, group: 'L', date: '2026-06-27', time: '4:00 PM CT',  home: t('Croatia'),             away: t('Ghana'),                   venue: 'Lincoln Financial Field, Philadelphia',   score: null, status: 'fixture' },
-  { num: 69, stage: 'group', round: 3, group: 'K', date: '2026-06-27', time: '6:30 PM CT',  home: t('Colombia'),            away: t('Portugal'),                venue: 'Hard Rock Stadium, Miami',                score: null, status: 'fixture' },
-  { num: 70, stage: 'group', round: 3, group: 'K', date: '2026-06-27', time: '6:30 PM CT',  home: t('DR Congo'),            away: t('Uzbekistan'),              venue: 'Mercedes-Benz Stadium, Atlanta',          score: null, status: 'fixture' },
-  { num: 71, stage: 'group', round: 3, group: 'J', date: '2026-06-27', time: '9:00 PM CT',  home: t('Algeria'),             away: t('Austria'),                 venue: 'Arrowhead Stadium, Kansas City',          score: null, status: 'fixture' },
-  { num: 72, stage: 'group', round: 3, group: 'J', date: '2026-06-27', time: '9:00 PM CT',  home: t('Jordan'),              away: t('Argentina'),               venue: 'AT&T Stadium, Arlington',                 score: null, status: 'fixture' },
+function isPlaceholder(teamCode: string): boolean {
+  return PLACEHOLDER_RE.test(teamCode) || teamCode.startsWith('TBD')
+}
 
-  // ── ROUND OF 32 ───────────────────────────────────────────────────────────
-  { num: 73,  stage: 'r32', date: '2026-06-28', time: '2:00 PM CT',   home: p('Runner-up A'),            away: p('Runner-up B'),              venue: 'SoFi Stadium, Los Angeles',              score: null, status: 'fixture' },
-  { num: 74,  stage: 'r32', date: '2026-06-29', time: '12:30 PM CT',  home: p('Winner E'),               away: p('Best 3rd A/B/C/D/F'),       venue: 'Gillette Stadium, Boston',               score: null, status: 'fixture' },
-  { num: 75,  stage: 'r32', date: '2026-06-29', time: '3:30 PM CT',   home: p('Winner F'),               away: p('Runner-up C'),              venue: 'Estadio BBVA, Monterrey',                score: null, status: 'fixture' },
-  { num: 76,  stage: 'r32', date: '2026-06-29', time: '8:00 PM CT',   home: p('Winner C'),               away: p('Runner-up F'),              venue: 'NRG Stadium, Houston',                   score: null, status: 'fixture' },
-  { num: 77,  stage: 'r32', date: '2026-06-30', time: '4:00 PM CT',   home: p('Winner I'),               away: p('Best 3rd C/D/F/G/H'),       venue: 'MetLife Stadium, New York',              score: null, status: 'fixture' },
-  { num: 78,  stage: 'r32', date: '2026-06-30', time: '12:00 PM CT',  home: p('Runner-up E'),            away: p('Runner-up I'),              venue: 'AT&T Stadium, Arlington',                score: null, status: 'fixture' },
-  { num: 79,  stage: 'r32', date: '2026-06-30', time: '8:00 PM CT',   home: p('Winner A'),               away: p('Best 3rd C/E/F/H/I'),       venue: 'Estadio Azteca, Mexico City',            score: null, status: 'fixture' },
-  { num: 80,  stage: 'r32', date: '2026-07-01', time: '11:00 AM CT',  home: p('Winner L'),               away: p('Best 3rd E/H/I/J/K'),       venue: 'Mercedes-Benz Stadium, Atlanta',         score: null, status: 'fixture' },
-  { num: 81,  stage: 'r32', date: '2026-07-01', time: '7:00 PM CT',   home: p('Winner D'),               away: p('Best 3rd B/E/F/I/J'),       venue: "Levi's Stadium, Santa Clara",            score: null, status: 'fixture' },
-  { num: 82,  stage: 'r32', date: '2026-07-01', time: '3:00 PM CT',   home: p('Winner G'),               away: p('Best 3rd A/E/H/I/J'),       venue: 'Lumen Field, Seattle',                   score: null, status: 'fixture' },
-  { num: 83,  stage: 'r32', date: '2026-07-02', time: '6:00 PM CT',   home: p('Runner-up K'),            away: p('Runner-up L'),              venue: 'BMO Field, Toronto',                     score: null, status: 'fixture' },
-  { num: 84,  stage: 'r32', date: '2026-07-02', time: '2:00 PM CT',   home: p('Winner H'),               away: p('Runner-up J'),              venue: 'SoFi Stadium, Los Angeles',              score: null, status: 'fixture' },
-  { num: 85,  stage: 'r32', date: '2026-07-02', time: '10:00 PM CT',  home: p('Winner B'),               away: p('Best 3rd E/F/G/I/J'),       venue: 'BC Place, Vancouver',                    score: null, status: 'fixture' },
-  { num: 86,  stage: 'r32', date: '2026-07-03', time: '5:00 PM CT',   home: p('Winner J'),               away: p('Runner-up H'),              venue: 'Hard Rock Stadium, Miami',               score: null, status: 'fixture' },
-  { num: 87,  stage: 'r32', date: '2026-07-03', time: '8:30 PM CT',   home: p('Winner K'),               away: p('Best 3rd D/E/I/J/L'),       venue: 'Arrowhead Stadium, Kansas City',         score: null, status: 'fixture' },
-  { num: 88,  stage: 'r32', date: '2026-07-03', time: '1:00 PM CT',   home: p('Runner-up D'),            away: p('Runner-up G'),              venue: 'AT&T Stadium, Arlington',                score: null, status: 'fixture' },
+function statusToUi(s: ApiMatch['status']): Match['status'] {
+  if (s === 'live') return 'playing'
+  if (s === 'final') return 'played'
+  return 'fixture'
+}
 
-  // ── ROUND OF 16 ───────────────────────────────────────────────────────────
-  { num: 89,  stage: 'r16', date: '2026-07-04', time: '12:00 PM CT',  home: p('Winner M73'),             away: p('Winner M75'),               venue: 'NRG Stadium, Houston',                   score: null, status: 'fixture' },
-  { num: 90,  stage: 'r16', date: '2026-07-04', time: '4:00 PM CT',   home: p('Winner M74'),             away: p('Winner M77'),               venue: 'Lincoln Financial Field, Philadelphia',  score: null, status: 'fixture' },
-  { num: 91,  stage: 'r16', date: '2026-07-05', time: '3:00 PM CT',   home: p('Winner M76'),             away: p('Winner M78'),               venue: 'MetLife Stadium, New York',              score: null, status: 'fixture' },
-  { num: 92,  stage: 'r16', date: '2026-07-05', time: '7:00 PM CT',   home: p('Winner M79'),             away: p('Winner M80'),               venue: 'Estadio Azteca, Mexico City',            score: null, status: 'fixture' },
-  { num: 93,  stage: 'r16', date: '2026-07-06', time: '2:00 PM CT',   home: p('Winner M83'),             away: p('Winner M84'),               venue: 'AT&T Stadium, Arlington',                score: null, status: 'fixture' },
-  { num: 94,  stage: 'r16', date: '2026-07-06', time: '7:00 PM CT',   home: p('Winner M81'),             away: p('Winner M82'),               venue: 'Lumen Field, Seattle',                   score: null, status: 'fixture' },
-  { num: 95,  stage: 'r16', date: '2026-07-07', time: '11:00 AM CT',  home: p('Winner M86'),             away: p('Winner M88'),               venue: 'Mercedes-Benz Stadium, Atlanta',         score: null, status: 'fixture' },
-  { num: 96,  stage: 'r16', date: '2026-07-07', time: '3:00 PM CT',   home: p('Winner M85'),             away: p('Winner M87'),               venue: 'BC Place, Vancouver',                    score: null, status: 'fixture' },
+function formatKickoff(iso: string): { date: string; time: string } {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) {
+    return { date: iso.slice(0, 10), time: '' }
+  }
+  // CT date (use America/Chicago to be safe across DST)
+  const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
+  // en-CA gives YYYY-MM-DD
+  const timeStr =
+    d.toLocaleTimeString('en-US', {
+      timeZone: 'America/Chicago',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }) + ' CT'
+  return { date: dateStr, time: timeStr }
+}
 
-  // ── QUARTER-FINALS ────────────────────────────────────────────────────────
-  { num: 97,  stage: 'qf',    date: '2026-07-09', time: '2:00 PM CT', home: p('Winner M89'),             away: p('Winner M90'),               venue: 'SoFi Stadium, Los Angeles',              score: null, status: 'fixture' },
-  { num: 98,  stage: 'qf',    date: '2026-07-09', time: '6:00 PM CT', home: p('Winner M91'),             away: p('Winner M92'),               venue: 'MetLife Stadium, New York',              score: null, status: 'fixture' },
-  { num: 99,  stage: 'qf',    date: '2026-07-10', time: '2:00 PM CT', home: p('Winner M93'),             away: p('Winner M94'),               venue: 'AT&T Stadium, Arlington',                score: null, status: 'fixture' },
-  { num: 100, stage: 'qf',    date: '2026-07-10', time: '6:00 PM CT', home: p('Winner M95'),             away: p('Winner M96'),               venue: 'Estadio Azteca, Mexico City',            score: null, status: 'fixture' },
+function apiMatchToUi(m: ApiMatch): Match {
+  const stage = ROUND_CODE_TO_STAGE[m.round_code] ?? 'group'
+  const round = ROUND_CODE_TO_ROUND[m.round_code]
+  const { date, time } = formatKickoff(m.kickoff_at)
+  const homePh = isPlaceholder(m.home_team_code)
+  const awayPh = isPlaceholder(m.away_team_code)
+  return {
+    num: m.match_num,
+    stage,
+    round,
+    group: m.group_code ?? undefined,
+    date,
+    time,
+    home: { name: m.home_team_code, placeholder: homePh },
+    away: { name: m.away_team_code, placeholder: awayPh },
+    venue: m.venue ?? '',
+    score:
+      m.home_score != null && m.away_score != null
+        ? { home: m.home_score, away: m.away_score }
+        : null,
+    status: statusToUi(m.status),
+    period: m.period,
+    minute: m.minute,
+    wentToPks: !!m.went_to_pks,
+    pkWinner: m.pk_winner_team_code,
+  }
+}
 
-  // ── SEMI-FINALS ───────────────────────────────────────────────────────────
-  { num: 101, stage: 'sf',    date: '2026-07-14', time: '2:00 PM CT', home: p('Winner M97'),             away: p('Winner M98'),               venue: 'MetLife Stadium, New York',              score: null, status: 'fixture' },
-  { num: 102, stage: 'sf',    date: '2026-07-15', time: '2:00 PM CT', home: p('Winner M99'),             away: p('Winner M100'),              venue: 'AT&T Stadium, Arlington',                score: null, status: 'fixture' },
-
-  // ── 3RD PLACE + FINAL ─────────────────────────────────────────────────────
-  { num: 103, stage: 'final', date: '2026-07-18', time: '2:00 PM CT', home: p('Loser M101'),             away: p('Loser M102'),               venue: 'Hard Rock Stadium, Miami',               score: null, status: 'fixture' },
-  { num: 104, stage: 'final', date: '2026-07-19', time: '2:00 PM CT', home: p('Winner M101'),            away: p('Winner M102'),              venue: 'MetLife Stadium, New York',              score: null, status: 'fixture' },
-]
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
 
 // ─── Stage config ─────────────────────────────────────────────────────────────
 const STAGES: { id: Stage; label: string; rounds: string[] | null }[] = [
@@ -252,7 +228,6 @@ const GROUPS = ['All', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L
 // ─── Auto-detect current stage/round ─────────────────────────────────────────
 function getDefaultNav(): { stage: Stage; round: number; group: string } {
   const now = new Date()
-  // Use CDT offset: UTC-5 (CDT) — approximate for June/July
   const ct = new Date(now.getTime() - 5 * 60 * 60 * 1000)
   const y = ct.getUTCFullYear()
   const m = ct.getUTCMonth() + 1
@@ -262,8 +237,6 @@ function getDefaultNav(): { stage: Stage; round: number; group: string } {
 
   if (y < 2026) return def
   if (y > 2026) return { stage: 'final', round: 1, group: 'All' }
-
-  // 2026
   if (m < 6) return def
   if (m === 6) {
     if (d < 11) return def
@@ -282,10 +255,9 @@ function getDefaultNav(): { stage: Stage; round: number; group: string } {
   return def
 }
 
-// ─── Badge label per match ────────────────────────────────────────────────────
 function getStageBadge(match: Match): string {
   switch (match.stage) {
-    case 'group': return `GROUP ${match.group}`
+    case 'group': return `GROUP ${match.group ?? ''}`.trim()
     case 'r32':   return 'ROUND OF 32'
     case 'r16':   return 'ROUND OF 16'
     case 'qf':    return 'QUARTER-FINAL'
@@ -344,6 +316,16 @@ function MatchCard({ match }: { match: Match }) {
     ? `${match.score.home} – ${match.score.away}`
     : '— : —'
 
+  // Live status label
+  let liveLabel = 'LIVE'
+  if (isLive && match.period) {
+    if (match.period === 'HT') liveLabel = 'HALF-TIME'
+    else if (match.period === 'ET') liveLabel = 'EXTRA TIME'
+    else if (match.period === 'PEN') liveLabel = 'PENALTIES'
+    else if (match.minute != null && match.minute > 0) liveLabel = `${match.minute}'`
+    else liveLabel = match.period
+  }
+
   return (
     <div style={{
       backgroundColor: C.card,
@@ -353,7 +335,6 @@ function MatchCard({ match }: { match: Match }) {
       position: 'relative',
       transition: 'border-color 0.2s',
     }}>
-      {/* Top row: stage badge + match number */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <span style={{
           color: C.gold,
@@ -372,11 +353,13 @@ function MatchCard({ match }: { match: Match }) {
                 width: '7px',
                 height: '7px',
                 borderRadius: '50%',
-                backgroundColor: C.green,
-                boxShadow: `0 0 5px ${C.green}`,
-                animation: 'pulse 1.5s ease-in-out infinite',
+                backgroundColor: C.red,
+                boxShadow: `0 0 6px ${C.red}`,
+                animation: 'pulse 1.4s ease-in-out infinite',
               }} />
-              <span style={{ color: C.green, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.06em' }}>LIVE</span>
+              <span style={{ color: C.red, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.06em' }}>
+                {liveLabel}
+              </span>
             </div>
           )}
           <span style={{ color: C.muted, fontSize: '0.62rem', fontWeight: 600, opacity: 0.7 }}>
@@ -385,9 +368,7 @@ function MatchCard({ match }: { match: Match }) {
         </div>
       </div>
 
-      {/* Score row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.875rem' }}>
-        {/* Home team */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
           <TeamAvatar team={match.home} />
           <span style={{
@@ -403,7 +384,6 @@ function MatchCard({ match }: { match: Match }) {
           </span>
         </div>
 
-        {/* Score */}
         <div style={{ textAlign: 'center', flexShrink: 0, minWidth: '62px' }}>
           <span style={{
             color: isPlayed || isLive ? C.gold : C.muted,
@@ -413,9 +393,13 @@ function MatchCard({ match }: { match: Match }) {
           }}>
             {scoreDisplay}
           </span>
+          {match.wentToPks && match.pkWinner && (
+            <div style={{ color: C.muted, fontSize: '0.62rem', fontWeight: 700, marginTop: '0.15rem' }}>
+              {match.pkWinner} on pens
+            </div>
+          )}
         </div>
 
-        {/* Away team */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem' }}>
           <TeamAvatar team={match.away} />
           <span style={{
@@ -431,7 +415,6 @@ function MatchCard({ match }: { match: Match }) {
         </div>
       </div>
 
-      {/* Venue + time */}
       <div style={{
         display: 'flex',
         flexDirection: 'column',
@@ -459,30 +442,89 @@ function MatchCard({ match }: { match: Match }) {
   )
 }
 
-// Select style helper moved to `src/lib/select-style.ts` (imported above).
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ScoresPage() {
   const defaults = getDefaultNav()
   const [activeStage, setActiveStage]   = useState<Stage>(defaults.stage)
   const [activeRound, setActiveRound]   = useState<number>(defaults.round)
   const [activeGroup, setActiveGroup]   = useState<string>(defaults.group)
+  const [matches, setMatches] = useState<Match[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null)
+
+  // ── Fetch & polling ─────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+
+    async function load() {
+      try {
+        const res = await fetch('/api/scores', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!cancelled) setLoadError(`HTTP ${res.status}`)
+          return
+        }
+        const json = await res.json()
+        if (cancelled) return
+        if (!json.ok) {
+          setLoadError(json.error ?? 'unknown')
+          return
+        }
+        const uiMatches = (json.matches as ApiMatch[]).map(apiMatchToUi)
+        setMatches(uiMatches)
+        setLastFetchedAt(json.fetched_at ?? null)
+        setLoadError(null)
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err))
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    async function loop() {
+      await load()
+      if (cancelled) return
+      // Poll faster if anything is live; slower otherwise.
+      const anyLive = matchesRef.current.some((m) => m.status === 'playing')
+      const next = anyLive ? 30_000 : 120_000
+      pollTimer = setTimeout(loop, next)
+    }
+
+    loop()
+    return () => {
+      cancelled = true
+      if (pollTimer) clearTimeout(pollTimer)
+    }
+    // We deliberately want this to set up once and let the inner ref drive
+    // the cadence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Keep a ref so the polling loop sees the latest matches state.
+  const matchesRef = useMatchesRef(matches)
 
   const currentStageConfig = STAGES.find(s => s.id === activeStage)!
 
-  // Filter matches
-  const filtered = MATCHES.filter(m => {
-    if (m.stage !== activeStage) return false
-    if (activeStage === 'group') {
-      if (m.round !== activeRound) return false
-      if (activeGroup !== 'All' && m.group !== activeGroup) return false
-    }
-    return true
-  })
+  const filtered = useMemo(() => {
+    return matches.filter(m => {
+      if (m.stage !== activeStage) return false
+      if (activeStage === 'group') {
+        if (m.round !== activeRound) return false
+        if (activeGroup !== 'All' && m.group !== activeGroup) return false
+      }
+      return true
+    })
+  }, [matches, activeStage, activeRound, activeGroup])
 
-  const dates = Array.from(new Set(filtered.map(m => m.date))).sort()
+  const dates = useMemo(
+    () => Array.from(new Set(filtered.map(m => m.date))).sort(),
+    [filtered]
+  )
 
-  const stageLabel = STAGES.find(s => s.id === activeStage)?.label ?? ''
+  const stageLabel = currentStageConfig.label
   const roundLabel = activeStage === 'group' ? ` · Round ${activeRound}` : ''
   const groupLabel = activeStage === 'group' && activeGroup !== 'All' ? ` · Group ${activeGroup}` : ''
 
@@ -504,7 +546,6 @@ export default function ScoresPage() {
 
       <div style={{ maxWidth: '900px', margin: '0 auto', padding: '1.5rem 1rem 5rem' }}>
 
-        {/* Page header */}
         <div style={{ marginBottom: '1.5rem' }}>
           <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.6rem', margin: '0 0 0.25rem' }}>
             📅 Match Schedule
@@ -514,7 +555,6 @@ export default function ScoresPage() {
           </p>
         </div>
 
-        {/* Navigation */}
         <div style={{
           display: 'flex',
           gap: '0.65rem',
@@ -522,7 +562,6 @@ export default function ScoresPage() {
           alignItems: 'center',
           marginBottom: '2rem',
         }}>
-          {/* Stage selector */}
           <div style={{ position: 'relative' }}>
             <select
               value={activeStage}
@@ -540,7 +579,6 @@ export default function ScoresPage() {
             </select>
           </div>
 
-          {/* Round selector (group stage only) */}
           {activeStage === 'group' && (
             <div style={{ position: 'relative' }}>
               <select
@@ -555,7 +593,6 @@ export default function ScoresPage() {
             </div>
           )}
 
-          {/* Group filter (group stage only) */}
           {activeStage === 'group' && (
             <div style={{ position: 'relative' }}>
               <select
@@ -570,7 +607,6 @@ export default function ScoresPage() {
             </div>
           )}
 
-          {/* Match count badge */}
           <span style={{
             color: C.muted,
             fontSize: '0.72rem',
@@ -582,7 +618,6 @@ export default function ScoresPage() {
           </span>
         </div>
 
-        {/* Stage tab pills */}
         <div style={{
           display: 'flex',
           gap: '0.4rem',
@@ -622,12 +657,33 @@ export default function ScoresPage() {
           })}
         </div>
 
+        {/* Loading state */}
+        {loading && matches.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+            <p style={{ color: C.muted, fontSize: '0.9rem' }}>Loading fixtures…</p>
+          </div>
+        )}
+
+        {/* Error banner */}
+        {loadError && matches.length === 0 && (
+          <div style={{
+            backgroundColor: '#3A1E2A',
+            border: `1px solid ${C.red}`,
+            borderRadius: '0.75rem',
+            padding: '0.875rem 1.25rem',
+            marginBottom: '1.5rem',
+          }}>
+            <p style={{ color: C.red, fontSize: '0.8rem', margin: 0 }}>
+              Failed to load fixtures: {loadError}
+            </p>
+          </div>
+        )}
+
         {/* Matches grouped by date */}
         {dates.map(date => {
           const dayMatches = filtered.filter(m => m.date === date)
           return (
             <div key={date} style={{ marginBottom: '2rem' }}>
-              {/* Date divider */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                 <div style={{ height: '1px', flex: 1, backgroundColor: C.border }} />
                 <span style={{
@@ -643,7 +699,6 @@ export default function ScoresPage() {
                 <div style={{ height: '1px', flex: 1, backgroundColor: C.border }} />
               </div>
 
-              {/* Cards grid */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
@@ -657,14 +712,12 @@ export default function ScoresPage() {
           )
         })}
 
-        {/* Empty state */}
-        {dates.length === 0 && (
+        {dates.length === 0 && !loading && (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <p style={{ color: C.muted, fontSize: '0.9rem' }}>No matches for this selection.</p>
           </div>
         )}
 
-        {/* Footer note */}
         <div style={{
           marginTop: '2rem',
           backgroundColor: C.card,
@@ -674,10 +727,28 @@ export default function ScoresPage() {
           textAlign: 'center',
         }}>
           <p style={{ color: C.muted, fontSize: '0.75rem', margin: 0, lineHeight: 1.6 }}>
-            104 matches · All times Central (CT) · World Cup 2026 opens June 11
+            {matches.length} match{matches.length !== 1 ? 'es' : ''} · All times Central (CT)
+            {lastFetchedAt && (
+              <>
+                {' '}· Updated {new Date(lastFetchedAt).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  timeZone: 'America/Chicago',
+                })} CT
+              </>
+            )}
           </p>
         </div>
       </div>
     </div>
   )
+}
+
+// Tiny helper: keep a ref tracking the latest matches array so the polling
+// loop can read it without re-subscribing.
+import { useRef } from 'react'
+function useMatchesRef(matches: Match[]) {
+  const ref = useRef<Match[]>(matches)
+  ref.current = matches
+  return ref
 }

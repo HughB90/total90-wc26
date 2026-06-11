@@ -17,6 +17,13 @@ export interface MatchLockRow {
   id: string
   round_code: string
   kickoff_at: string // ISO timestamp
+  /**
+   * Optional. If present and not 'scheduled', the match is treated as locked
+   * regardless of kickoff_at — covers the case where Opta marks a match
+   * live or final before the wall-clock kickoff (or after, when we don't
+   * trust the clock anymore).
+   */
+  status?: string | null
 }
 
 export interface ExistingPickRow {
@@ -102,7 +109,8 @@ export function splitByMatchLock<T extends IncomingPick>(
       continue
     }
     const koMs = new Date(m.kickoff_at).getTime()
-    if (Number.isNaN(koMs) || koMs <= nowMs) {
+    const statusLocks = !!m.status && m.status !== 'scheduled'
+    if (Number.isNaN(koMs) || koMs <= nowMs || statusLocks) {
       lockedDetails.push({ match_id: p.match_id, kickoff_at: m.kickoff_at })
     } else {
       unlocked.push(p)
@@ -142,6 +150,7 @@ export function checkStarRule(args: StarRuleArgs): StarRuleResult {
   const isLocked = (id: string) => {
     const m = matchById.get(id)
     if (!m) return false
+    if (m.status && m.status !== 'scheduled') return true
     return new Date(m.kickoff_at).getTime() <= nowMs
   }
 
