@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import AuthHeader from '@/components/AuthHeader'
 import { selectStyle } from '@/lib/select-style'
+import { resolveGoalSides, type GoalRow } from '@/lib/goalscorers'
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -124,6 +125,7 @@ interface Match {
   minute: number | null
   wentToPks: boolean
   pkWinner: string | null
+  goals: GoalRow[]
 }
 
 // ─── DB → UI mapping ──────────────────────────────────────────────────────────
@@ -200,6 +202,7 @@ function apiMatchToUi(m: ApiMatch): Match {
     minute: m.minute,
     wentToPks: !!m.went_to_pks,
     pkWinner: m.pk_winner_team_code,
+    goals: resolveGoalSides(m.goalscorers),
   }
 }
 
@@ -304,6 +307,30 @@ function TeamAvatar({ team }: { team: TeamSlot }) {
   )
 }
 
+// ─── Goal line (one row per goal) ────────────────────────────────────────────
+function GoalLine({ goal, align }: { goal: GoalRow; align: 'left' | 'right' }) {
+  const suffix =
+    goal.type === 'O' ? ' (OG)'
+    : goal.type === 'P' ? ' (P)'
+    : ''
+  const minuteStr = goal.minute != null ? `${goal.minute}'` : ''
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: align === 'right' ? 'row-reverse' : 'row',
+      alignItems: 'baseline',
+      gap: '0.3rem',
+      fontSize: '0.68rem',
+      lineHeight: 1.35,
+      color: C.muted,
+    }}>
+      <span style={{ fontSize: '0.7rem' }}>⚽</span>
+      <span style={{ color: C.green, fontWeight: 600 }}>{goal.label}</span>
+      <span>{suffix}{minuteStr && ` ${minuteStr}`}</span>
+    </div>
+  )
+}
+
 // ─── Match card ───────────────────────────────────────────────────────────────
 function MatchCard({ match }: { match: Match }) {
   const isLive   = match.status === 'playing'
@@ -311,6 +338,9 @@ function MatchCard({ match }: { match: Match }) {
 
   const homeWon = isPlayed && match.score != null && match.score.home > match.score.away
   const awayWon = isPlayed && match.score != null && match.score.away > match.score.home
+
+  const homeGoals = match.goals.filter((g) => g.side === 'home')
+  const awayGoals = match.goals.filter((g) => g.side === 'away')
 
   const scoreDisplay = match.score != null
     ? `${match.score.home} – ${match.score.away}`
@@ -414,6 +444,27 @@ function MatchCard({ match }: { match: Match }) {
           </span>
         </div>
       </div>
+
+      {match.goals.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '0.4rem',
+          marginBottom: '0.75rem',
+          padding: '0 0.1rem',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+            {homeGoals.map((g, i) => (
+              <GoalLine key={`h${i}`} goal={g} align="right" />
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start' }}>
+            {awayGoals.map((g, i) => (
+              <GoalLine key={`a${i}`} goal={g} align="left" />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{
         display: 'flex',
