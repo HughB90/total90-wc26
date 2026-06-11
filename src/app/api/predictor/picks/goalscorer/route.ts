@@ -14,7 +14,10 @@
  *   - Match must exist and be in r16/qf/sf/final
  *   - team_code must equal home_team_code OR away_team_code of the match
  *   - player_id must exist in s3_players with matching nationality
- *   - Round not locked (first kickoff in round not yet passed)
+ *   - Per-match kickoff lock: the specific match's kickoff_at must be in
+ *     the future. Locks are evaluated per-match, NOT per-round, so the
+ *     user can still edit unlocked matches in a round where the first
+ *     game has already kicked off.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -67,22 +70,17 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Round lock = first kickoff in round
-  const { data: roundMatches, error: rmErr } = await sb
-    .from('predictor_matches')
-    .select('kickoff_at')
-    .eq('round_code', match.round_code)
-  if (rmErr) return NextResponse.json({ error: rmErr.message }, { status: 500 })
-  if (roundMatches && roundMatches.length) {
-    const firstKickoff = roundMatches
-      .map((m) => new Date(m.kickoff_at).getTime())
-      .sort((a, b) => a - b)[0]
-    if (Date.now() >= firstKickoff) {
-      return NextResponse.json(
-        { error: 'round_locked', round_code: match.round_code, locked_at: new Date(firstKickoff).toISOString() },
-        { status: 403 }
-      )
-    }
+  // Per-match lock: this specific match's kickoff_at must be in the future.
+  const matchKickoffMs = new Date(match.kickoff_at).getTime()
+  if (!Number.isFinite(matchKickoffMs) || Date.now() >= matchKickoffMs) {
+    return NextResponse.json(
+      {
+        error: 'match_locked',
+        match_id: match.id,
+        kickoff_at: match.kickoff_at,
+      },
+      { status: 403 }
+    )
   }
 
   // Validate player + nationality match

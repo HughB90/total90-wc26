@@ -15,13 +15,29 @@
  *   - Knockout rounds: every match in the round required; ≤1 star
  *   - If knockout + home_score == away_score → if_draw_winner required & must match
  *     one of the two team_codes
- *   - Round must not be locked (first match kickoff_at not yet passed)
+ *   - Per-match kickoff lock: any pick whose match's kickoff_at <= now is
+ *     rejected (atomic reject for the whole batch). UI greys these out so
+ *     the client shouldn't send them; this is the server-side guard.
+ *   - Persisted-set cap: group rounds may have AT MOST 16 picks total per
+ *     (profile_id, round) in the DB. Edits to existing match_ids are fine
+ *     (no count change); new match_ids that would push the total over 16
+ *     are rejected. Fixes the Jeff McMenis 17-pick bug (2026-06-11) where
+ *     the old route only validated the incoming batch, not the union with
+ *     already-persisted picks.
+ *   - Star pick rule: 1 star total. If the user has a star on a now-locked
+ *     match, the star is FROZEN — they cannot move it or clear it.
  *   - Upsert on (profile_id, match_id)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getProfileSession } from '@/lib/predictor-session'
 import { predictorAdmin } from '@/lib/predictor-db'
+import {
+  checkPersistedSetCap,
+  checkStarRule,
+  splitByMatchLock,
+  GROUP_ROUND_CAP,
+} from '@/lib/predictor-pick-validation'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,8 +118,9 @@ export async function POST(req: NextRequest) {
     return badRequest('stars_not_allowed_in_round', { round_code: roundCode })
   }
 
-  // Cap per-round count
-  if (GROUP_ROUNDS.has(roundCode) && picks.length > 16) {
+  // Per-batch cap (cheap upfront sanity — persisted-set cap below is the
+  // real guard, but this catches obvious abuse before we hit the DB).
+  if (GROUP_ROUNDS.has(roundCode) && picks.length > GROUP_ROUND_CAP) {
     return badRequest('group_round_max_16_picks', { received: picks.length })
   }
   if (isKnockout && picks.length !== ROUND_EXPECTED_COUNT[roundCode]) {
@@ -141,17 +158,72 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Round lock check: lock = first kickoff in round
-  if (matchRows && matchRows.length) {
-    const firstKickoff = matchRows
-      .map((m) => new Date(m.kickoff_at).getTime())
-      .sort((a, b) => a - b)[0]
-    if (Date.now() >= firstKickoff) {
-      return NextResponse.json(
-        { error: 'round_locked', round_code: roundCode, locked_at: new Date(firstKickoff).toISOString() },
-        { status: 403 }
-      )
-    }
+  // Per-match kickoff lock (atomic reject the whole batch on any locked
+  // match). UI is supposed to grey these out — this is the server guard.
+  const lockSplit = splitByMatchLock(
+    picks.map((p) => ({ match_id: p.match_id, is_star: p.is_star })),
+    (matchRows || []).map((m) => ({ id: m.id, round_code: m.round_code, kickoff_at: m.kickoff_at })),
+  )
+  if (lockSplit.lockedDetails.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'match_locked',
+        round_code: roundCode,
+        locked: lockSplit.lockedDetails,
+      },
+      { status: 403 }
+    )
+  }
+
+  // Pull this user's existing picks in this round (matches scoped to the
+  // round above) to enforce the persisted-set cap + star-lock rule.
+  const roundMatchIds = (matchRows || []).map((m) => m.id)
+  let existingPicks: Array<{ match_id: string; is_star: boolean }> = []
+  if (roundMatchIds.length > 0) {
+    const { data: existing, error: existErr } = await sb
+      .from('predictor_picks')
+      .select('match_id, is_star')
+      .eq('profile_id', session.profile_id)
+      .in('match_id', roundMatchIds)
+    if (existErr) return NextResponse.json({ error: existErr.message }, { status: 500 })
+    existingPicks = (existing || []).map((p) => ({
+      match_id: p.match_id as string,
+      is_star: Boolean(p.is_star),
+    }))
+  }
+
+  // Persisted-set cap (group rounds only — knockouts use the fixed-count
+  // check above). This is THE fix for the 17-pick bug.
+  const capResult = checkPersistedSetCap(
+    roundCode,
+    existingPicks,
+    picks.map((p) => ({ match_id: p.match_id, is_star: p.is_star })),
+  )
+  if (!capResult.ok) {
+    return NextResponse.json(
+      {
+        error: 'pick_cap_exceeded',
+        max: GROUP_ROUND_CAP,
+        current: capResult.current,
+        projected: capResult.projected,
+        new_additions: capResult.newAdditions,
+      },
+      { status: 400 }
+    )
+  }
+
+  // Star-lock rule: if the user has a star on a locked match, that star is
+  // frozen — they cannot move it or clear it.
+  const starCheck = checkStarRule({
+    existing: existingPicks,
+    incoming: picks.map((p) => ({ match_id: p.match_id, is_star: p.is_star })),
+    matches: (matchRows || []).map((m) => ({ id: m.id, round_code: m.round_code, kickoff_at: m.kickoff_at })),
+  })
+  if (!starCheck.ok) {
+    return NextResponse.json(
+      { error: starCheck.reason, ...(starCheck.details || {}) },
+      { status: 403 }
+    )
   }
 
   // Upsert
