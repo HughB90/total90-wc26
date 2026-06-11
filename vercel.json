@@ -8,6 +8,10 @@
     {
       "path": "/api/news/fetch",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/sync-wc26-fixtures",
+      "schedule": "* * * * *"
     }
   ]
 }
