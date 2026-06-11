@@ -1,12 +1,13 @@
 /**
  * <GlobalLeaderboardPill /> — paginated 25/page global leaderboard.
  *
- * Hits `/api/predictor/leaderboard?scope=global&page=N&per_page=25`.
- * Shows a sticky "You: #N" row at the top of the pill when the
- * current user is outside the visible page.
+ * Fans out to two endpoints in parallel:
+ *   - /api/predictor/leaderboard          (edge-cached public rows)
+ *   - /api/predictor/leaderboard/me       (uncached caller rank)
  *
- * Wave D will populate real totals; until then everyone is 0 and
- * rank is by manager_name alphabetical.
+ * Cached endpoint returns fast even when 100+ users hit it at once;
+ * the /me call is a small DB lookup per request. Merged client-side
+ * so the sticky "You: #N" row still renders the same way.
  */
 
 'use client'
@@ -40,6 +41,13 @@ interface LeaderboardResponse {
   page: number
   per_page: number
   total_count: number
+  // The public endpoint always returns these as null; the /me endpoint
+  // fills them in. We merge after both fetches resolve.
+  my_rank: number | null
+  my_row: LeaderboardRow | null
+}
+
+interface LeaderboardMeResponse {
   my_rank: number | null
   my_row: LeaderboardRow | null
 }
@@ -54,13 +62,29 @@ export default function GlobalLeaderboardPill({ meId }: { meId: string | null })
     setLoading(true)
     ;(async () => {
       try {
-        const r = await fetch(
-          `/api/predictor/leaderboard?scope=global&page=${page}&per_page=${PER_PAGE}`,
-          { credentials: 'include', cache: 'no-store' }
-        )
-        const j = (await r.json().catch(() => null)) as LeaderboardResponse | null
+        // Public + /me fetched in parallel. Public is edge-cached so
+        // it returns ~instantly during live polling; /me is cheap.
+        const [publicRes, meRes] = await Promise.all([
+          fetch(
+            `/api/predictor/leaderboard?scope=global&page=${page}&per_page=${PER_PAGE}`,
+            { credentials: 'include' }
+          ),
+          fetch(`/api/predictor/leaderboard/me?scope=global`, {
+            credentials: 'include',
+            cache: 'no-store',
+          }),
+        ])
+        const publicJson = (await publicRes.json().catch(() => null)) as LeaderboardResponse | null
+        const meJson = (await meRes.json().catch(() => null)) as LeaderboardMeResponse | null
         if (!cancelled) {
-          setData(j)
+          const merged: LeaderboardResponse | null = publicJson
+            ? {
+                ...publicJson,
+                my_rank: meJson?.my_rank ?? null,
+                my_row: meJson?.my_row ?? null,
+              }
+            : null
+          setData(merged)
           setLoading(false)
         }
       } catch {
