@@ -142,9 +142,34 @@ export default function RoundPicksPage({
     [lockMs, now]
   )
 
+  // Per-match kickoff lock map: a match is locked once its kickoff_at <= now.
+  const matchLockedById = useMemo(() => {
+    const map: Record<string, boolean> = {}
+    const nowMs = now.getTime()
+    for (const m of matches) {
+      map[m.id] = new Date(m.kickoff_at).getTime() <= nowMs
+    }
+    return map
+  }, [matches, now])
+  const anyLocked = useMemo(
+    () => Object.values(matchLockedById).some(Boolean),
+    [matchLockedById]
+  )
+
   const filledPicks = useMemo(
     () => Object.entries(picks).filter(([, p]) => p.home !== '' && p.away !== ''),
     [picks]
+  )
+  // Picks the user can actually submit on this save (locked matches are
+  // read-only — keep them in `picks` for display but don't include them
+  // in the POST payload).
+  const submittablePicks = useMemo(
+    () => filledPicks.filter(([matchId]) => !matchLockedById[matchId]),
+    [filledPicks, matchLockedById]
+  )
+  const dirtyPicks = useMemo(
+    () => submittablePicks.filter(([, p]) => p.dirty),
+    [submittablePicks]
   )
   const starCount = filledPicks.filter(([, p]) => p.is_star).length
 
@@ -154,11 +179,17 @@ export default function RoundPicksPage({
   const tooManyGroup = !isKnockout && filledPicks.length > capForGroup
   const tooManyStars = hasStars && starCount > 1
   const knockoutShort = isKnockout && filledPicks.length !== expected
-  const drawNeedsWinner = isKnockout && filledPicks.some(([, p]) =>
+  // For draw-winner validation, only consider matches we can actually
+  // submit (unlocked). Locked matches are read-only — if they need a draw
+  // winner that was never set, that's water under the bridge.
+  const drawNeedsWinner = isKnockout && submittablePicks.some(([, p]) =>
     p.home === p.away && !p.if_draw_winner
   )
 
-  const canSubmit = !locked && filledPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner
+  // "Round locked" = every match in the round has kicked off. Until then,
+  // the user can keep editing unlocked matches.
+  const fullyLocked = matches.length > 0 && matches.every((m) => matchLockedById[m.id])
+  const canSubmit = !fullyLocked && dirtyPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner
 
   function setPick(matchId: string, patch: Partial<PickState>) {
     setPicks((cur) => ({
@@ -181,9 +212,11 @@ export default function RoundPicksPage({
     if (!canSubmit || busy) return
     setBusy(true); setMsg(null)
     try {
+      // Only POST submittable (unlocked) picks. Locked matches stay
+      // visible read-only but are NEVER sent to the server.
       const payload = {
         round_code,
-        picks: filledPicks.map(([match_id, p]) => ({
+        picks: submittablePicks.map(([match_id, p]) => ({
           match_id,
           home_score: parseInt(p.home, 10),
           away_score: parseInt(p.away, 10),
@@ -201,10 +234,23 @@ export default function RoundPicksPage({
       if (r.status === 401) {
         setMsg({ kind: 'err', text: 'Sign in to save your picks.' })
       } else if (r.status === 403) {
-        setMsg({ kind: 'err', text: 'This round is locked.' })
-        setLocked(true)
+        if (j?.error === 'match_locked') {
+          const ids = Array.isArray(j.locked)
+            ? (j.locked as Array<{ match_id?: string }>).map((x) => x.match_id).filter(Boolean).join(', ')
+            : ''
+          setMsg({ kind: 'err', text: `Some matches locked at kickoff: ${ids || 'unknown'}. Refresh to see read-only state.` })
+        } else if (j?.error === 'star_locked' || j?.error === 'cannot_star_locked_match') {
+          setMsg({ kind: 'err', text: 'Your star is on a locked match — it can\'t be moved.' })
+        } else {
+          setMsg({ kind: 'err', text: 'This round is locked.' })
+          setLocked(true)
+        }
       } else if (!r.ok) {
-        setMsg({ kind: 'err', text: j?.error || 'Save failed.' })
+        if (j?.error === 'pick_cap_exceeded') {
+          setMsg({ kind: 'err', text: `Pick cap: ${j.current}/16 already saved. Drop existing picks before adding new ones.` })
+        } else {
+          setMsg({ kind: 'err', text: j?.error || 'Save failed.' })
+        }
       } else {
         // mark all as not-dirty
         setPicks((cur) => Object.fromEntries(Object.entries(cur).map(
@@ -270,6 +316,11 @@ export default function RoundPicksPage({
             ? `Pick every match (${expected} total). 1 star allowed.`
             : `Pick up to 16 of 24 matches. 1 star allowed.`}
         </p>
+        {anyLocked && !fullyLocked && (
+          <p style={{ color: C.muted, fontSize: '0.78rem', margin: '0.4rem 0 0', fontStyle: 'italic' }}>
+            Locked matches are read-only. You can still edit any unlocked match anytime.
+          </p>
+        )}
       </div>
 
       {/* Sticky counters + lock */}
@@ -280,8 +331,8 @@ export default function RoundPicksPage({
         marginBottom: '1rem',
         padding: '0.6rem 0.9rem',
         borderRadius: '0.6rem',
-        backgroundColor: locked ? 'rgba(136,153,204,0.08)' : 'rgba(251,191,36,0.08)',
-        border: `1px solid ${locked ? '#2a3550' : 'rgba(251,191,36,0.3)'}`,
+        backgroundColor: fullyLocked ? 'rgba(136,153,204,0.08)' : 'rgba(251,191,36,0.08)',
+        border: `1px solid ${fullyLocked ? '#2a3550' : 'rgba(251,191,36,0.3)'}`,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -299,8 +350,8 @@ export default function RoundPicksPage({
             </>
           )}
         </span>
-        <span style={{ color: locked ? C.muted : C.gold }}>
-          {locked ? 'Round locked' : `Locks in ${countdown}`}
+        <span style={{ color: fullyLocked ? C.muted : C.gold }}>
+          {fullyLocked ? 'Round locked' : `First lock in ${countdown}`}
         </span>
       </div>
 
@@ -322,6 +373,7 @@ export default function RoundPicksPage({
           }
           const isDraw = pick.home !== '' && pick.home === pick.away
           const drawNeedsPick = isKnockout && isDraw && !pick.if_draw_winner
+          const matchLocked = matchLockedById[mt.id] === true
           return (
             <MatchCard
               key={mt.id}
@@ -330,7 +382,8 @@ export default function RoundPicksPage({
               isKnockout={isKnockout}
               hasStars={hasStars}
               hasGoalscorer={hasGoalscorer}
-              locked={locked}
+              locked={locked || matchLocked}
+              matchLocked={matchLocked}
               drawNeedsPick={drawNeedsPick}
               onChange={(patch) => setPick(mt.id, patch)}
               onGoalscorerSaved={(g) => setPick(mt.id, { ...g, dirty: false })}
@@ -339,8 +392,10 @@ export default function RoundPicksPage({
         })}
       </div>
 
-      {/* Sticky submit */}
-      {!locked && (
+      {/* Sticky submit. Hidden once the WHOLE round is locked. Until then,
+          the bar stays visible so the user can save edits to unlocked
+          matches even if some matches have already kicked off. */}
+      {!fullyLocked && (
         <div style={{
           position: 'fixed',
           bottom: 0,
@@ -360,8 +415,11 @@ export default function RoundPicksPage({
             {tooManyStars && <span style={{ color: C.red }}> · Too many stars</span>}
             {knockoutShort && <span style={{ color: C.red }}>Pick all {expected} matches</span>}
             {drawNeedsWinner && <span style={{ color: C.red }}>Choose draw advancer</span>}
-            {canSubmit && <span>Ready to submit {filledPicks.length} pick{filledPicks.length === 1 ? '' : 's'}</span>}
+            {canSubmit && <span>Ready to submit {dirtyPicks.length} change{dirtyPicks.length === 1 ? '' : 's'}</span>}
             {!canSubmit && filledPicks.length === 0 && <span>No picks yet</span>}
+            {!canSubmit && filledPicks.length > 0 && dirtyPicks.length === 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner && (
+              <span>No changes to save</span>
+            )}
           </span>
           <button
             onClick={submit}
@@ -403,7 +461,7 @@ export default function RoundPicksPage({
 }
 
 function MatchCard({
-  match, pick, isKnockout, hasStars, hasGoalscorer, locked, drawNeedsPick, onChange, onGoalscorerSaved,
+  match, pick, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick, onChange, onGoalscorerSaved,
 }: {
   match: PredictorMatch
   pick: PickState
@@ -411,6 +469,7 @@ function MatchCard({
   hasStars: boolean
   hasGoalscorer: boolean
   locked: boolean
+  matchLocked?: boolean
   drawNeedsPick: boolean
   onChange: (patch: Partial<PickState>) => void
   onGoalscorerSaved: (g: Partial<PickState>) => void
@@ -427,16 +486,24 @@ function MatchCard({
   })
 
   return (
-    <div style={{
-      backgroundColor: C.card,
-      border: `1px solid ${pick.is_star ? '#FBBF2466' : (drawNeedsPick ? '#F8717166' : C.borderSoft)}`,
-      borderRadius: '0.75rem',
-      padding: '0.85rem 0.75rem',
-      minWidth: 0,
-      overflow: 'hidden',
-    }}>
+    <div
+      title={matchLocked ? 'Locked at kickoff' : undefined}
+      style={{
+        backgroundColor: matchLocked ? 'rgba(15, 28, 77, 0.55)' : C.card,
+        border: `1px solid ${matchLocked ? '#2a3550' : (pick.is_star ? '#FBBF2466' : (drawNeedsPick ? '#F8717166' : C.borderSoft))}`,
+        borderRadius: '0.75rem',
+        padding: '0.85rem 0.75rem',
+        minWidth: 0,
+        overflow: 'hidden',
+        opacity: matchLocked ? 0.55 : 1,
+        transition: 'opacity 120ms ease',
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.7rem', color: C.muted }}>
-        <span>Match {match.match_num} · {dateStr} CT</span>
+        <span>
+          Match {match.match_num} · {dateStr} CT
+          {matchLocked && <span style={{ marginLeft: '0.5rem', color: C.muted, fontWeight: 800 }}>· LOCKED</span>}
+        </span>
         {hasStars && (
           <button
             onClick={() => !locked && onChange({ is_star: !pick.is_star })}
