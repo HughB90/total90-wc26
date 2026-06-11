@@ -38,10 +38,83 @@ import {
   buildSyncUpdate,
   matchOptaFixtureToPredictor,
   shouldSyncRow,
+  shouldTriggerPhase4,
   type OptaMatch,
   type PredictorMatchRow,
 } from '@/lib/wc26-fixtures-sync'
 import { buildWc26MatchesUrl, optaGet } from '@/lib/opta-client'
+
+interface Phase4Result {
+  match_id: string
+  ok: boolean
+  scored_profiles?: number
+  cache_refreshed?: number
+  status?: number
+  error?: string
+}
+
+/**
+ * Fire-and-await POST to /api/predictor/score-match for one match_id.
+ * Errors are swallowed (logged + returned in the result) so one bad scoring
+ * call can't poison the cron response. The next cron tick won't re-fire
+ * because the row's status stays at 'final' (shouldTriggerPhase4 requires a
+ * non-final → final transition).
+ *
+ * NOTE: that means if the scoring endpoint genuinely fails (network, 500),
+ * we need a manual retry. Acceptable trade-off for v1 — scoring endpoint is
+ * idempotent and admin can re-run via curl.
+ */
+async function triggerPhase4(
+  reqUrl: string,
+  matchId: string,
+  adminKey: string,
+): Promise<Phase4Result> {
+  const url = new URL('/api/predictor/score-match', reqUrl).toString()
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-admin-key': adminKey,
+      },
+      body: JSON.stringify({ match_id: matchId }),
+      cache: 'no-store',
+    })
+    let body: unknown = null
+    try {
+      body = await res.json()
+    } catch {
+      // swallow
+    }
+    if (!res.ok) {
+      const err =
+        (body && typeof body === 'object' && 'error' in body
+          ? String((body as { error: unknown }).error)
+          : `http_${res.status}`)
+      console.warn(
+        `[cron/sync-wc26-fixtures] phase4 non-2xx for ${matchId}: status=${res.status} error=${err}`,
+      )
+      return { match_id: matchId, ok: false, status: res.status, error: err }
+    }
+    const b = (body ?? {}) as {
+      scored_profiles?: number
+      cache_refreshed?: number
+    }
+    console.log(
+      `[cron/sync-wc26-fixtures] phase4 ok match=${matchId} scored=${b.scored_profiles ?? 0} cache=${b.cache_refreshed ?? 0}`,
+    )
+    return {
+      match_id: matchId,
+      ok: true,
+      scored_profiles: b.scored_profiles,
+      cache_refreshed: b.cache_refreshed,
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[cron/sync-wc26-fixtures] phase4 fetch failed for ${matchId}: ${msg}`)
+    return { match_id: matchId, ok: false, error: msg }
+  }
+}
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -125,6 +198,7 @@ export async function GET(request: NextRequest) {
     let skipped_final = 0
     const unmatched: Array<{ opta_id: string | null; summary: string }> = []
     const errors: Array<{ predictor_id: string; error: string }> = []
+    const matchIdsNewlyFinal: string[] = []
 
     for (const om of optaMatches) {
       const predictorMatchId = matchOptaFixtureToPredictor(om, predictorRows)
@@ -157,6 +231,9 @@ export async function GET(request: NextRequest) {
         update.patch.opta_fixture_id = optaId
       }
 
+      const prevStatus = dbRow.status as string | null | undefined
+      const newStatus = update.patch.status
+
       const { error: updErr } = await sb
         .from('predictor_matches')
         .update({ ...update.patch, updated_at: nowIso })
@@ -170,12 +247,42 @@ export async function GET(request: NextRequest) {
         )
       } else {
         updated++
+        // Detect prev → final transition. Run AFTER successful patch so we
+        // only trigger on rows that actually flipped in DB this tick.
+        if (shouldTriggerPhase4(prevStatus, newStatus)) {
+          matchIdsNewlyFinal.push(predictorMatchId)
+        }
+      }
+    }
+
+    // ── 4. Fire Phase 4 scoring for newly-finalized matches ──────────────
+    // Serial loop on purpose: finalization events are rare (1–3 per WC tick
+    // max), and the scoring endpoint hits Supabase hard — don't stampede.
+    const phase4Results: Phase4Result[] = []
+    const predictorAdminKey = process.env.PREDICTOR_ADMIN_KEY
+    if (matchIdsNewlyFinal.length > 0) {
+      if (!predictorAdminKey) {
+        console.error(
+          '[cron/sync-wc26-fixtures] PREDICTOR_ADMIN_KEY missing; skipping phase4 triggers',
+        )
+        for (const mid of matchIdsNewlyFinal) {
+          phase4Results.push({
+            match_id: mid,
+            ok: false,
+            error: 'PREDICTOR_ADMIN_KEY not configured',
+          })
+        }
+      } else {
+        for (const mid of matchIdsNewlyFinal) {
+          const result = await triggerPhase4(request.url, mid, predictorAdminKey)
+          phase4Results.push(result)
+        }
       }
     }
 
     const duration_ms = Date.now() - started
     console.log(
-      `[cron/sync-wc26-fixtures] matched=${matched} updated=${updated} skipped_final=${skipped_final} unmatched=${unmatched.length} errors=${errors.length} duration_ms=${duration_ms}`
+      `[cron/sync-wc26-fixtures] matched=${matched} updated=${updated} skipped_final=${skipped_final} unmatched=${unmatched.length} errors=${errors.length} phase4_triggered=${phase4Results.length} duration_ms=${duration_ms}`
     )
 
     return NextResponse.json({
@@ -188,6 +295,8 @@ export async function GET(request: NextRequest) {
       unmatched: unmatched.slice(0, 10),
       errors_count: errors.length,
       errors: errors.slice(0, 5),
+      phase4_triggered: phase4Results.length,
+      phase4_results: phase4Results,
       duration_ms,
     })
   } catch (err) {

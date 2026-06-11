@@ -426,6 +426,25 @@ export function buildSyncUpdate(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4 trigger decision: should we fire /api/predictor/score-match
+// after applying this Opta patch?
+//
+// Rule: only when the row's status transitions INTO 'final' from a non-final
+// state (live, scheduled, or null/undefined for first-ever sync). A no-op
+// final → final must NOT re-fire (idempotency at the cron layer; the scoring
+// endpoint is also idempotent, but every re-fire is a wasted RPC).
+// ---------------------------------------------------------------------------
+
+export function shouldTriggerPhase4(
+  prevStatus: string | null | undefined,
+  newStatus: string | null | undefined,
+): boolean {
+  if (newStatus !== 'final') return false
+  if (prevStatus === 'final') return false
+  return true
+}
+
+// ---------------------------------------------------------------------------
 // Cron decision: should we even hit Opta right now?
 // ---------------------------------------------------------------------------
 
