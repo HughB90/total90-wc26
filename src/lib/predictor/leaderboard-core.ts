@@ -14,7 +14,19 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export interface RankedRow {
+export interface RoundBuckets {
+  r1_pts: number
+  r2_pts: number
+  r3_pts: number
+  r32_pts: number
+  r16_pts: number
+  qf_pts: number
+  sf_pts: number
+  final_pts: number
+  winner_pick_pts: number
+}
+
+export interface RankedRow extends RoundBuckets {
   rank: number
   profile_id: string
   manager_name: string
@@ -35,6 +47,14 @@ interface CacheRow {
   total_pts: number | null
   exact_score_pts_only: number | null
   winner_pick_pts: number | null
+  r1_pts: number | null
+  r2_pts: number | null
+  r3_pts: number | null
+  r32_pts: number | null
+  r16_pts: number | null
+  qf_pts: number | null
+  sf_pts: number | null
+  final_pts: number | null
 }
 
 export interface RankingResult {
@@ -83,7 +103,7 @@ export async function computeRanking(
     sb.from('profiles').select('id, manager_name, first_name, last_name').in('id', profileIds),
     sb
       .from('predictor_leaderboard_cache')
-      .select('profile_id, total_pts, exact_score_pts_only, winner_pick_pts')
+      .select('profile_id, total_pts, exact_score_pts_only, winner_pick_pts, r1_pts, r2_pts, r3_pts, r32_pts, r16_pts, qf_pts, sf_pts, final_pts')
       .in('profile_id', profileIds),
   ])
 
@@ -106,6 +126,15 @@ export async function computeRanking(
         first_name: p.first_name ?? '',
         last_name: p.last_name ?? '',
         total: matchTotal + winnerBonus,
+        r1_pts: cache?.r1_pts ?? 0,
+        r2_pts: cache?.r2_pts ?? 0,
+        r3_pts: cache?.r3_pts ?? 0,
+        r32_pts: cache?.r32_pts ?? 0,
+        r16_pts: cache?.r16_pts ?? 0,
+        qf_pts: cache?.qf_pts ?? 0,
+        sf_pts: cache?.sf_pts ?? 0,
+        final_pts: cache?.final_pts ?? 0,
+        winner_pick_pts: winnerBonus,
         _exact: cache?.exact_score_pts_only ?? 0,
       }
     })
@@ -121,6 +150,15 @@ export async function computeRanking(
       first_name: r.first_name,
       last_name: r.last_name,
       total: r.total,
+      r1_pts: r.r1_pts,
+      r2_pts: r.r2_pts,
+      r3_pts: r.r3_pts,
+      r32_pts: r.r32_pts,
+      r16_pts: r.r16_pts,
+      qf_pts: r.qf_pts,
+      sf_pts: r.sf_pts,
+      final_pts: r.final_pts,
+      winner_pick_pts: r.winner_pick_pts,
     }))
 
   return { ranked }

@@ -38,7 +38,7 @@ export async function GET(
 
   const { data: matches, error: mErr } = await sb
     .from('predictor_matches')
-    .select('id, match_num, round_code, group_code, home_team_code, away_team_code, kickoff_at, venue, home_score, away_score, status, is_knockout')
+    .select('id, match_num, round_code, group_code, home_team_code, away_team_code, kickoff_at, venue, home_score, away_score, went_to_pks, pk_winner_team_code, goalscorers, status, is_knockout')
     .eq('round_code', round_code)
     .order('kickoff_at', { ascending: true })
 
@@ -68,7 +68,7 @@ export async function GET(
   if (matchIds.length) {
     const { data: picks, error: pErr } = await sb
       .from('predictor_picks')
-      .select('match_id, home_score, away_score, if_draw_winner, is_star, goalscorer_player_id, goalscorer_team_code, updated_at')
+      .select('match_id, home_score, away_score, if_draw_winner, pk_advance_team_id, is_star, goalscorer_player_id, goalscorer_team_code, updated_at')
       .eq('profile_id', session.profile_id)
       .in('match_id', matchIds)
     if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 })
@@ -109,10 +109,42 @@ export async function GET(
 
   const myStarCount = (myPicks as Array<{ is_star: boolean }>).filter((p) => p.is_star).length
 
+  // Per-pick scores from predictor_scores (computed by /api/predictor/score-match
+  // after a match finalizes). Only populated for matches that have been scored.
+  // Shape returned to client: { [match_id]: { exact_pts, result_pts, scorer_pts,
+  // star_multiplier, total_pts, outcome_color } }
+  let myScores: Record<string, {
+    exact_pts: number
+    result_pts: number
+    scorer_pts: number
+    star_multiplier: number
+    total_pts: number
+    outcome_color: 'teal' | 'green' | 'red' | 'gray'
+  }> = {}
+  if (matchIds.length) {
+    const { data: scoreRows, error: sErr } = await sb
+      .from('predictor_scores')
+      .select('match_id, exact_pts, result_pts, scorer_pts, star_multiplier, total_pts, outcome_color')
+      .eq('profile_id', session.profile_id)
+      .in('match_id', matchIds)
+    if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 })
+    for (const s of scoreRows ?? []) {
+      myScores[s.match_id as string] = {
+        exact_pts: (s.exact_pts as number) ?? 0,
+        result_pts: (s.result_pts as number) ?? 0,
+        scorer_pts: (s.scorer_pts as number) ?? 0,
+        star_multiplier: (s.star_multiplier as number) ?? 1,
+        total_pts: (s.total_pts as number) ?? 0,
+        outcome_color: ((s.outcome_color as string) ?? 'gray') as 'teal' | 'green' | 'red' | 'gray',
+      }
+    }
+  }
+
   return NextResponse.json({
     round_code,
     matches: matches ?? [],
     my_picks: myPicks,
+    my_scores: myScores,
     lock_at: lockAtISO,
     locked,
     my_star_count: myStarCount,
