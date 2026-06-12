@@ -26,6 +26,29 @@ const C = {
   muted: '#8899CC',
   text: '#F0F4FF',
   red: '#F87171',
+  teal: '#22D3EE',
+}
+
+// Result outcome -> color band used on finalized match cards. Mirrors the
+// `outcome_color` value computed by the scoring engine (src/lib/predictor/scoring.ts)
+// and stored as a generated column in predictor_scores.
+const OUTCOME_BORDER: Record<'teal' | 'green' | 'red' | 'gray', string> = {
+  teal: '#22D3EE',
+  green: '#00E676',
+  red: '#F87171',
+  gray: '#2a3550',
+}
+const OUTCOME_BG: Record<'teal' | 'green' | 'red' | 'gray', string> = {
+  teal: 'rgba(34,211,238,0.10)',
+  green: 'rgba(0,230,118,0.08)',
+  red: 'rgba(248,113,113,0.07)',
+  gray: 'rgba(136,153,204,0.05)',
+}
+const OUTCOME_LABEL: Record<'teal' | 'green' | 'red' | 'gray', string> = {
+  teal: 'Exact!',
+  green: 'Result',
+  red: 'Miss',
+  gray: 'No pick',
 }
 
 const GROUP_ROUNDS = new Set(['group_r1', 'group_r2', 'group_r3'])
@@ -59,6 +82,22 @@ interface PredictorMatch {
   venue: string | null
   status: string
   is_knockout: boolean
+  // Final result fields (null until match finalizes). When non-null, the card
+  // renders post-match result + color band + points.
+  home_score: number | null
+  away_score: number | null
+  went_to_pks: boolean | null
+  pk_winner_team_code: string | null
+  goalscorers: unknown
+}
+
+interface ScoreBreakdown {
+  exact_pts: number
+  result_pts: number
+  scorer_pts: number
+  star_multiplier: number
+  total_pts: number
+  outcome_color: 'teal' | 'green' | 'red' | 'gray'
 }
 
 interface GoalscorerPlayer {
@@ -95,6 +134,10 @@ export default function RoundPicksPage({
 
   const [matches, setMatches] = useState<PredictorMatch[]>([])
   const [picks, setPicks] = useState<Record<string, PickState>>({})
+  // Per-match score breakdown for this profile. Populated only for matches
+  // that have been scored by /api/predictor/score-match (status='final' +
+  // recompute ran). Keyed by match.id.
+  const [scores, setScores] = useState<Record<string, ScoreBreakdown>>({})
   const [lockAt, setLockAt] = useState<string | null>(null)
   const [locked, setLocked] = useState(false)
   const [now, setNow] = useState(() => new Date())
@@ -117,6 +160,7 @@ export default function RoundPicksPage({
         setMatches(j.matches || [])
         setLockAt(j.lock_at || null)
         setLocked(Boolean(j.locked))
+        setScores((j.my_scores || {}) as Record<string, ScoreBreakdown>)
         const initial: Record<string, PickState> = {}
         for (const p of j.my_picks || []) {
           initial[p.match_id] = {
@@ -374,11 +418,13 @@ export default function RoundPicksPage({
           const isDraw = pick.home !== '' && pick.home === pick.away
           const drawNeedsPick = isKnockout && isDraw && !pick.if_draw_winner
           const matchLocked = matchLockedById[mt.id] === true
+          const score = scores[mt.id] || null
           return (
             <MatchCard
               key={mt.id}
               match={mt}
               pick={pick}
+              score={score}
               isKnockout={isKnockout}
               hasStars={hasStars}
               hasGoalscorer={hasGoalscorer}
@@ -461,10 +507,11 @@ export default function RoundPicksPage({
 }
 
 function MatchCard({
-  match, pick, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick, onChange, onGoalscorerSaved,
+  match, pick, score, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick, onChange, onGoalscorerSaved,
 }: {
   match: PredictorMatch
   pick: PickState
+  score: ScoreBreakdown | null
   isKnockout: boolean
   hasStars: boolean
   hasGoalscorer: boolean
@@ -485,24 +532,46 @@ function MatchCard({
     minute: '2-digit',
   })
 
+  // ----- Post-match result rendering --------------------------------------
+  // A match is "finalized" once both scores are present. We render the
+  // result row + color band whenever that's true, regardless of whether
+  // we have a stored per-pick score (score may be null if the user didn't
+  // submit a pick — in that case outcome is gray / No pick).
+  const isFinalized = match.home_score !== null && match.away_score !== null
+  const hasPick = pick.home !== '' && pick.away !== ''
+  // outcome_color: prefer stored (authoritative, from scoring engine).
+  // Fall back to 'gray' when no pick / no score row yet.
+  const outcome: 'teal' | 'green' | 'red' | 'gray' = isFinalized
+    ? (score?.outcome_color ?? (hasPick ? 'red' : 'gray'))
+    : 'gray'
+  const showResult = isFinalized
+  const borderColor = showResult
+    ? OUTCOME_BORDER[outcome]
+    : (matchLocked ? '#2a3550' : (pick.is_star ? '#FBBF2466' : (drawNeedsPick ? '#F8717166' : C.borderSoft)))
+  const bgColor = showResult
+    ? OUTCOME_BG[outcome]
+    : (matchLocked ? 'rgba(15, 28, 77, 0.55)' : C.card)
+
   return (
     <div
       title={matchLocked ? 'Locked at kickoff' : undefined}
       style={{
-        backgroundColor: matchLocked ? 'rgba(15, 28, 77, 0.55)' : C.card,
-        border: `1px solid ${matchLocked ? '#2a3550' : (pick.is_star ? '#FBBF2466' : (drawNeedsPick ? '#F8717166' : C.borderSoft))}`,
+        backgroundColor: bgColor,
+        border: `1px solid ${borderColor}`,
+        borderLeft: showResult ? `4px solid ${OUTCOME_BORDER[outcome]}` : `1px solid ${borderColor}`,
         borderRadius: '0.75rem',
         padding: '0.85rem 0.75rem',
         minWidth: 0,
         overflow: 'hidden',
-        opacity: matchLocked ? 0.55 : 1,
-        transition: 'opacity 120ms ease',
+        opacity: matchLocked && !showResult ? 0.55 : 1,
+        transition: 'opacity 120ms ease, background-color 200ms ease, border-color 200ms ease',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.7rem', color: C.muted }}>
         <span>
           Match {match.match_num} · {dateStr} CT
-          {matchLocked && <span style={{ marginLeft: '0.5rem', color: C.muted, fontWeight: 800 }}>· LOCKED</span>}
+          {matchLocked && !showResult && <span style={{ marginLeft: '0.5rem', color: C.muted, fontWeight: 800 }}>· LOCKED</span>}
+          {showResult && <span style={{ marginLeft: '0.5rem', color: OUTCOME_BORDER[outcome], fontWeight: 800 }}>· FINAL</span>}
         </span>
         {hasStars && (
           <button
@@ -527,6 +596,9 @@ function MatchCard({
         <ScoreInput value={pick.away} onChange={(v) => !locked && onChange({ away: v })} disabled={locked} />
         <TeamSide team={match.away_team_code} align="left" />
       </div>
+      {showResult && (
+        <ResultRow match={match} score={score} hasPick={hasPick} outcome={outcome} />
+      )}
       {isKnockout && isDraw && (
         <div style={{
           marginTop: '0.6rem',
@@ -778,6 +850,76 @@ function GoalscorerSection({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Renders the post-match result block: actual scoreline (with PK winner if
+ * applicable), the outcome badge (Exact / Result / Miss / No pick) and the
+ * points pill with star ×2 + goalscorer +2 modifiers when present.
+ *
+ * Color band is driven by the parent card; this block only renders text.
+ */
+function ResultRow({
+  match, score, hasPick, outcome,
+}: {
+  match: PredictorMatch
+  score: ScoreBreakdown | null
+  hasPick: boolean
+  outcome: 'teal' | 'green' | 'red' | 'gray'
+}) {
+  const color = OUTCOME_BORDER[outcome]
+  const totalPts = score?.total_pts ?? 0
+  const star = (score?.star_multiplier ?? 1) === 2
+  const scorerHit = (score?.scorer_pts ?? 0) > 0
+  const pkLine = match.went_to_pks && match.pk_winner_team_code
+    ? ` · PKs: ${match.pk_winner_team_code}`
+    : ''
+  return (
+    <div style={{
+      marginTop: '0.6rem',
+      padding: '0.5rem 0.7rem',
+      borderRadius: '0.4rem',
+      backgroundColor: 'rgba(10,15,46,0.55)',
+      border: `1px solid ${color}33`,
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: '0.6rem',
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+        <div style={{ color: C.text, fontSize: '0.78rem', fontWeight: 700 }}>
+          Actual: <span style={{ color: C.text }}>{match.home_team_code} {match.home_score}–{match.away_score} {match.away_team_code}</span>
+          <span style={{ color: C.muted, fontWeight: 600 }}>{pkLine}</span>
+        </div>
+        <div style={{ fontSize: '0.7rem', color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <span style={{ color, fontWeight: 800 }}>{OUTCOME_LABEL[outcome]}</span>
+          {hasPick && score && (
+            <span style={{ color: C.muted, fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>
+              {' · '}{score.exact_pts > 0 ? '10 exact' : score.result_pts > 0 ? '4 result' : '0 base'}
+              {scorerHit && ' · +2 scorer'}
+              {star && ' · ×2 star'}
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{
+        backgroundColor: outcome === 'gray' ? 'rgba(136,153,204,0.10)' : `${color}22`,
+        border: `1px solid ${color}`,
+        color,
+        borderRadius: '999px',
+        padding: '0.3rem 0.7rem',
+        fontSize: '0.85rem',
+        fontWeight: 900,
+        flexShrink: 0,
+        minWidth: '3.2rem',
+        textAlign: 'center',
+      }}>
+        {totalPts > 0 ? `+${totalPts}` : totalPts === 0 ? '0' : totalPts}
+        <span style={{ fontSize: '0.65rem', fontWeight: 700, marginLeft: '0.2rem', opacity: 0.8 }}>pts</span>
+      </div>
     </div>
   )
 }
