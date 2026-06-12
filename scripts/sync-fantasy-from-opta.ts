@@ -97,12 +97,29 @@ function optaGet(token: string, path: string): Promise<any> {
 
 type PosType = 'GK' | 'DEF' | 'MID' | 'FWD'
 
+// Opta position strings observed: "Goalkeeper", "Defender", "Wing Back",
+// "Defensive Midfielder", "Midfielder", "Attacking Midfielder", "Striker", "Forward", "Substitute".
+// Per v1.4 doc: Strikers AND Attacking Midfielders both use FWD weights.
 function getPos(posRaw: string | undefined): PosType {
   if (!posRaw) return 'MID'
   const p = posRaw.toUpperCase()
-  if (p.includes('GOAL') || p === 'GK') return 'GK'
-  if (p.includes('DEF') || p === 'CB' || p === 'LB' || p === 'RB' || p === 'WB') return 'DEF'
-  if (p.includes('FORWARD') || p === 'FW' || p === 'LW' || p === 'RW' || p === 'ST') return 'FWD'
+  if (p === 'GOALKEEPER' || p === 'GK' || p.includes('KEEPER')) return 'GK'
+  // FWD must be checked BEFORE generic 'MIDFIELDER' check — "Attacking Midfielder" is FWD per v1.4
+  if (p === 'STRIKER' || p === 'FORWARD' || p === 'ATTACKING MIDFIELDER' ||
+      p.includes('FORWARD') || p.includes('STRIKER') || p.includes('ATTACKING MID') ||
+      p === 'FW' || p === 'LW' || p === 'RW' || p === 'ST' || p === 'CF' || p === 'CAM') {
+    return 'FWD'
+  }
+  // DEF: explicit list (don't use 'DEF' substring, would match "Defensive Midfielder")
+  if (p === 'DEFENDER' || p === 'WING BACK' || p === 'CB' || p === 'LB' || p === 'RB' || p === 'WB' ||
+      p === 'CENTER BACK' || p === 'FULL BACK') {
+    return 'DEF'
+  }
+  if (p === 'MIDFIELDER' || p === 'DEFENSIVE MIDFIELDER' || p.includes('MIDFIELDER') ||
+      p === 'CM' || p === 'DM' || p === 'CDM') {
+    return 'MID'
+  }
+  // 'Substitute' — unknown on-field role. Default MID; future: lookup FIFA roster position.
   return 'MID'
 }
 
