@@ -222,7 +222,7 @@ export default function FantasyClient() {
   }
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1.5rem 1rem 5rem' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1.5rem 1rem 5rem', overflowX: 'hidden' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
@@ -276,7 +276,7 @@ export default function FantasyClient() {
           {/* Search */}
           <input
             type="text"
-            placeholder="Find player ⌘K"
+            placeholder="Find player"
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{
@@ -288,14 +288,21 @@ export default function FantasyClient() {
               fontSize: '0.85rem',
               fontFamily: 'inherit',
               outline: 'none',
-              minWidth: '200px',
-              marginLeft: 'auto',
+              flex: '1 1 160px',
+              minWidth: '120px',
             }}
           />
         </div>
 
         {/* Position chips */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+        <div style={{
+          display: 'flex',
+          gap: '0.4rem',
+          marginTop: '0.75rem',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: '0.25rem',
+        }}>
           {(['ALL', 'GKP', 'DEF', 'MID', 'FOR'] as PosType[]).map(pos => (
             <button
               key={pos}
@@ -329,9 +336,24 @@ export default function FantasyClient() {
           <p style={{ color: C.muted, fontSize: '0.9rem' }}>No players found for this selection.</p>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <StatsGrid players={players} onPlayerClick={handlePlayerClick} />
-        </div>
+        <>
+          {/* Mobile compact list (< 720px) */}
+          <div className="fantasy-mobile-list">
+            <MobileList players={players} onPlayerClick={handlePlayerClick} />
+          </div>
+          {/* Desktop wide grid (>= 720px) — horizontally scrolling */}
+          <div className="fantasy-desktop-grid" style={{ overflowX: 'auto' }}>
+            <StatsGrid players={players} onPlayerClick={handlePlayerClick} />
+          </div>
+          <style jsx global>{`
+            .fantasy-mobile-list { display: block; }
+            .fantasy-desktop-grid { display: none; }
+            @media (min-width: 720px) {
+              .fantasy-mobile-list { display: none; }
+              .fantasy-desktop-grid { display: block; }
+            }
+          `}</style>
+        </>
       )}
 
       {/* Drawer */}
@@ -348,6 +370,103 @@ export default function FantasyClient() {
 }
 
 // ─── Stats Grid ───────────────────────────────────────────────────────────────
+
+// ─── Mobile compact list (< 720px) ────────────────────────────────────────────
+// One row per player: identity (left) + PTS / GP / AVG (right), tap to open drawer.
+// No horizontal scroll, designed to fit on a 360px viewport without clipping.
+
+function MobileList({ players, onPlayerClick }: { players: Player[]; onPlayerClick: (p: Player) => void }) {
+  return (
+    <div style={{ fontSize: '0.85rem' }}>
+      {/* Sub-header */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 48px 28px 48px',
+        gap: '0.5rem',
+        backgroundColor: C.card,
+        borderBottom: `2px solid ${C.border}`,
+        padding: '0.6rem 0.75rem',
+        fontWeight: 700,
+        fontSize: '0.6rem',
+        letterSpacing: '0.05em',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        borderRadius: '0.5rem 0.5rem 0 0',
+      }}>
+        <div style={{ color: C.text }}>PLAYER</div>
+        <div style={{ color: C.mint, textAlign: 'right' }}>PTS</div>
+        <div style={{ color: C.muted, textAlign: 'right' }}>GP</div>
+        <div style={{ color: C.muted, textAlign: 'right' }}>AVG</div>
+      </div>
+      {players.map(p => {
+        const posColor = p.pos_type === 'GKP' ? C.gold : p.pos_type === 'DEF' ? '#5ec5ff' : p.pos_type === 'MID' ? C.mint : C.red
+        return (
+          <div
+            key={p.opta_player_id}
+            onClick={() => onPlayerClick(p)}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 48px 28px 48px',
+              gap: '0.5rem',
+              padding: '0.75rem',
+              borderBottom: `1px solid ${C.border}`,
+              cursor: 'pointer',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontWeight: 700,
+                color: C.text,
+                marginBottom: '0.15rem',
+                fontSize: '0.9rem',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>{p.name}</div>
+              <div style={{ fontSize: '0.7rem', color: C.muted, display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '0.05rem 0.35rem',
+                  borderRadius: '0.25rem',
+                  backgroundColor: `${posColor}22`,
+                  color: posColor,
+                  fontWeight: 700,
+                  fontSize: '0.62rem',
+                }}>{p.pos_type}</span>
+                <span style={{
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>{p.team}</span>
+              </div>
+            </div>
+            <div style={{
+              textAlign: 'right',
+              fontWeight: 800,
+              color: C.gold,
+              fontSize: '1rem',
+              fontVariantNumeric: 'tabular-nums',
+            }}>{p.fantasy_points_total.toFixed(1)}</div>
+            <div style={{
+              textAlign: 'right',
+              color: C.muted,
+              fontVariantNumeric: 'tabular-nums',
+              fontSize: '0.75rem',
+            }}>{p.games_played}</div>
+            <div style={{
+              textAlign: 'right',
+              color: C.text,
+              fontVariantNumeric: 'tabular-nums',
+              fontSize: '0.8rem',
+            }}>{p.fantasy_points_avg.toFixed(1)}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function StatsGrid({ players, onPlayerClick }: { players: Player[]; onPlayerClick: (p: Player) => void }) {
   const hasGK = players.some(p => p.pos_type === 'GKP')
@@ -483,20 +602,40 @@ function PlayerDrawer({
         }}
       />
 
-      {/* Drawer */}
-      <div style={{
+      {/* Drawer — desktop: right-side panel 500px; mobile: full-width bottom sheet */}
+      <div className="fantasy-drawer" style={{
         position: 'fixed',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: '500px',
-        maxWidth: '100vw',
         backgroundColor: C.card,
-        borderLeft: `1px solid ${C.border}`,
         zIndex: 101,
         overflowY: 'auto',
-        padding: '1.5rem',
+        overflowX: 'hidden',
+        boxSizing: 'border-box',
+        WebkitOverflowScrolling: 'touch',
       }}>
+        <style jsx>{`
+          .fantasy-drawer {
+            left: 0;
+            right: 0;
+            bottom: 0;
+            top: 10vh;
+            border-top: 1px solid ${C.border};
+            border-top-left-radius: 1rem;
+            border-top-right-radius: 1rem;
+            padding: 1rem;
+          }
+          @media (min-width: 720px) {
+            .fantasy-drawer {
+              top: 0;
+              left: auto;
+              width: 500px;
+              max-width: 100vw;
+              border-top: none;
+              border-left: 1px solid ${C.border};
+              border-radius: 0;
+              padding: 1.5rem;
+            }
+          }
+        `}</style>
         {/* Header */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
@@ -537,10 +676,12 @@ function PlayerDrawer({
                   backgroundColor: C.bg,
                   border: `1px solid ${C.border}`,
                   borderRadius: '0.5rem',
-                  padding: '1rem',
+                  padding: '0.75rem',
+                  minWidth: 0,
+                  overflow: 'hidden',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem', gap: '0.5rem' }}>
                   <div>
                     <div style={{ fontSize: '0.8rem', fontWeight: 600, color: C.text }}>
                       vs {m.opponent}
@@ -581,7 +722,7 @@ function PlayerDrawer({
                     {/* Header row */}
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 60px 60px 70px',
+                      gridTemplateColumns: '1fr 42px 48px 58px',
                       gap: '0.5rem',
                       padding: '0.25rem 0',
                       borderBottom: `1px solid ${C.border}`,
@@ -611,7 +752,7 @@ function PlayerDrawer({
                             key={key}
                             style={{
                               display: 'grid',
-                              gridTemplateColumns: '1fr 60px 60px 70px',
+                              gridTemplateColumns: '1fr 42px 48px 58px',
                               gap: '0.5rem',
                               padding: '0.3rem 0',
                               borderBottom: `1px solid ${C.border}`,
@@ -639,7 +780,7 @@ function PlayerDrawer({
                     {/* Total */}
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 60px 60px 70px',
+                      gridTemplateColumns: '1fr 42px 48px 58px',
                       gap: '0.5rem',
                       padding: '0.5rem 0 0.25rem',
                       marginTop: '0.25rem',
