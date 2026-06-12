@@ -657,9 +657,16 @@ interface MyRoundSummary {
   finalized_count: number
 }
 
+interface MyWinnerPick {
+  team_code: string
+  bonus_cap: number
+  days_late: number
+  penalty_pts: number
+}
+
 function MyPicksTab({ authed }: { authed: boolean }) {
   const [rounds, setRounds] = useState<MyRoundSummary[] | null>(null)
-  const [winnerPick, setWinnerPick] = useState<string | null>(null)
+  const [winnerPick, setWinnerPick] = useState<MyWinnerPick | null>(null)
 
   useEffect(() => {
     if (!authed) return
@@ -724,7 +731,14 @@ function MyPicksTab({ authed }: { authed: boolean }) {
       try {
         const r = await fetch('/api/predictor/winner', { credentials: 'include', cache: 'no-store' })
         const j = await r.json().catch(() => null)
-        if (!cancelled) setWinnerPick(j?.pick?.team_code ?? null)
+        if (!cancelled) {
+          setWinnerPick(j?.pick?.team_code ? {
+            team_code: j.pick.team_code,
+            bonus_cap: j.pick.bonus_cap ?? 40,
+            days_late: j.pick.days_late ?? 0,
+            penalty_pts: j.pick.penalty_pts ?? 0,
+          } : null)
+        }
       } catch { /* */ }
     })()
     return () => { cancelled = true }
@@ -747,9 +761,22 @@ function MyPicksTab({ authed }: { authed: boolean }) {
       }}>
         <div style={{ color: C.gold, fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.45rem' }}>Tournament Winner</div>
         {winnerPick ? (
-          <div style={{ color: C.text, fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-            <img src={flagUrl(winnerPick)} alt="" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} style={{ width: 22, height: 14, objectFit: 'cover', borderRadius: 2 }} />
-            <strong>{winnerPick}</strong>
+          <div style={{ color: C.text, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <img src={flagUrl(winnerPick.team_code)} alt="" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} style={{ width: 22, height: 14, objectFit: 'cover', borderRadius: 2 }} />
+            <strong>{winnerPick.team_code}</strong>
+            <span style={{
+              color: winnerPick.days_late > 0 ? C.gold : '#00E676',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              whiteSpace: 'nowrap',
+            }}>
+              Max +{winnerPick.bonus_cap}
+              {winnerPick.days_late > 0 && (
+                <span style={{ color: C.muted, fontWeight: 600 }}>
+                  {' '}({winnerPick.days_late}d late)
+                </span>
+              )}
+            </span>
           </div>
         ) : (
           <div style={{ color: C.muted, fontSize: '0.82rem' }}>Not picked yet.</div>
