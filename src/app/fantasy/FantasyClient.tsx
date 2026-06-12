@@ -98,6 +98,62 @@ const C = {
   muted: '#8899CC',
   text: '#F0F4FF',
   red: '#FF4D6D',
+  accent: '#00E676',
+}
+
+// ─── Breakdown metadata ──────────────────────────────────────────────────────
+// Maps the v1.4 scoring controller's breakdown keys to:
+//   label  → human-friendly name shown in the drawer
+//   rawKey → corresponding raw_stats integer key (so we can show "1 goal × 7")
+// Categories follow the 7-group taxonomy from scoring-controller-v1.4.csv.
+
+const BREAKDOWN_META: Record<string, { label: string; rawKey?: string }> = {
+  // Attacking
+  mins:           { label: 'Minutes played' },
+  goals:          { label: 'Goals', rawKey: 'goals' },
+  assist:         { label: 'Assists', rawKey: 'goalAssist' },
+  shot_on_target: { label: 'Shots on target', rawKey: 'ontargetScoringAtt' },
+  shot_off_target:{ label: 'Shots off target' },
+  fouled:         { label: 'Fouls drawn', rawKey: 'wasFouled' },
+  dribble:        { label: '1v1 won', rawKey: 'wonContest' },
+  aerial_won:     { label: 'Aerial duels won', rawKey: 'aerialWon' },
+
+  // Defensive
+  clean_sheet:    { label: 'Clean sheet' },
+  goals_conceded: { label: 'Goals conceded' },
+  foul:           { label: 'Fouls committed', rawKey: 'fouls' },
+  interception:   { label: 'Interceptions', rawKey: 'interceptionWon' },
+  tackle:         { label: 'Tackles won', rawKey: 'wonTackle' },
+  block:          { label: 'Blocks', rawKey: 'outfielderBlock' },
+
+  // Discipline
+  offside:        { label: 'Offsides', rawKey: 'totalOffside' },
+  own_goal:       { label: 'Own goal' },
+  yellow:         { label: 'Yellow card', rawKey: 'yellowCard' },
+  red:            { label: 'Red card', rawKey: 'redCard' },
+
+  // Passing
+  accurate_pass:    { label: 'Accurate passes', rawKey: 'accuratePass' },
+  accurate_long_ball:{ label: 'Accurate long balls', rawKey: 'accurateLongBalls' },
+  accurate_cross:   { label: 'Accurate crosses', rawKey: 'accurateCrossNocorner' },
+  final_third_pass: { label: 'Passes into final third', rawKey: 'successfulFinalThirdPasses' },
+  pen_area_pass:    { label: 'Passes into penalty area', rawKey: 'successfulPenAreaEntries' },
+
+  // Playmaker
+  key_pass:       { label: 'Key passes', rawKey: 'totalAttAssist' },
+  through_ball:   { label: 'Through balls', rawKey: 'accurateThroughBall' },
+  touch_in_box:   { label: 'Touches in opp box', rawKey: 'touchesInOppBox' },
+  winning_goal:   { label: 'Match-winning goal', rawKey: 'winningGoal' },
+
+  // Possession
+  ball_recovery:  { label: 'Ball recoveries', rawKey: 'ballRecovery' },
+  dispossessed:   { label: 'Dispossessed', rawKey: 'dispossessed' },
+  poss_lost:      { label: 'Possession lost', rawKey: 'possLostAll' },
+
+  // Goalkeeper-only
+  save:           { label: 'Saves', rawKey: 'saves' },
+  keeper_throw:   { label: 'GK throws (accurate)', rawKey: 'accurateKeeperThrows' },
+  goal_kick:      { label: 'Goal kicks (accurate)', rawKey: 'accurateGoalKicks' },
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -522,20 +578,86 @@ function PlayerDrawer({
 
                 {expandedMatch === i && (
                   <div style={{ marginTop: '0.75rem', fontSize: '0.7rem' }}>
-                    {Object.entries(m.breakdown).map(([key, val]) => (
-                      <div
-                        key={key}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          padding: '0.25rem 0',
-                          borderBottom: `1px solid ${C.border}`,
-                        }}
-                      >
-                        <span style={{ color: C.muted }}>{key}</span>
-                        <span style={{ color: C.text, fontWeight: 600 }}>{val}</span>
-                      </div>
-                    ))}
+                    {/* Header row */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 60px 60px 70px',
+                      gap: '0.5rem',
+                      padding: '0.25rem 0',
+                      borderBottom: `1px solid ${C.border}`,
+                      fontSize: '0.6rem',
+                      letterSpacing: '0.05em',
+                      color: C.muted,
+                      textTransform: 'uppercase',
+                    }}>
+                      <span>Stat</span>
+                      <span style={{ textAlign: 'right' }}>Count</span>
+                      <span style={{ textAlign: 'right' }}>Mult</span>
+                      <span style={{ textAlign: 'right' }}>Points</span>
+                    </div>
+                    {Object.entries(m.breakdown)
+                      .sort(([, a], [, b]) => Math.abs(b as number) - Math.abs(a as number))
+                      .map(([key, val]) => {
+                        const meta = BREAKDOWN_META[key]
+                        const label = meta?.label || key
+                        const rawKey = meta?.rawKey
+                        const count = rawKey ? (m.raw_stats?.[rawKey] ?? 0) : undefined
+                        const points = val as number
+                        const mult = (count && count !== 0) ? (points / count) : undefined
+                        const fmt = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2)
+                        const pos = points >= 0
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 60px 60px 70px',
+                              gap: '0.5rem',
+                              padding: '0.3rem 0',
+                              borderBottom: `1px solid ${C.border}`,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <span style={{ color: C.text }}>{label}</span>
+                            <span style={{ textAlign: 'right', color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                              {count !== undefined ? count : '—'}
+                            </span>
+                            <span style={{ textAlign: 'right', color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
+                              {mult !== undefined ? `×${fmt(mult)}` : '—'}
+                            </span>
+                            <span style={{
+                              textAlign: 'right',
+                              color: pos ? C.accent : '#ff5252',
+                              fontWeight: 600,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}>
+                              {pos ? '+' : ''}{fmt(points)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    {/* Total */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 60px 60px 70px',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0 0.25rem',
+                      marginTop: '0.25rem',
+                      borderTop: `2px solid ${C.border}`,
+                      fontWeight: 700,
+                    }}>
+                      <span style={{ color: C.text }}>Total</span>
+                      <span></span>
+                      <span></span>
+                      <span style={{
+                        textAlign: 'right',
+                        color: C.accent,
+                        fontSize: '0.85rem',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>
+                        {m.fantasy_points}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
