@@ -1,6 +1,6 @@
 import type React from 'react'
 import Link from 'next/link'
-import { Newspaper, BarChart3, Trophy, Activity, Briefcase, Smartphone, Target } from 'lucide-react'
+import { Newspaper, BarChart3, Trophy, Activity, Briefcase, Smartphone, Target, TrendingUp } from 'lucide-react'
 
 type CardItem = {
   Icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>
@@ -31,10 +31,21 @@ const cards: CardItem[] = [
     color: '#60A5FA',
     accentBg: 'rgba(96,165,250,0.08)',
     accentBorder: 'rgba(96,165,250,0.25)',
-    title: 'Players',
-    desc: 'Ranked WC26 players — powered by Total90 fans',
+    title: 'Player Rankings',
+    desc: 'Sign/Sell/Sack — crowd-sourced player ratings',
     href: '/s3',
     active: true,
+  },
+  {
+    Icon: TrendingUp,
+    color: '#00E676',
+    accentBg: 'rgba(0,230,118,0.08)',
+    accentBorder: 'rgba(0,230,118,0.25)',
+    title: 'Fantasy Stats',
+    desc: 'Live fantasy points, v1.4 scoring, all rounds',
+    href: '/fantasy',
+    active: true,
+    tag: 'new',
   },
   {
     Icon: Trophy,
