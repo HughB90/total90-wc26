@@ -46,7 +46,31 @@ interface LeaderboardRow {
   first_name: string
   last_name: string
   total: number
+  r1_pts: number
+  r2_pts: number
+  r3_pts: number
+  r32_pts: number
+  r16_pts: number
+  qf_pts: number
+  sf_pts: number
+  final_pts: number
+  winner_pick_pts: number
 }
+
+// Round codes in the same display order as PREDICTOR_ROUND_OPTIONS and the
+// matching cache column on each leaderboard row.
+const ROUND_BUCKET_KEYS: Array<{ code: string; label: string; short: string; key: keyof Pick<LeaderboardRow, 'r1_pts' | 'r2_pts' | 'r3_pts' | 'r32_pts' | 'r16_pts' | 'qf_pts' | 'sf_pts' | 'final_pts'> }> = [
+  { code: 'group_r1', label: 'Round 1 — Group Stage 1', short: 'R1', key: 'r1_pts' },
+  { code: 'group_r2', label: 'Round 2 — Group Stage 2', short: 'R2', key: 'r2_pts' },
+  { code: 'group_r3', label: 'Round 3 — Group Stage 3', short: 'R3', key: 'r3_pts' },
+  { code: 'r32',      label: 'Round 4 — Round of 32',     short: 'R4', key: 'r32_pts' },
+  { code: 'r16',      label: 'Round 5 — Round of 16',     short: 'R5', key: 'r16_pts' },
+  { code: 'qf',       label: 'Round 6 — Quarterfinals',    short: 'QF', key: 'qf_pts' },
+  { code: 'sf',       label: 'Round 7 — Semifinals',       short: 'SF', key: 'sf_pts' },
+  { code: 'final',    label: 'Round 8 — Final & 3rd Place', short: 'F', key: 'final_pts' },
+]
+
+const GOALSCORER_ROUND_CODES = new Set(['r16', 'qf', 'sf', 'final'])
 
 type TabId = 'leaderboard' | 'my_picks' | 'members' | 'scoring'
 
@@ -325,6 +349,10 @@ function TabButton({ active, children, onClick }: { active: boolean; children: R
 }
 
 function LeaderboardTab({ rows, meId }: { rows: LeaderboardRow[]; meId: string | null }) {
+  // Which row is expanded to show round buckets. Only one at a time — keeps
+  // the surface manageable on mobile.
+  const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null)
+
   if (rows.length === 0) {
     return (
       <p style={{ color: C.muted, fontSize: '0.85rem', padding: '1rem 0' }}>
@@ -348,38 +376,276 @@ function LeaderboardTab({ rows, meId }: { rows: LeaderboardRow[]; meId: string |
         <span>#</span><span>Manager</span><span style={{ textAlign: 'right' }}>Total</span>
       </div>
       {rows.map((row) => (
-        <div key={row.profile_id} style={{
+        <ExpandableLeaderboardRow
+          key={row.profile_id}
+          row={row}
+          isMe={row.profile_id === meId}
+          expanded={expandedProfileId === row.profile_id}
+          onToggle={() => setExpandedProfileId((cur) => cur === row.profile_id ? null : row.profile_id)}
+        />
+      ))}
+      <p style={{ color: C.muted, fontSize: '0.7rem', textAlign: 'center', marginTop: '0.6rem', fontStyle: 'italic' }}>
+        Tap a manager to see their round totals. Tap a round to see their picks (once that round has kicked off).
+      </p>
+    </div>
+  )
+}
+
+function ExpandableLeaderboardRow({
+  row, isMe, expanded, onToggle,
+}: {
+  row: LeaderboardRow
+  isMe: boolean
+  expanded: boolean
+  onToggle: () => void
+}) {
+  // Layer 2 state: which round is being peeked at, lazy-loaded payload
+  const [openRound, setOpenRound] = useState<string | null>(null)
+  const [peekState, setPeekState] = useState<Record<string, PeekRoundState>>({})
+
+  const totalEarned = ROUND_BUCKET_KEYS.reduce((sum, b) => sum + (row[b.key] ?? 0), 0) + (row.winner_pick_pts ?? 0)
+
+  async function loadRound(code: string) {
+    if (peekState[code]?.status === 'ok' || peekState[code]?.status === 'loading') return
+    setPeekState((cur) => ({ ...cur, [code]: { status: 'loading' } }))
+    try {
+      const r = await fetch(
+        `/api/predictor/picks/by-profile?profile_id=${encodeURIComponent(row.profile_id)}&round_code=${encodeURIComponent(code)}`,
+        { credentials: 'include', cache: 'no-store' },
+      )
+      const j = await r.json().catch(() => null)
+      if (r.status === 403) {
+        const reason = j?.error === 'round_not_locked' ? 'locked' : 'forbidden'
+        setPeekState((cur) => ({ ...cur, [code]: { status: 'forbidden', reason, unlocks_at: j?.unlocks_at } }))
+        return
+      }
+      if (!r.ok || !j) {
+        setPeekState((cur) => ({ ...cur, [code]: { status: 'error', error: j?.error || 'load_failed' } }))
+        return
+      }
+      const picks = buildPickSummaryData(j.matches ?? [], j.picks ?? [], j.scores ?? {})
+      setPeekState((cur) => ({ ...cur, [code]: { status: 'ok', picks } }))
+    } catch {
+      setPeekState((cur) => ({ ...cur, [code]: { status: 'error', error: 'network' } }))
+    }
+  }
+
+  return (
+    <div style={{
+      display: 'grid',
+      gap: 0,
+      backgroundColor: isMe ? 'rgba(251,191,36,0.08)' : C.card,
+      border: `1px solid ${isMe ? 'rgba(251,191,36,0.3)' : C.borderSoft}`,
+      borderRadius: '0.5rem',
+      overflow: 'hidden',
+    }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          all: 'unset',
           display: 'grid',
           gridTemplateColumns: '32px 1fr 50px',
           gap: '0.6rem',
           padding: '0.55rem',
-          backgroundColor: row.profile_id === meId ? 'rgba(251,191,36,0.08)' : C.card,
-          border: `1px solid ${row.profile_id === meId ? 'rgba(251,191,36,0.3)' : C.borderSoft}`,
-          borderRadius: '0.5rem',
           alignItems: 'center',
-        }}>
-          <span style={{ color: C.muted, fontSize: '0.74rem', fontWeight: 700 }}>#{row.rank}</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              color: row.profile_id === meId ? C.gold : C.text,
-              fontSize: '0.85rem',
-              fontWeight: row.profile_id === meId ? 700 : 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>{row.manager_name}</div>
-            {(() => {
-              const sub = profileFullName(row.first_name, row.last_name, row.manager_name)
-              return sub ? (
-                <div style={{ color: C.muted, fontSize: '0.7rem' }}>{sub}</div>
-              ) : null
-            })()}
+          cursor: 'pointer',
+          width: 'auto',
+        }}
+        aria-expanded={expanded}
+      >
+        <span style={{ color: C.muted, fontSize: '0.74rem', fontWeight: 700 }}>#{row.rank}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            color: isMe ? C.gold : C.text,
+            fontSize: '0.85rem',
+            fontWeight: isMe ? 700 : 600,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            <span style={{ display: 'inline-block', width: 12, color: C.muted, fontSize: '0.7rem', marginRight: '0.25rem' }}>
+              {expanded ? '▾' : '▸'}
+            </span>
+            {row.manager_name}
           </div>
-          <span style={{ color: C.gold, fontSize: '0.85rem', fontWeight: 800, textAlign: 'right' }}>{row.total}</span>
+          {(() => {
+            const sub = profileFullName(row.first_name, row.last_name, row.manager_name)
+            return sub ? (
+              <div style={{ color: C.muted, fontSize: '0.7rem', paddingLeft: '0.95rem' }}>{sub}</div>
+            ) : null
+          })()}
         </div>
-      ))}
+        <span style={{ color: C.gold, fontSize: '0.85rem', fontWeight: 800, textAlign: 'right' }}>{row.total}</span>
+      </button>
+
+      {expanded && (
+        <div style={{
+          padding: '0.5rem 0.7rem 0.7rem',
+          borderTop: `1px solid ${C.borderSoft}`,
+          display: 'grid',
+          gap: '0.5rem',
+        }}>
+          {/* Layer 1: round chips */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+            {ROUND_BUCKET_KEYS.map((b) => {
+              const pts = row[b.key] ?? 0
+              const isOpen = openRound === b.code
+              const hasPts = pts > 0
+              return (
+                <button
+                  key={b.code}
+                  type="button"
+                  onClick={() => {
+                    setOpenRound(isOpen ? null : b.code)
+                    if (!isOpen) loadRound(b.code)
+                  }}
+                  style={{
+                    background: isOpen ? 'rgba(0,230,118,0.12)' : (hasPts ? 'rgba(0,230,118,0.06)' : 'rgba(255,255,255,0.03)'),
+                    border: `1px solid ${isOpen ? C.green : (hasPts ? 'rgba(0,230,118,0.3)' : C.borderSoft)}`,
+                    color: hasPts ? C.green : C.muted,
+                    borderRadius: '0.4rem',
+                    padding: '0.3rem 0.55rem',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                  }}
+                  aria-expanded={isOpen}
+                >
+                  {b.short} {pts > 0 ? `+${pts}` : '0'}
+                </button>
+              )
+            })}
+            {row.winner_pick_pts > 0 && (
+              <span style={{
+                background: 'rgba(251,191,36,0.12)',
+                border: '1px solid rgba(251,191,36,0.4)',
+                color: C.gold,
+                borderRadius: '0.4rem',
+                padding: '0.3rem 0.55rem',
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
+              }}>
+                🏆 +{row.winner_pick_pts}
+              </span>
+            )}
+          </div>
+          <div style={{ color: C.muted, fontSize: '0.68rem', fontWeight: 600 }}>
+            Round totals · sum {totalEarned}
+          </div>
+
+          {/* Layer 2: lazy-loaded picks for the open round */}
+          {openRound && (() => {
+            const meta = ROUND_BUCKET_KEYS.find((b) => b.code === openRound)
+            const s = peekState[openRound]
+            return (
+              <div style={{
+                marginTop: '0.3rem',
+                padding: '0.6rem 0.7rem',
+                background: 'rgba(10,15,46,0.55)',
+                border: `1px solid ${C.borderSoft}`,
+                borderRadius: '0.5rem',
+                display: 'grid',
+                gap: '0.45rem',
+              }}>
+                <div style={{ color: C.gold, fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {meta?.label ?? openRound}
+                </div>
+                {!s || s.status === 'loading' ? (
+                  <div style={{ color: C.muted, fontSize: '0.78rem' }}>Loading…</div>
+                ) : s.status === 'forbidden' && s.reason === 'locked' ? (
+                  <div style={{ color: C.muted, fontSize: '0.78rem' }}>
+                    Picks visible after the round kicks off.
+                    {s.unlocks_at && (
+                      <span style={{ display: 'block', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                        First lock: {new Date(s.unlocks_at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} CT
+                      </span>
+                    )}
+                  </div>
+                ) : s.status === 'forbidden' ? (
+                  <div style={{ color: C.muted, fontSize: '0.78rem' }}>You need to share a league with this manager to peek at their picks.</div>
+                ) : s.status === 'error' ? (
+                  <div style={{ color: C.red, fontSize: '0.78rem' }}>Couldn&apos;t load picks ({s.error}).</div>
+                ) : s.picks.length === 0 ? (
+                  <div style={{ color: C.muted, fontSize: '0.78rem' }}>No picks submitted.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: '0.4rem' }}>
+                    {s.picks.map((p) => (
+                      <PickSummaryRow key={p.match_id} pick={p} showGoalscorer={GOALSCORER_ROUND_CODES.has(openRound)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
     </div>
   )
+}
+
+type PeekRoundState =
+  | { status: 'loading' }
+  | { status: 'ok'; picks: PickSummaryData[] }
+  | { status: 'forbidden'; reason: 'locked' | 'forbidden'; unlocks_at?: string }
+  | { status: 'error'; error: string }
+
+interface RawPeekMatch {
+  id: string
+  home_team_code: string
+  away_team_code: string
+  home_score: number | null
+  away_score: number | null
+  went_to_pks: boolean | null
+  pk_winner_team_code: string | null
+}
+
+interface RawPeekPick {
+  match_id: string
+  home_score: number
+  away_score: number
+  is_star: boolean
+  if_draw_winner?: string | null
+  goalscorer_team_code?: string | null
+  goalscorer_player?: { short_name?: string | null; name?: string | null; last_name?: string | null } | null
+}
+
+/**
+ * Build PickSummaryData[] from the raw by-profile response. Mirrors the same
+ * mapping the My Picks tab does so the shared <PickSummaryRow /> renders
+ * identically across both surfaces.
+ */
+function buildPickSummaryData(
+  matches: RawPeekMatch[],
+  picks: RawPeekPick[],
+  scores: Record<string, PickSummaryScore>,
+): PickSummaryData[] {
+  const matchMap = new Map<string, RawPeekMatch>()
+  for (const m of matches) matchMap.set(m.id, m)
+  return picks.map((p) => {
+    const mm = matchMap.get(p.match_id)
+    const gp = p.goalscorer_player
+    const goalscorerName = gp?.short_name || gp?.name || gp?.last_name || null
+    return {
+      match_id: p.match_id,
+      home_team: mm?.home_team_code ?? '?',
+      away_team: mm?.away_team_code ?? '?',
+      pick_home: p.home_score,
+      pick_away: p.away_score,
+      is_star: Boolean(p.is_star),
+      if_draw_winner: p.if_draw_winner ?? null,
+      goalscorer_name: goalscorerName,
+      goalscorer_team: p.goalscorer_team_code ?? null,
+      actual_home: mm?.home_score ?? null,
+      actual_away: mm?.away_score ?? null,
+      went_to_pks: Boolean(mm?.went_to_pks),
+      pk_winner_team_code: mm?.pk_winner_team_code ?? null,
+      score: scores[p.match_id] ?? null,
+    }
+  })
 }
 
 interface MyRoundSummary {
@@ -390,8 +656,6 @@ interface MyRoundSummary {
   round_pts: number
   finalized_count: number
 }
-
-const GOALSCORER_ROUND_CODES = new Set(['r16', 'qf', 'sf', 'final'])
 
 function MyPicksTab({ authed }: { authed: boolean }) {
   const [rounds, setRounds] = useState<MyRoundSummary[] | null>(null)
