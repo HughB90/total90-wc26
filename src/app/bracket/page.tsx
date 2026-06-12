@@ -998,21 +998,38 @@ function LeaderboardTab({ userId, onAuthRequired }: { userId: string | null; onA
   const fetchLeaderboard = useCallback(async (code: string | undefined, pageArg: number) => {
     setLoading(true)
     try {
+      // Public rows live on the edge-cached endpoint.
       const qs = new URLSearchParams()
       if (code) qs.set('leagueCode', code)
       qs.set('page', String(pageArg))
       qs.set('pageSize', String(LEADERBOARD_PAGE_SIZE))
-      if (userId) qs.set('meId', userId)
-      const res = await fetch(`/api/bracket/leaderboard?${qs.toString()}`)
+      // Caller's rank comes from /me (uncached) — fetched in parallel
+      // only when we actually have a userId.
+      const meQs = new URLSearchParams()
+      if (code) meQs.set('leagueCode', code)
+      if (userId) meQs.set('meId', userId)
+
+      const [res, meRes] = await Promise.all([
+        fetch(`/api/bracket/leaderboard?${qs.toString()}`),
+        userId
+          ? fetch(`/api/bracket/leaderboard/me?${meQs.toString()}`, { cache: 'no-store' })
+          : Promise.resolve(null),
+      ])
       const data = await res.json() as {
         ok?: boolean
         rows?: LeaderboardRow[]
         total?: number
-        me?: { rank: number; score: number; total: number; managerName: string; firstName: string | null } | null
       }
+      const meData = meRes
+        ? (await meRes.json().catch(() => null)) as {
+            ok?: boolean
+            total?: number
+            me?: { rank: number; score: number; total: number; managerName: string; firstName: string | null } | null
+          } | null
+        : null
       setRows(data.rows ?? [])
-      setTotal(data.total ?? (data.rows?.length ?? 0))
-      setMe(data.me ?? null)
+      setTotal(data.total ?? meData?.total ?? (data.rows?.length ?? 0))
+      setMe(meData?.me ?? null)
     } catch {
       setRows([])
       setTotal(0)
@@ -1397,13 +1414,12 @@ export default function BracketPage() {
       .catch(() => {})
   }, [leagueView])
 
-  // Fetch my rank and total participants. API now returns a `me` block
-  // computed server-side off the full participant list (every profile +
-  // every legacy bracket_users row), so the strip stays accurate even
-  // when the caller isn't on the first page of results.
+  // Fetch my rank and total participants from the uncached /me endpoint.
+  // Server computes off the full participant list so the strip stays
+  // accurate even when the caller isn't on the first page of results.
   useEffect(() => {
     if (!userId) return
-    fetch(`/api/bracket/leaderboard?meId=${encodeURIComponent(userId)}&page=1&pageSize=1`)
+    fetch(`/api/bracket/leaderboard/me?meId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then((data: { total?: number; me?: { rank: number; score: number; total: number } | null }) => {
         const total = data.total ?? data.me?.total ?? 0
