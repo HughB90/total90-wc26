@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "sync:fantasy": "tsx scripts/sync-fantasy-from-opta.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -21,8 +22,12 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
+    "pg": "^8.21.0",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }
