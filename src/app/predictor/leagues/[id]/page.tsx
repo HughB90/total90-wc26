@@ -17,6 +17,7 @@ import AuthHeader from '@/components/AuthHeader'
 import { flagUrl } from '@/lib/predictor-flags'
 import { PREDICTOR_ROUND_OPTIONS } from '@/lib/select-style'
 import ScoringRulesContent from '@/components/predictor/ScoringRulesContent'
+import { PickSummaryRow, type PickSummaryData, type PickSummaryScore } from '@/components/predictor/PickSummaryRow'
 import { profileFullName } from '@/lib/predictor/display-name'
 
 const C = {
@@ -384,17 +385,10 @@ function LeaderboardTab({ rows, meId }: { rows: LeaderboardRow[]; meId: string |
 interface MyRoundSummary {
   code: string
   label: string
-  picks: {
-    match_id: string
-    home: number
-    away: number
-    is_star: boolean
-    home_team: string
-    away_team: string
-    goalscorer_name: string | null
-    goalscorer_team: string | null
-  }[]
+  picks: PickSummaryData[]
   matchCount: number
+  round_pts: number
+  finalized_count: number
 }
 
 const GOALSCORER_ROUND_CODES = new Set(['r16', 'qf', 'sf', 'final'])
@@ -410,35 +404,54 @@ function MyPicksTab({ authed }: { authed: boolean }) {
       const results = await Promise.all(PREDICTOR_ROUND_OPTIONS.map(async (rm) => {
         try {
           const r = await fetch(`/api/predictor/round/${rm.code}`, { credentials: 'include', cache: 'no-store' })
-          if (!r.ok) return { code: rm.code, label: rm.label, picks: [], matchCount: 0 }
+          if (!r.ok) return { code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }
           const j = await r.json()
-          const matches = j.matches ?? []
-          const matchMap = new Map<string, { home: string; away: string }>()
-          for (const m of matches) matchMap.set(m.id, { home: m.home_team_code, away: m.away_team_code })
-          const picks = (j.my_picks ?? []).map((p: {
+          const matches = (j.matches ?? []) as {
+            id: string
+            home_team_code: string
+            away_team_code: string
+            home_score: number | null
+            away_score: number | null
+            went_to_pks: boolean | null
+            pk_winner_team_code: string | null
+          }[]
+          const matchMap = new Map<string, typeof matches[number]>()
+          for (const m of matches) matchMap.set(m.id, m)
+          const myScores = (j.my_scores ?? {}) as Record<string, PickSummaryScore>
+          const picks: PickSummaryData[] = (j.my_picks ?? []).map((p: {
             match_id: string
             home_score: number
             away_score: number
             is_star: boolean
+            if_draw_winner?: string | null
             goalscorer_team_code?: string | null
             goalscorer_player?: { short_name?: string | null; name?: string | null; last_name?: string | null } | null
           }) => {
             const gp = p.goalscorer_player
             const goalscorerName = gp?.short_name || gp?.name || gp?.last_name || null
+            const mm = matchMap.get(p.match_id)
             return {
               match_id: p.match_id,
-              home: p.home_score,
-              away: p.away_score,
-              is_star: p.is_star,
-              home_team: matchMap.get(p.match_id)?.home ?? '?',
-              away_team: matchMap.get(p.match_id)?.away ?? '?',
+              home_team: mm?.home_team_code ?? '?',
+              away_team: mm?.away_team_code ?? '?',
+              pick_home: p.home_score,
+              pick_away: p.away_score,
+              is_star: Boolean(p.is_star),
+              if_draw_winner: p.if_draw_winner ?? null,
               goalscorer_name: goalscorerName,
               goalscorer_team: p.goalscorer_team_code ?? null,
+              actual_home: mm?.home_score ?? null,
+              actual_away: mm?.away_score ?? null,
+              went_to_pks: Boolean(mm?.went_to_pks),
+              pk_winner_team_code: mm?.pk_winner_team_code ?? null,
+              score: myScores[p.match_id] ?? null,
             }
           })
-          return { code: rm.code, label: rm.label, picks, matchCount: matches.length }
+          const round_pts = picks.reduce((acc, p) => acc + (p.score?.total_pts ?? 0), 0)
+          const finalized_count = matches.filter((m) => m.home_score !== null && m.away_score !== null).length
+          return { code: rm.code, label: rm.label, picks, matchCount: matches.length, round_pts, finalized_count }
         } catch {
-          return { code: rm.code, label: rm.label, picks: [], matchCount: 0 }
+          return { code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }
         }
       }))
       if (!cancelled) setRounds(results)
@@ -487,41 +500,27 @@ function MyPicksTab({ authed }: { authed: boolean }) {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
             <div style={{ color: C.gold, fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{r.label}</div>
-            <span style={{ color: C.muted, fontSize: '0.7rem' }}>
-              {r.picks.length} pick{r.picks.length === 1 ? '' : 's'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              {r.finalized_count > 0 && (
+                <span style={{ color: '#00E676', fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                  {r.round_pts > 0 ? `+${r.round_pts}` : r.round_pts} pts
+                </span>
+              )}
+              <span style={{ color: C.muted, fontSize: '0.7rem' }}>
+                {r.picks.length} pick{r.picks.length === 1 ? '' : 's'}
+              </span>
             </span>
           </div>
           {r.picks.length === 0 ? (
             <div style={{ color: C.muted, fontSize: '0.78rem' }}>No picks submitted.</div>
           ) : (
-            <div style={{ display: 'grid', gap: '0.3rem' }}>
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
               {r.picks.map((p) => (
-                <div key={p.match_id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.35rem 0.5rem',
-                  fontSize: '0.78rem',
-                  color: C.text,
-                  backgroundColor: 'rgba(255,255,255,0.02)',
-                  borderRadius: '0.35rem',
-                  flexWrap: 'wrap',
-                }}>
-                  <span style={{ flex: 1, textAlign: 'right', minWidth: 60 }}>{p.home_team}</span>
-                  <strong style={{ color: C.gold, minWidth: 30, textAlign: 'center' }}>{p.home} – {p.away}</strong>
-                  <span style={{ flex: 1, minWidth: 60 }}>{p.away_team}</span>
-                  {p.is_star && <span style={{ color: C.gold, fontSize: '0.85rem' }}>★</span>}
-                  {GOALSCORER_ROUND_CODES.has(r.code) && p.goalscorer_name && (
-                    <span style={{
-                      flexBasis: '100%',
-                      color: C.muted,
-                      fontSize: '0.72rem',
-                      paddingLeft: '0.25rem',
-                    }}>
-                      ⚽ {p.goalscorer_name}{p.goalscorer_team ? ` (${p.goalscorer_team})` : ''}
-                    </span>
-                  )}
-                </div>
+                <PickSummaryRow
+                  key={p.match_id}
+                  pick={p}
+                  showGoalscorer={GOALSCORER_ROUND_CODES.has(r.code)}
+                />
               ))}
             </div>
           )}

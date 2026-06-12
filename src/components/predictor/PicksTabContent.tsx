@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { flagUrl } from '@/lib/predictor-flags'
 import { PREDICTOR_ROUND_OPTIONS } from '@/lib/select-style'
+import { PickSummaryRow, type PickSummaryData, type PickSummaryScore } from './PickSummaryRow'
 
 const C = {
   card: '#0F1C4D',
@@ -29,27 +30,20 @@ const C = {
 
 const GOALSCORER_ROUND_CODES = new Set(['r16', 'qf', 'sf', 'final'])
 
-interface RoundPick {
-  match_id: string
-  home_team: string
-  away_team: string
-  home_score: number
-  away_score: number
-  is_star: boolean
-  if_draw_winner: string | null
-  goalscorer_name: string | null
-  goalscorer_team: string | null
-}
-
 interface RoundSummary {
   code: string
   label: string
-  picks: RoundPick[]
+  picks: PickSummaryData[]
   matchCount: number
+  /** Sum of all post-match points earned in this round. */
+  round_pts: number
+  /** Number of matches finalized in this round. Drives 'X of Y final' UI. */
+  finalized_count: number
 }
 
 // sessionStorage cache keys. Bumped if the response shape changes.
-const CACHE_VERSION = 'v1'
+// v2: shape changed to include post-match result fields + per-pick scores.
+const CACHE_VERSION = 'v2'
 const ROUNDS_CACHE_KEY = `predictor.picks.rounds.${CACHE_VERSION}`
 const WINNER_CACHE_KEY = `predictor.picks.winner.${CACHE_VERSION}`
 
@@ -98,12 +92,21 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
         try {
           const r = await fetchWithTimeout(`/api/predictor/round/${rm.code}`)
           if (!r.ok) {
-            return { code: rm.code, label: rm.label, picks: [], matchCount: 0 }
+            return { code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }
           }
           const j = await r.json()
-          const matches = (j.matches ?? []) as { id: string; home_team_code: string; away_team_code: string }[]
-          const matchMap = new Map<string, { home: string; away: string }>()
-          for (const m of matches) matchMap.set(m.id, { home: m.home_team_code, away: m.away_team_code })
+          const matches = (j.matches ?? []) as {
+            id: string
+            home_team_code: string
+            away_team_code: string
+            home_score: number | null
+            away_score: number | null
+            went_to_pks: boolean | null
+            pk_winner_team_code: string | null
+          }[]
+          const matchMap = new Map<string, typeof matches[number]>()
+          for (const m of matches) matchMap.set(m.id, m)
+          const myScores = (j.my_scores ?? {}) as Record<string, PickSummaryScore>
 
           const myPicks = (j.my_picks ?? []) as {
             match_id: string
@@ -115,26 +118,34 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
             goalscorer_player?: { short_name?: string | null; name?: string | null; last_name?: string | null } | null
           }[]
 
-          const picks: RoundPick[] = myPicks.map((p) => {
+          const picks: PickSummaryData[] = myPicks.map((p) => {
             const mm = matchMap.get(p.match_id)
             const gp = p.goalscorer_player
             const goalscorerName = gp?.short_name || gp?.name || gp?.last_name || null
             return {
               match_id: p.match_id,
-              home_team: mm?.home ?? '?',
-              away_team: mm?.away ?? '?',
-              home_score: p.home_score,
-              away_score: p.away_score,
+              home_team: mm?.home_team_code ?? '?',
+              away_team: mm?.away_team_code ?? '?',
+              pick_home: p.home_score,
+              pick_away: p.away_score,
               is_star: Boolean(p.is_star),
               if_draw_winner: p.if_draw_winner ?? null,
               goalscorer_name: goalscorerName,
               goalscorer_team: p.goalscorer_team_code ?? null,
+              actual_home: mm?.home_score ?? null,
+              actual_away: mm?.away_score ?? null,
+              went_to_pks: Boolean(mm?.went_to_pks),
+              pk_winner_team_code: mm?.pk_winner_team_code ?? null,
+              score: myScores[p.match_id] ?? null,
             }
           })
 
-          return { code: rm.code, label: rm.label, picks, matchCount: matches.length }
+          const round_pts = picks.reduce((acc, p) => acc + (p.score?.total_pts ?? 0), 0)
+          const finalized_count = matches.filter((m) => m.home_score !== null && m.away_score !== null).length
+
+          return { code: rm.code, label: rm.label, picks, matchCount: matches.length, round_pts, finalized_count }
         } catch {
-          return { code: rm.code, label: rm.label, picks: [], matchCount: 0 }
+          return { code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }
         }
       }))
       if (!cancelled) {
@@ -200,23 +211,33 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
       </Pill>
 
       {/* 8 Round pills */}
-      {(rounds ?? PREDICTOR_ROUND_OPTIONS.map((rm) => ({ code: rm.code, label: rm.label, picks: [], matchCount: 0 }))).map((r) => (
+      {(rounds ?? PREDICTOR_ROUND_OPTIONS.map((rm) => ({ code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }))).map((r) => (
         <Pill
           key={r.code}
           title={r.label}
           editHref={`/predictor/round/${r.code}`}
           rightExtra={
-            <span style={{ color: C.muted, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-              {r.picks.length} pick{r.picks.length === 1 ? '' : 's'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              {r.finalized_count > 0 && (
+                <span style={{
+                  color: C.green,
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                }}>{r.round_pts > 0 ? `+${r.round_pts}` : r.round_pts} pts</span>
+              )}
+              <span style={{ color: C.muted, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                {r.picks.length} pick{r.picks.length === 1 ? '' : 's'}
+              </span>
             </span>
           }
         >
           {r.picks.length > 0 ? (
             // Trust the API: render picks whenever they're present, regardless
             // of the parent's `authed` prop. The parent can lag the cookie.
-            <div style={{ display: 'grid', gap: '0.3rem', minWidth: 0 }}>
+            <div style={{ display: 'grid', gap: '0.4rem', minWidth: 0 }}>
               {r.picks.map((p) => (
-                <PickRow key={p.match_id} pick={p} showGoalscorer={GOALSCORER_ROUND_CODES.has(r.code)} />
+                <PickSummaryRow key={p.match_id} pick={p} showGoalscorer={GOALSCORER_ROUND_CODES.has(r.code)} />
               ))}
             </div>
           ) : !authed ? (
@@ -230,78 +251,6 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
           )}
         </Pill>
       ))}
-    </div>
-  )
-}
-
-function PickRow({ pick, showGoalscorer }: { pick: RoundPick; showGoalscorer: boolean }) {
-  return (
-    <div style={{
-      padding: '0.4rem 0.5rem',
-      backgroundColor: 'rgba(255,255,255,0.02)',
-      borderRadius: '0.35rem',
-      minWidth: 0,
-    }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr auto 1fr auto',
-        alignItems: 'center',
-        gap: '0.4rem',
-        minWidth: 0,
-      }}>
-        <span style={{
-          color: C.text,
-          fontSize: '0.8rem',
-          textAlign: 'right',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}>{pick.home_team}</span>
-        <strong style={{
-          color: C.gold,
-          fontSize: '0.85rem',
-          whiteSpace: 'nowrap',
-          padding: '0 0.2rem',
-        }}>{pick.home_score} – {pick.away_score}</strong>
-        <span style={{
-          color: C.text,
-          fontSize: '0.8rem',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}>{pick.away_team}</span>
-        <span style={{
-          color: C.gold,
-          fontSize: '0.95rem',
-          width: 14,
-          textAlign: 'center',
-          flexShrink: 0,
-        }}>{pick.is_star ? '★' : ''}</span>
-      </div>
-      {pick.if_draw_winner && (
-        <div style={{
-          marginTop: '0.2rem',
-          color: C.muted,
-          fontSize: '0.7rem',
-          textAlign: 'center',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>→ {pick.if_draw_winner} adv on PKs</div>
-      )}
-      {showGoalscorer && pick.goalscorer_name && (
-        <div style={{
-          marginTop: '0.2rem',
-          color: C.muted,
-          fontSize: '0.72rem',
-          textAlign: 'center',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>⚽ {pick.goalscorer_name}{pick.goalscorer_team ? ` (${pick.goalscorer_team})` : ''}</div>
-      )}
     </div>
   )
 }
