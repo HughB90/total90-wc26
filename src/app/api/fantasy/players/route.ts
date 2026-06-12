@@ -19,7 +19,7 @@ import { createAdminSupabase } from '@/lib/supabase-server'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-type PosType = 'GK' | 'DEF' | 'MID' | 'FWD'
+type PosType = 'GKP' | 'DEF' | 'MID' | 'FOR'
 
 interface AggregatedPlayer {
   opta_player_id: string
@@ -214,7 +214,7 @@ export async function GET(req: Request) {
         },
       }
 
-      if (first.pos_type === 'GK') {
+      if (first.pos_type === 'GKP') {
         player.gk = {
           saves: sumRawStat('saves'),
           high_claims: sumRawStat('goodHighClaim'),

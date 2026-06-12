@@ -6,7 +6,7 @@ import { selectStyle } from '@/lib/select-style'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PosType = 'ALL' | 'GK' | 'DEF' | 'MID' | 'FWD'
+type PosType = 'ALL' | 'GKP' | 'DEF' | 'MID' | 'FOR'
 
 interface Player {
   opta_player_id: string
@@ -240,7 +240,7 @@ export default function FantasyClient() {
 
         {/* Position chips */}
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-          {(['ALL', 'GK', 'DEF', 'MID', 'FWD'] as PosType[]).map(pos => (
+          {(['ALL', 'GKP', 'DEF', 'MID', 'FOR'] as PosType[]).map(pos => (
             <button
               key={pos}
               onClick={() => setSelectedPos(pos)}
@@ -294,7 +294,7 @@ export default function FantasyClient() {
 // ─── Stats Grid ───────────────────────────────────────────────────────────────
 
 function StatsGrid({ players, onPlayerClick }: { players: Player[]; onPlayerClick: (p: Player) => void }) {
-  const hasGK = players.some(p => p.pos_type === 'GK')
+  const hasGK = players.some(p => p.pos_type === 'GKP')
 
   return (
     <div style={{ minWidth: '100%', fontSize: '0.8rem' }}>

@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS fantasy_player_match_stats (
   name TEXT NOT NULL,
   team TEXT NOT NULL,
   position TEXT, -- Original Opta position string
-  pos_type TEXT NOT NULL, -- 'GK', 'DEF', 'MID', 'FWD'
+  pos_type TEXT NOT NULL, -- 'GKP', 'DEF', 'MID', 'FOR'
   mins INT NOT NULL DEFAULT 0,
   fantasy_points DECIMAL(10,2) NOT NULL DEFAULT 0,
   breakdown JSONB, -- v1.4 breakdown by endpoint (e.g. { "goals": 7, "assist": 5 })

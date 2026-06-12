@@ -95,7 +95,7 @@ function optaGet(token: string, path: string): Promise<any> {
 // v1.4 Scoring
 // ──────────────────────────────────────────────────────────────────────────────
 
-type PosType = 'GK' | 'DEF' | 'MID' | 'FWD'
+type PosType = 'GKP' | 'DEF' | 'MID' | 'FOR'
 
 // Opta position strings observed: "Goalkeeper", "Defender", "Wing Back",
 // "Defensive Midfielder", "Midfielder", "Attacking Midfielder", "Striker", "Forward", "Substitute".
@@ -103,12 +103,12 @@ type PosType = 'GK' | 'DEF' | 'MID' | 'FWD'
 function getPos(posRaw: string | undefined): PosType {
   if (!posRaw) return 'MID'
   const p = posRaw.toUpperCase()
-  if (p === 'GOALKEEPER' || p === 'GK' || p.includes('KEEPER')) return 'GK'
+  if (p === 'GOALKEEPER' || p === 'GKP' || p.includes('KEEPER')) return 'GKP'
   // FWD must be checked BEFORE generic 'MIDFIELDER' check — "Attacking Midfielder" is FWD per v1.4
   if (p === 'STRIKER' || p === 'FORWARD' || p === 'ATTACKING MIDFIELDER' ||
       p.includes('FORWARD') || p.includes('STRIKER') || p.includes('ATTACKING MID') ||
       p === 'FW' || p === 'LW' || p === 'RW' || p === 'ST' || p === 'CF' || p === 'CAM') {
-    return 'FWD'
+    return 'FOR'
   }
   // DEF: explicit list (don't use 'DEF' substring, would match "Defensive Midfielder")
   if (p === 'DEFENDER' || p === 'WING BACK' || p === 'CB' || p === 'LB' || p === 'RB' || p === 'WB' ||
@@ -124,10 +124,10 @@ function getPos(posRaw: string | undefined): PosType {
 }
 
 const PTS: Record<PosType, Record<string, number>> = {
-  FWD: { mins45:3, minsU45:1, goals:7, assist:7, sot:1, snot:1, foulDrawn:1, dribble:1, aerialWon:0.25, foul:-1, interception:0.5, tackle:0.5, block:0.25, offside:-1, penCon:-3, ownGoal:-5, yellow:-1, red:-10, pass:0.1, longBall:0.25, f3:0.2, ppa:0.2, throughBall:1, keyPass:1, touchInBox:1, winningGoal:5, ballRecovery:0.5, dispossessed:-1, possLost:-0.25, cross:0.5 },
+  FOR: { mins45:3, minsU45:1, goals:7, assist:7, sot:1, snot:1, foulDrawn:1, dribble:1, aerialWon:0.25, foul:-1, interception:0.5, tackle:0.5, block:0.25, offside:-1, penCon:-3, ownGoal:-5, yellow:-1, red:-10, pass:0.1, longBall:0.25, f3:0.2, ppa:0.2, throughBall:1, keyPass:1, touchInBox:1, winningGoal:5, ballRecovery:0.5, dispossessed:-1, possLost:-0.25, cross:0.5 },
   MID: { mins45:5, minsU45:2, goals:5, assist:5, sot:0.5, snot:0.5, foulDrawn:0.5, dribble:0.5, aerialWon:0.25, foul:-1, interception:0.5, tackle:0.5, block:0.25, offside:-1, penCon:-3, ownGoal:-5, yellow:-1, red:-10, pass:0.1, longBall:0.25, f3:0.2, ppa:0.2, throughBall:1, keyPass:1, touchInBox:1, winningGoal:5, ballRecovery:0.5, dispossessed:-1, possLost:-0.25, cross:0.5 },
   DEF: { mins45:7, minsU45:3, goals:3, assist:3, sot:0.25, snot:0.25, foulDrawn:0.25, dribble:0.25, aerialWon:0.5, cleanSheet:3, gc:-2, foul:-0.5, interception:1, tackle:1, block:0.5, offside:-1, penCon:-3, ownGoal:-5, yellow:-1, red:-10, pass:0.1, longBall:0.25, f3:0.2, ppa:0.2, throughBall:1, keyPass:1, touchInBox:1, winningGoal:5, ballRecovery:0.5, dispossessed:-1, possLost:-0.25, cross:0.5 },
-  GK:  { mins45:10, minsU45:4, goals:3, assist:3, sot:0.25, snot:0.25, foulDrawn:0.25, dribble:0.25, aerialWon:0.5, cleanSheet:3, gc:-2, foul:-0.5, interception:1, tackle:1, block:0.5, offside:-1, penCon:-3, ownGoal:-5, yellow:-1, red:-10, pass:0.1, longBall:0.1, f3:0.2, ppa:0.2, throughBall:1, keyPass:1, touchInBox:1, winningGoal:5, ballRecovery:0, dispossessed:-1, possLost:-0.25, save:1, cross:0.5, keeperThrow:0.25, goalKick:0.2 },
+  GKP: { mins45:10, minsU45:4, goals:3, assist:3, sot:0.25, snot:0.25, foulDrawn:0.25, dribble:0.25, aerialWon:0.5, cleanSheet:3, gc:-2, foul:-0.5, interception:1, tackle:1, block:0.5, offside:-1, penCon:-3, ownGoal:-5, yellow:-1, red:-10, pass:0.1, longBall:0.1, f3:0.2, ppa:0.2, throughBall:1, keyPass:1, touchInBox:1, winningGoal:5, ballRecovery:0, dispossessed:-1, possLost:-0.25, save:1, cross:0.5, keeperThrow:0.25, goalKick:0.2 },
 }
 
 function statMap(player: any): Record<string, number> {
@@ -174,7 +174,7 @@ function scorePlayer(
   add('dribble', g(s, 'wonContest') * M.dribble)
   add('aerial_won', g(s, 'aerialWon') * M.aerialWon)
 
-  if (posType === 'DEF' || posType === 'GK') {
+  if (posType === 'DEF' || posType === 'GKP') {
     if (teamCleanSheet && mins >= 60 && g(s, 'cleanSheet')) add('clean_sheet', M.cleanSheet)
     add('goals_conceded', teamGoalsConceded * M.gc)
   }
@@ -202,7 +202,7 @@ function scorePlayer(
   add('dispossessed', g(s, 'dispossessed') * M.dispossessed)
   add('poss_lost', g(s, 'possLostAll') * M.possLost)
 
-  if (posType === 'GK') {
+  if (posType === 'GKP') {
     add('save', g(s, 'saves') * M.save)
     add('keeper_throw', g(s, 'accurateKeeperThrows') * (M.keeperThrow || 0.25))
     add('goal_kick', g(s, 'accurateGoalKicks') * (M.goalKick || 0.2))
