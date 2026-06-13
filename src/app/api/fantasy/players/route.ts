@@ -31,6 +31,7 @@ interface AggregatedPlayer {
   mins_total: number
   fantasy_points_total: number
   fantasy_points_avg: number
+  fantasy_points_per_90: number
   attacking: {
     goals: number
     assists: number
@@ -173,6 +174,9 @@ export async function GET(req: Request) {
         mins_total: minsTotal,
         fantasy_points_total: Math.round(ptsTotal * 100) / 100,
         fantasy_points_avg: Math.round((ptsTotal / gamesPlayed) * 100) / 100,
+        fantasy_points_per_90: minsTotal > 0
+          ? Math.round((ptsTotal * 90 / minsTotal) * 100) / 100
+          : 0,
         attacking: {
           goals: sumRawStat('goals'),
           assists: sumRawStat('goalAssist'),
@@ -233,6 +237,10 @@ export async function GET(req: Request) {
       if (sortField === 'fantasy_points') {
         aVal = a.fantasy_points_total
         bVal = b.fantasy_points_total
+      } else if (sortField === 'fantasy_points_per_90' || sortField === 'pts_per_90') {
+        // Require at least 25 minutes to qualify for per-90 ranking (filters out late-sub noise)
+        aVal = a.mins_total >= 25 ? a.fantasy_points_per_90 : -1
+        bVal = b.mins_total >= 25 ? b.fantasy_points_per_90 : -1
       } else if (sortField === 'name') {
         aVal = a.name
         bVal = b.name
