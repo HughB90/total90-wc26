@@ -18,6 +18,7 @@ interface Player {
   mins_total: number
   fantasy_points_total: number
   fantasy_points_avg: number
+  fantasy_points_per_90: number
   attacking: {
     goals: number
     assists: number
@@ -163,6 +164,7 @@ export default function FantasyClient() {
   const [selectedComp, setSelectedComp] = useState('WC2026')
   const [selectedRound, setSelectedRound] = useState('ALL')
   const [selectedPos, setSelectedPos] = useState<PosType>('ALL')
+  const [scoreMode, setScoreMode] = useState<'total' | 'per90'>('total')
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -187,6 +189,7 @@ export default function FantasyClient() {
       competition: selectedComp,
       round: selectedRound,
       position: selectedPos,
+      sort: scoreMode === 'per90' ? 'fantasy_points_per_90:desc' : 'fantasy_points:desc',
       limit: '500',
     })
     if (search) params.set('search', search)
@@ -201,7 +204,7 @@ export default function FantasyClient() {
         console.error(e)
         setLoading(false)
       })
-  }, [selectedComp, selectedRound, selectedPos, search])
+  }, [selectedComp, selectedRound, selectedPos, search, scoreMode])
 
   const currentComp = competitions.find(c => c.code === selectedComp)
   const rounds = currentComp?.rounds || []
@@ -318,11 +321,59 @@ export default function FantasyClient() {
                 cursor: 'pointer',
                 fontFamily: 'inherit',
                 transition: 'all 0.15s',
+                whiteSpace: 'nowrap',
+                flex: '0 0 auto',
               }}
             >
               {pos}
             </button>
           ))}
+        </div>
+
+        {/* Score mode toggle: Total vs Per 90 */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          marginTop: '0.75rem',
+          fontSize: '0.7rem',
+          color: C.muted,
+        }}>
+          <span style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}>Rank by</span>
+          <div style={{
+            display: 'inline-flex',
+            backgroundColor: C.bg,
+            border: `1px solid ${C.border}`,
+            borderRadius: '1.5rem',
+            padding: '0.15rem',
+          }}>
+            {([
+              { v: 'total', label: 'Total' },
+              { v: 'per90', label: 'Per 90' },
+            ] as const).map(opt => (
+              <button
+                key={opt.v}
+                onClick={() => setScoreMode(opt.v)}
+                style={{
+                  backgroundColor: scoreMode === opt.v ? C.mint : 'transparent',
+                  color: scoreMode === opt.v ? '#0A0F2E' : C.muted,
+                  border: 'none',
+                  borderRadius: '1.25rem',
+                  padding: '0.3rem 0.85rem',
+                  fontSize: '0.7rem',
+                  fontWeight: scoreMode === opt.v ? 700 : 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {scoreMode === 'per90' && (
+            <span style={{ fontSize: '0.65rem', fontStyle: 'italic' }}>min 25’ played</span>
+          )}
         </div>
       </div>
 
@@ -339,11 +390,11 @@ export default function FantasyClient() {
         <>
           {/* Mobile compact list (< 720px) */}
           <div className="fantasy-mobile-list">
-            <MobileList players={players} onPlayerClick={handlePlayerClick} />
+            <MobileList players={players} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
           </div>
           {/* Desktop wide grid (>= 720px) — horizontally scrolling */}
           <div className="fantasy-desktop-grid" style={{ overflowX: 'auto' }}>
-            <StatsGrid players={players} onPlayerClick={handlePlayerClick} />
+            <StatsGrid players={players} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
           </div>
           <style jsx global>{`
             .fantasy-mobile-list { display: block; }
@@ -375,14 +426,20 @@ export default function FantasyClient() {
 // One row per player: identity (left) + PTS / GP / AVG (right), tap to open drawer.
 // No horizontal scroll, designed to fit on a 360px viewport without clipping.
 
-function MobileList({ players, onPlayerClick }: { players: Player[]; onPlayerClick: (p: Player) => void }) {
+function MobileList({
+  players, onPlayerClick, scoreMode,
+}: {
+  players: Player[]
+  onPlayerClick: (p: Player) => void
+  scoreMode: 'total' | 'per90'
+}) {
   return (
     <div style={{ fontSize: '0.85rem' }}>
       {/* Sub-header */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 48px 28px 48px',
-        gap: '0.5rem',
+        gridTemplateColumns: '1fr 52px 36px 48px',
+        gap: '0.4rem',
         backgroundColor: C.card,
         borderBottom: `2px solid ${C.border}`,
         padding: '0.6rem 0.75rem',
@@ -395,9 +452,13 @@ function MobileList({ players, onPlayerClick }: { players: Player[]; onPlayerCli
         borderRadius: '0.5rem 0.5rem 0 0',
       }}>
         <div style={{ color: C.text }}>PLAYER</div>
-        <div style={{ color: C.mint, textAlign: 'right' }}>PTS</div>
-        <div style={{ color: C.muted, textAlign: 'right' }}>GP</div>
-        <div style={{ color: C.muted, textAlign: 'right' }}>AVG</div>
+        <div style={{ color: C.mint, textAlign: 'right' }}>
+          {scoreMode === 'per90' ? 'P/90' : 'PTS'}
+        </div>
+        <div style={{ color: C.muted, textAlign: 'right' }}>MIN</div>
+        <div style={{ color: C.muted, textAlign: 'right' }}>
+          {scoreMode === 'per90' ? 'TOT' : 'AVG'}
+        </div>
       </div>
       {players.map(p => {
         const posColor = p.pos_type === 'GKP' ? C.gold : p.pos_type === 'DEF' ? '#5ec5ff' : p.pos_type === 'MID' ? C.mint : C.red
@@ -407,8 +468,8 @@ function MobileList({ players, onPlayerClick }: { players: Player[]; onPlayerCli
             onClick={() => onPlayerClick(p)}
             style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 48px 28px 48px',
-              gap: '0.5rem',
+              gridTemplateColumns: '1fr 52px 36px 48px',
+              gap: '0.4rem',
               padding: '0.75rem',
               borderBottom: `1px solid ${C.border}`,
               cursor: 'pointer',
@@ -448,19 +509,27 @@ function MobileList({ players, onPlayerClick }: { players: Player[]; onPlayerCli
               color: C.gold,
               fontSize: '1rem',
               fontVariantNumeric: 'tabular-nums',
-            }}>{p.fantasy_points_total.toFixed(1)}</div>
+            }}>
+              {scoreMode === 'per90'
+                ? (p.mins_total >= 25 ? p.fantasy_points_per_90.toFixed(1) : '—')
+                : p.fantasy_points_total.toFixed(1)}
+            </div>
             <div style={{
               textAlign: 'right',
               color: C.muted,
               fontVariantNumeric: 'tabular-nums',
               fontSize: '0.75rem',
-            }}>{p.games_played}</div>
+            }}>{p.mins_total}</div>
             <div style={{
               textAlign: 'right',
               color: C.text,
               fontVariantNumeric: 'tabular-nums',
               fontSize: '0.8rem',
-            }}>{p.fantasy_points_avg.toFixed(1)}</div>
+            }}>
+              {scoreMode === 'per90'
+                ? p.fantasy_points_total.toFixed(1)
+                : p.fantasy_points_avg.toFixed(1)}
+            </div>
           </div>
         )
       })}
@@ -468,7 +537,13 @@ function MobileList({ players, onPlayerClick }: { players: Player[]; onPlayerCli
   )
 }
 
-function StatsGrid({ players, onPlayerClick }: { players: Player[]; onPlayerClick: (p: Player) => void }) {
+function StatsGrid({
+  players, onPlayerClick, scoreMode,
+}: {
+  players: Player[]
+  onPlayerClick: (p: Player) => void
+  scoreMode: 'total' | 'per90'
+}) {
   const hasGK = players.some(p => p.pos_type === 'GKP')
 
   return (
@@ -488,9 +563,13 @@ function StatsGrid({ players, onPlayerClick }: { players: Player[]; onPlayerClic
         zIndex: 10,
       }}>
         <div style={{ color: C.text }}>PLAYER</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>PTS</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>GP</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>AVG</div>
+        <div style={{ color: C.mint, textAlign: 'center' }}>
+          {scoreMode === 'per90' ? 'P/90' : 'PTS'}
+        </div>
+        <div style={{ color: C.mint, textAlign: 'center' }}>MIN</div>
+        <div style={{ color: C.mint, textAlign: 'center' }}>
+          {scoreMode === 'per90' ? 'TOT' : 'AVG'}
+        </div>
         <div style={{ color: C.mint, textAlign: 'center' }}>G</div>
         <div style={{ color: C.mint, textAlign: 'center' }}>A</div>
         <div style={{ color: C.mint, textAlign: 'center' }}>SoT</div>
@@ -538,9 +617,17 @@ function StatsGrid({ players, onPlayerClick }: { players: Player[]; onPlayerClic
           </div>
 
           {/* Fantasy */}
-          <div style={{ textAlign: 'center', fontWeight: 700, color: C.gold }}>{p.fantasy_points_total.toFixed(1)}</div>
-          <div style={{ textAlign: 'center' }}>{p.games_played}</div>
-          <div style={{ textAlign: 'center' }}>{p.fantasy_points_avg.toFixed(1)}</div>
+          <div style={{ textAlign: 'center', fontWeight: 700, color: C.gold }}>
+            {scoreMode === 'per90'
+              ? (p.mins_total >= 25 ? p.fantasy_points_per_90.toFixed(1) : '—')
+              : p.fantasy_points_total.toFixed(1)}
+          </div>
+          <div style={{ textAlign: 'center' }}>{p.mins_total}</div>
+          <div style={{ textAlign: 'center' }}>
+            {scoreMode === 'per90'
+              ? p.fantasy_points_total.toFixed(1)
+              : p.fantasy_points_avg.toFixed(1)}
+          </div>
 
           {/* Attacking */}
           <div style={{ textAlign: 'center' }}>{p.attacking.goals || '-'}</div>
@@ -694,8 +781,8 @@ function PlayerDrawer({
                     <div style={{ fontSize: '1.1rem', fontWeight: 700, color: C.mint }}>
                       {m.fantasy_points.toFixed(1)}
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: C.muted }}>
-                      {m.mins}'
+                    <div style={{ fontSize: '0.65rem', color: C.muted }}>
+                      {m.mins}’ · {m.mins > 0 ? (m.fantasy_points * 90 / m.mins).toFixed(1) : '—'}/90
                     </div>
                   </div>
                 </div>
