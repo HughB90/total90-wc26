@@ -215,19 +215,24 @@ function scorePlayer(
 // Round code derivation
 // ──────────────────────────────────────────────────────────────────────────────
 
-function deriveRoundCode(stage: string | undefined, matchNum: number): string {
+// Opta returns matchNumber=undefined for WC2026, but week=1|2|3 maps cleanly to
+// the three group-stage matchdays. Knockout rounds are identified by stage name.
+function deriveRoundCode(stage: string | undefined, _matchNum: number, week?: number | string): string {
   if (!stage) return 'WC2026-MD1'
   const s = stage.toLowerCase()
-  if (s.includes('group') || matchNum <= 48) {
-    if (matchNum <= 16) return 'WC2026-MD1'
-    if (matchNum <= 32) return 'WC2026-MD2'
-    return 'WC2026-MD3'
+  const w = typeof week === 'string' ? parseInt(week, 10) : week
+  if (s.includes('group')) {
+    if (w === 1) return 'WC2026-MD1'
+    if (w === 2) return 'WC2026-MD2'
+    if (w === 3) return 'WC2026-MD3'
+    return 'WC2026-MD1'
   }
-  if (s.includes('32')) return 'WC2026-R32'
-  if (s.includes('16')) return 'WC2026-R16'
+  if (s.includes('32') || s.includes('round of 32')) return 'WC2026-R32'
+  if (s.includes('16') || s.includes('round of 16')) return 'WC2026-R16'
   if (s.includes('quarter')) return 'WC2026-QF'
   if (s.includes('semi')) return 'WC2026-SF'
-  if (s.includes('final')) return matchNum === 103 ? 'WC2026-3RD' : 'WC2026-F'
+  if (s.includes('3rd place') || s.includes('third place')) return 'WC2026-3RD'
+  if (s.includes('final')) return 'WC2026-F'
   return 'WC2026-MD1'
 }
 
@@ -282,7 +287,7 @@ async function main() {
     const homeScore = scores.total?.home ?? scores.ft?.home ?? 0
     const awayScore = scores.total?.away ?? scores.ft?.away ?? 0
 
-    const roundCode = deriveRoundCode(mi.stage?.name, mi.matchNumber)
+    const roundCode = deriveRoundCode(mi.stage?.name, mi.matchNumber, mi.week)
 
     fixtureRows.push({
       competition_id: compId,
