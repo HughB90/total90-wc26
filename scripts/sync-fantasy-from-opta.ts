@@ -217,6 +217,15 @@ function scorePlayer(
 
 // Opta returns matchNumber=undefined for WC2026, but week=1|2|3 maps cleanly to
 // the three group-stage matchdays. Knockout rounds are identified by stage name.
+//
+// Opta stage names (verified 2026-06-14):
+//   "Group Stage" (week=1|2|3)  → MD1/MD2/MD3 (24 games each)
+//   "16th Finals"               → Round of 32 (16 games)
+//   "8th Finals"                → Round of 16 (8 games)
+//   "Quarter-finals"            → QF (4 games)
+//   "Semi-finals"               → SF (2 games)
+//   "3rd Place Final"           → 3rd-place
+//   "Final"                     → Final
 function deriveRoundCode(stage: string | undefined, _matchNum: number, week?: number | string): string {
   if (!stage) return 'WC2026-MD1'
   const s = stage.toLowerCase()
@@ -227,13 +236,31 @@ function deriveRoundCode(stage: string | undefined, _matchNum: number, week?: nu
     if (w === 3) return 'WC2026-MD3'
     return 'WC2026-MD1'
   }
-  if (s.includes('32') || s.includes('round of 32')) return 'WC2026-R32'
-  if (s.includes('16') || s.includes('round of 16')) return 'WC2026-R16'
+  // Check 3rd place + (semi|quarter) BEFORE generic 'final'/'16'/'8' substring matches.
+  if (s.includes('3rd place') || s.includes('third place')) return 'WC2026-3RD'
   if (s.includes('quarter')) return 'WC2026-QF'
   if (s.includes('semi')) return 'WC2026-SF'
-  if (s.includes('3rd place') || s.includes('third place')) return 'WC2026-3RD'
-  if (s.includes('final')) return 'WC2026-F'
+  // Opta uses "16th Finals" for R32 and "8th Finals" for R16.
+  if (s.includes('16th finals') || s.includes('round of 32')) return 'WC2026-R32'
+  if (s.includes('8th finals') || s.includes('round of 16')) return 'WC2026-R16'
+  if (s === 'final' || s.includes('final')) return 'WC2026-F'
   return 'WC2026-MD1'
+}
+
+// Hugh's canonical round labels (matches the in-app spec image).
+const ROUND_LABELS: Record<string, string> = {
+  'WC2026-MD1': 'Round 1: Group Stage #1',
+  'WC2026-MD2': 'Round 2: Group Stage #2',
+  'WC2026-MD3': 'Round 3: Group Stage #3',
+  'WC2026-R32': 'Round 4: Round of 32',
+  'WC2026-R16': 'Round 5: Round of 16',
+  'WC2026-QF':  'Round 6: Quarter Finals',
+  'WC2026-SF':  'Round 7: Semi Finals',
+  'WC2026-3RD': 'Round 8: 3rd Place',
+  'WC2026-F':   'Round 8: Final',
+}
+function roundLabel(code: string, fallback: string): string {
+  return ROUND_LABELS[code] || fallback
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -249,13 +276,21 @@ async function main() {
   const matches = ma1.match || []
   console.log(`   ${matches.length} fixtures total`)
 
-  const played = matches.filter((m: any) => m.liveData?.matchDetails?.matchStatus === 'Played')
-  console.log(`   ${played.length} played`)
-
-  if (played.length === 0) {
-    console.log('✅ No played matches yet. Exiting.')
+  if (process.argv.includes('--peek')) {
+    const counts: Record<string, number> = {}
+    for (const x of matches) {
+      const mi = x.matchInfo
+      const k = `stage="${mi.stage?.name}" week=${mi.week} status=${x.liveData?.matchDetails?.matchStatus}`
+      counts[k] = (counts[k]||0)+1
+    }
+    for (const k of Object.keys(counts).sort()) console.log(`   ${counts[k]}× ${k}`)
+    console.log('\nFirst matchInfo:')
+    console.log(JSON.stringify(matches[0].matchInfo, null, 2))
     return
   }
+
+  const played = matches.filter((m: any) => m.liveData?.matchDetails?.matchStatus === 'Played')
+  console.log(`   ${played.length} played`)
 
   // Get WC2026 competition ID
   const { data: comp } = await supabase.from('fantasy_competitions').select('id').eq('code', 'WC2026').single()
@@ -264,6 +299,35 @@ async function main() {
 
   const fixtureRows: any[] = []
   const playerRows: any[] = []
+
+  // First pass: stub fixture rows for EVERY fixture in the tournament so the
+  // round dropdown reflects total scheduled games per round (not just played).
+  for (const m of matches) {
+    const mi = m.matchInfo
+    const roundCode = deriveRoundCode(mi.stage?.name, mi.matchNumber, mi.week)
+    const status = m.liveData?.matchDetails?.matchStatus === 'Played' ? 'played' : 'scheduled'
+    const home = mi.contestant?.find((c: any) => c.position === 'home')
+    const away = mi.contestant?.find((c: any) => c.position === 'away')
+    const scores = m.liveData?.matchDetails?.scores || {}
+    fixtureRows.push({
+      competition_id: compId,
+      opta_fixture_id: mi.id,
+      date: mi.date,
+      round_code: roundCode,
+      round_name: roundLabel(roundCode, mi.stage?.name || 'Group Stage'),
+      stage: roundCode.includes('MD') ? 'Group' : 'Knockout',
+      home_team: home?.name || 'Unknown',
+      away_team: away?.name || 'Unknown',
+      home_score: scores.total?.home ?? scores.ft?.home ?? null,
+      away_score: scores.total?.away ?? scores.ft?.away ?? null,
+      status,
+    })
+  }
+  console.log(`   ${fixtureRows.length} fixture stubs queued (${fixtureRows.filter(f => f.status === 'played').length} played)`)
+
+  if (played.length === 0) {
+    console.log('ℹ️  No played matches yet — will only upsert fixture stubs.')
+  }
 
   for (const m of played) {
     const mi = m.matchInfo
@@ -289,19 +353,24 @@ async function main() {
 
     const roundCode = deriveRoundCode(mi.stage?.name, mi.matchNumber, mi.week)
 
-    fixtureRows.push({
+    // Overwrite the stub row for this fixture with the played payload
+    // (final scores + status='played').
+    const stubIdx = fixtureRows.findIndex(f => f.opta_fixture_id === fxId)
+    const playedRow = {
       competition_id: compId,
       opta_fixture_id: fxId,
       date: mi.date,
       round_code: roundCode,
-      round_name: mi.stage?.name || 'Group Stage',
+      round_name: roundLabel(roundCode, mi.stage?.name || 'Group Stage'),
       stage: roundCode.includes('MD') ? 'Group' : 'Knockout',
       home_team: home?.name || 'Unknown',
       away_team: away?.name || 'Unknown',
       home_score: homeScore,
       away_score: awayScore,
       status: 'played',
-    })
+    }
+    if (stubIdx >= 0) fixtureRows[stubIdx] = playedRow
+    else fixtureRows.push(playedRow)
 
     for (const lu of lineUps) {
       const isHome = lu.contestantId === home?.id
@@ -327,6 +396,7 @@ async function main() {
           fantasy_points: result.total,
           breakdown: result.breakdown,
           raw_stats: result.rawStats,
+          _opta_fixture_id: fxId, // resolved to fixture_id UUID after DB upsert
         })
       }
     }
@@ -366,22 +436,25 @@ async function main() {
   
   const fixtureIdMap = new Map(fixtures?.map(f => [f.opta_fixture_id, f.id]) || [])
 
-  // Enrich player rows with fixture_id
+  // Enrich player rows with fixture_id from each match's opta_fixture_id
+  // (tagged on the row during the played-loop pass above). Then strip the
+  // helper key before upsert.
   for (const pr of playerRows) {
-    const fixtureOptaId = fixtureRows.find(f => f.home_team === pr.team || f.away_team === pr.team)?.opta_fixture_id
-    if (fixtureOptaId) {
-      pr.fixture_id = fixtureIdMap.get(fixtureOptaId)
-    }
+    pr.fixture_id = fixtureIdMap.get(pr._opta_fixture_id)
+    delete pr._opta_fixture_id
   }
 
   // Upsert player stats
+  let upserted = 0, skipped = 0
   for (const pr of playerRows) {
-    if (!pr.fixture_id) continue
+    if (!pr.fixture_id) { skipped++; continue }
     const { error } = await supabase.from('fantasy_player_match_stats').upsert(pr, {
       onConflict: 'fixture_id,opta_player_id',
     })
     if (error) console.error(`   ❌ Player stat upsert error:`, error)
+    else upserted++
   }
+  console.log(`   ✓ ${upserted} player-match rows upserted, ${skipped} skipped (no fixture_id)`)
 
   console.log('✅ Sync complete!')
 }
