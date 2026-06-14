@@ -222,9 +222,59 @@ function PredictorHome() {
 }
 
 function LeaderboardTab({ authed, authedReady, me }: { authed: boolean; authedReady: boolean; me: MeProfile | null }) {
-  const [winnerScore] = useState(0) // Wave D will hydrate from /api/predictor/scores
-  const [perRound] = useState<Record<string, number>>({}) // Wave D
-  const [total] = useState(0)
+  // My Team scores come from /api/predictor/leaderboard/me?scope=global.
+  // That endpoint returns the caller's full RankedRow including total,
+  // per-round buckets (r1_pts..final_pts), and winner_pick_pts. Defaults
+  // to all zeros for anonymous viewers or profiles with no picks yet.
+  const [total, setTotal] = useState(0)
+  const [winnerScore, setWinnerScore] = useState(0)
+  const [perRound, setPerRound] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    if (!authedReady) return
+    if (!authed || !me?.id) {
+      setTotal(0)
+      setWinnerScore(0)
+      setPerRound({})
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/predictor/leaderboard/me?scope=global', {
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const json = await res.json()
+        if (cancelled) return
+        const row = json?.my_row
+        if (!row) {
+          setTotal(0)
+          setWinnerScore(0)
+          setPerRound({})
+          return
+        }
+        setTotal(Number(row.total ?? 0))
+        setWinnerScore(Number(row.winner_pick_pts ?? 0))
+        setPerRound({
+          group_r1: Number(row.r1_pts ?? 0),
+          group_r2: Number(row.r2_pts ?? 0),
+          group_r3: Number(row.r3_pts ?? 0),
+          r32:      Number(row.r32_pts ?? 0),
+          r16:      Number(row.r16_pts ?? 0),
+          qf:       Number(row.qf_pts ?? 0),
+          sf:       Number(row.sf_pts ?? 0),
+          final:    Number(row.final_pts ?? 0),
+        })
+      } catch {
+        // Network blip — leave existing values. Worst case the UI shows
+        // stale-but-non-zero numbers; we'll refresh on next mount.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authed, authedReady, me?.id])
 
   return (
     <div style={{ display: 'grid', gap: '0.85rem', minWidth: 0 }}>
