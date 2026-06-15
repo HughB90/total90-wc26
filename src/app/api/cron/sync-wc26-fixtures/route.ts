@@ -6,6 +6,27 @@
  * goalscorers back. Idempotent. Safe to call every minute during a live
  * window.
  *
+ * SCORING PIPELINE (2026-06-15 hardening):
+ *   Two paths trigger Phase 4 scoring inside this handler, both calling
+ *   `scoreMatchById()` IN-PROCESS (no HTTP fetch). The legacy fetch path
+ *   tried to hit `/api/predictor/score-match` over its own deployment URL,
+ *   which on Vercel previews is gated by deployment protection and returned
+ *   an HTML 401 SSO page — scoring silently failed for 5 matches on
+ *   2026-06-14 before manual backfill. Direct in-process calls bypass that
+ *   entirely.
+ *
+ *   1. Newly-final scoring: any predictor_matches row that flipped from
+ *      a non-final status to 'final' this tick (detected via
+ *      shouldTriggerPhase4) is scored immediately.
+ *
+ *   2. Safety-net sweep: at the END of the tick, scan all predictor_matches
+ *      where status='final' and look for any that have predictor_picks rows
+ *      but ZERO predictor_scores rows — those are matches Phase 4 missed
+ *      (cron crash, transient DB error, manual final flip outside cron,
+ *      etc.). Score up to MAX 5 per tick to avoid stampeding the DB on the
+ *      first deploy after a long outage. This is the belt-and-suspenders
+ *      that catches the next failure mode we haven't predicted yet.
+ *
  * Auth: required. Provide one of:
  *   - header `x-cron-secret: <CRON_SECRET>`
  *   - query `?secret=<CRON_SECRET>`
@@ -19,10 +40,13 @@
  * Response 200:
  *   {
  *     ok: true,
- *     matched: int,        // Opta fixtures we found a predictor row for
- *     updated: int,        // rows actually patched
+ *     matched: int,            // Opta fixtures we found a predictor row for
+ *     updated: int,            // rows actually patched
  *     skipped_final: int,
  *     unmatched: [{ opta_id, summary }],
+ *     phase4_triggered: int,   // newly-final scored this tick
+ *     phase4_results: [...],
+ *     safety_net_swept: [...], // recovered missing scoring this tick
  *     duration_ms: int
  *   }
  *
@@ -43,7 +67,9 @@ import {
   type PredictorMatchRow,
 } from '@/lib/wc26-fixtures-sync'
 import { buildWc26MatchesUrl, optaGet } from '@/lib/opta-client'
+import { scoreMatchById } from '@/lib/predictor/score-match-core'
 
+/** Per-match scoring result, surfaced in the cron JSON response. */
 interface Phase4Result {
   match_id: string
   ok: boolean
@@ -53,65 +79,41 @@ interface Phase4Result {
   error?: string
 }
 
+/** Maximum number of stale-final matches the safety-net will sweep per tick. */
+const SAFETY_NET_MAX_PER_TICK = 5
+
 /**
- * Fire-and-await POST to /api/predictor/score-match for one match_id.
- * Errors are swallowed (logged + returned in the result) so one bad scoring
- * call can't poison the cron response. The next cron tick won't re-fire
- * because the row's status stays at 'final' (shouldTriggerPhase4 requires a
- * non-final → final transition).
- *
- * NOTE: that means if the scoring endpoint genuinely fails (network, 500),
- * we need a manual retry. Acceptable trade-off for v1 — scoring endpoint is
- * idempotent and admin can re-run via curl.
+ * Score one match in-process. Errors are caught + returned as a Phase4Result
+ * so one bad scoring call can't poison the cron response. Idempotent — the
+ * scoring core upserts predictor_scores on (profile_id, match_id) and
+ * fully re-sums leaderboard_cache.
  */
-async function triggerPhase4(
-  reqUrl: string,
-  matchId: string,
-  adminKey: string,
-): Promise<Phase4Result> {
-  const url = new URL('/api/predictor/score-match', reqUrl).toString()
+async function scoreInProcess(matchId: string): Promise<Phase4Result> {
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-admin-key': adminKey,
-      },
-      body: JSON.stringify({ match_id: matchId }),
-      cache: 'no-store',
-    })
-    let body: unknown = null
-    try {
-      body = await res.json()
-    } catch {
-      // swallow
-    }
-    if (!res.ok) {
-      const err =
-        (body && typeof body === 'object' && 'error' in body
-          ? String((body as { error: unknown }).error)
-          : `http_${res.status}`)
+    const result = await scoreMatchById(matchId)
+    if (!result.ok) {
       console.warn(
-        `[cron/sync-wc26-fixtures] phase4 non-2xx for ${matchId}: status=${res.status} error=${err}`,
+        `[cron/sync-wc26-fixtures] phase4 failed for ${matchId}: status=${result.status} error=${result.error}`,
       )
-      return { match_id: matchId, ok: false, status: res.status, error: err }
-    }
-    const b = (body ?? {}) as {
-      scored_profiles?: number
-      cache_refreshed?: number
+      return {
+        match_id: matchId,
+        ok: false,
+        status: result.status,
+        error: result.error,
+      }
     }
     console.log(
-      `[cron/sync-wc26-fixtures] phase4 ok match=${matchId} scored=${b.scored_profiles ?? 0} cache=${b.cache_refreshed ?? 0}`,
+      `[cron/sync-wc26-fixtures] phase4 ok match=${matchId} scored=${result.scored_profiles} cache=${result.cache_refreshed}`,
     )
     return {
       match_id: matchId,
       ok: true,
-      scored_profiles: b.scored_profiles,
-      cache_refreshed: b.cache_refreshed,
+      scored_profiles: result.scored_profiles,
+      cache_refreshed: result.cache_refreshed,
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error(`[cron/sync-wc26-fixtures] phase4 fetch failed for ${matchId}: ${msg}`)
+    console.error(`[cron/sync-wc26-fixtures] phase4 threw for ${matchId}: ${msg}`)
     return { match_id: matchId, ok: false, error: msg }
   }
 }
@@ -257,32 +259,100 @@ export async function GET(request: NextRequest) {
 
     // ── 4. Fire Phase 4 scoring for newly-finalized matches ──────────────
     // Serial loop on purpose: finalization events are rare (1–3 per WC tick
-    // max), and the scoring endpoint hits Supabase hard — don't stampede.
+    // max), and the scoring core hits Supabase hard — don't stampede.
+    // In-process call (NOT fetch) — bypasses Vercel deployment protection.
     const phase4Results: Phase4Result[] = []
-    const predictorAdminKey = process.env.PREDICTOR_ADMIN_KEY
-    if (matchIdsNewlyFinal.length > 0) {
-      if (!predictorAdminKey) {
+    const newlyFinalScored = new Set<string>()
+    for (const mid of matchIdsNewlyFinal) {
+      const result = await scoreInProcess(mid)
+      phase4Results.push(result)
+      newlyFinalScored.add(mid)
+    }
+
+    // ── 5. Safety-net sweep: catch any final matches whose scoring slipped ──
+    // Belt-and-suspenders for future failure modes we haven't predicted yet.
+    // Look for predictor_matches with status='final' AND predictor_picks rows
+    // AND zero predictor_scores rows, score up to MAX 5 per tick.
+    const safetyNetSwept: Phase4Result[] = []
+    try {
+      const { data: finalRows, error: finalErr } = await sb
+        .from('predictor_matches')
+        .select('id')
+        .eq('status', 'final')
+
+      if (finalErr) {
         console.error(
-          '[cron/sync-wc26-fixtures] PREDICTOR_ADMIN_KEY missing; skipping phase4 triggers',
+          '[cron/sync-wc26-fixtures] safety-net final lookup error:',
+          finalErr.message,
         )
-        for (const mid of matchIdsNewlyFinal) {
-          phase4Results.push({
-            match_id: mid,
-            ok: false,
-            error: 'PREDICTOR_ADMIN_KEY not configured',
-          })
-        }
       } else {
-        for (const mid of matchIdsNewlyFinal) {
-          const result = await triggerPhase4(request.url, mid, predictorAdminKey)
-          phase4Results.push(result)
+        const finalIds = (finalRows ?? [])
+          .map((r) => r.id as string)
+          .filter((id) => !newlyFinalScored.has(id))
+
+        if (finalIds.length > 0) {
+          // Find which finals already have ANY predictor_scores row.
+          const { data: scoredRows, error: scoredErr } = await sb
+            .from('predictor_scores')
+            .select('match_id')
+            .in('match_id', finalIds)
+
+          if (scoredErr) {
+            console.error(
+              '[cron/sync-wc26-fixtures] safety-net scores lookup error:',
+              scoredErr.message,
+            )
+          } else {
+            const alreadyScored = new Set(
+              (scoredRows ?? []).map((r) => r.match_id as string),
+            )
+            const missingScores = finalIds.filter((id) => !alreadyScored.has(id))
+
+            if (missingScores.length > 0) {
+              // Of these, which actually have picks? If a final match has zero
+              // picks AND zero scores, that's fine — nothing to score.
+              const { data: pickRows, error: pickErr } = await sb
+                .from('predictor_picks')
+                .select('match_id')
+                .in('match_id', missingScores)
+
+              if (pickErr) {
+                console.error(
+                  '[cron/sync-wc26-fixtures] safety-net picks lookup error:',
+                  pickErr.message,
+                )
+              } else {
+                const haveAnyPicks = new Set(
+                  (pickRows ?? []).map((r) => r.match_id as string),
+                )
+                const candidates = missingScores
+                  .filter((id) => haveAnyPicks.has(id))
+                  .slice(0, SAFETY_NET_MAX_PER_TICK)
+
+                for (const mid of candidates) {
+                  const result = await scoreInProcess(mid)
+                  safetyNetSwept.push(result)
+                }
+
+                if (safetyNetSwept.length > 0) {
+                  console.log(
+                    `[cron/sync-wc26-fixtures] safety-net swept ${safetyNetSwept.length} final matches with missing scores`,
+                  )
+                }
+              }
+            }
+          }
         }
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[cron/sync-wc26-fixtures] safety-net sweep threw: ${msg}`)
+      // Non-fatal — don't fail the cron tick over a safety-net hiccup.
     }
 
     const duration_ms = Date.now() - started
     console.log(
-      `[cron/sync-wc26-fixtures] matched=${matched} updated=${updated} skipped_final=${skipped_final} unmatched=${unmatched.length} errors=${errors.length} phase4_triggered=${phase4Results.length} duration_ms=${duration_ms}`
+      `[cron/sync-wc26-fixtures] matched=${matched} updated=${updated} skipped_final=${skipped_final} unmatched=${unmatched.length} errors=${errors.length} phase4_triggered=${phase4Results.length} safety_net=${safetyNetSwept.length} duration_ms=${duration_ms}`
     )
 
     return NextResponse.json({
@@ -297,6 +367,7 @@ export async function GET(request: NextRequest) {
       errors: errors.slice(0, 5),
       phase4_triggered: phase4Results.length,
       phase4_results: phase4Results,
+      safety_net_swept: safetyNetSwept,
       duration_ms,
     })
   } catch (err) {
