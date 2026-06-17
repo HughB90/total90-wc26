@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/sync-wc26-fixtures",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sync-fantasy",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
