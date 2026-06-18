@@ -39,6 +39,95 @@ import {
   GROUP_ROUND_CAP,
 } from '@/lib/predictor-pick-validation'
 
+/**
+ * DELETE /api/predictor/picks
+ *
+ * Drop one or more saved picks for a round. Used by the "✕ clear" affordance
+ * on the round page so users can swap which 16 matches they've picked in a
+ * group round (the persisted-set cap blocks adding a 17th, so they have to
+ * drop one first).
+ *
+ * Body: { round_code, match_ids: string[] }
+ *
+ * Rules:
+ *   - Session required.
+ *   - Every match_id must belong to round_code.
+ *   - Per-match lock: cannot drop a pick whose match has kicked off
+ *     (kickoff_at <= now or status != 'scheduled'). The star-lock rule
+ *     in the upsert path already forbids clearing a locked-star; we mirror
+ *     that here for ALL locked matches, not just stars, since the score is
+ *     also frozen post-kickoff.
+ */
+export async function DELETE(req: NextRequest) {
+  const session = await getProfileSession()
+  if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+
+  let body: { round_code?: unknown; match_ids?: unknown }
+  try {
+    body = await req.json()
+  } catch {
+    return badRequest('invalid_json')
+  }
+
+  const roundCode = typeof body.round_code === 'string' ? body.round_code : ''
+  if (!VALID_ROUNDS.has(roundCode)) return badRequest('invalid_round_code')
+
+  const matchIdsRaw = Array.isArray(body.match_ids) ? body.match_ids : null
+  if (!matchIdsRaw || matchIdsRaw.length === 0) return badRequest('match_ids_required')
+  const matchIds: string[] = []
+  for (const x of matchIdsRaw) {
+    if (typeof x !== 'string' || !x) return badRequest('match_id_invalid')
+    matchIds.push(x)
+  }
+
+  const sb = predictorAdmin()
+
+  // Verify all match_ids belong to roundCode and pull lock info
+  const { data: matchRows, error: mErr } = await sb
+    .from('predictor_matches')
+    .select('id, round_code, kickoff_at, status')
+    .in('id', matchIds)
+  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 500 })
+  const byId = new Map((matchRows ?? []).map((m) => [m.id, m]))
+  for (const id of matchIds) {
+    const m = byId.get(id)
+    if (!m) return badRequest('match_not_found', { match_id: id })
+    if (m.round_code !== roundCode) return badRequest('match_round_mismatch', { match_id: id, expected_round: roundCode })
+  }
+
+  // Per-match lock guard
+  const nowMs = Date.now()
+  const locked: Array<{ match_id: string; kickoff_at: string | null }> = []
+  for (const id of matchIds) {
+    const m = byId.get(id)!
+    const koMs = new Date(m.kickoff_at).getTime()
+    const statusLocks = !!m.status && m.status !== 'scheduled'
+    if (Number.isNaN(koMs) || koMs <= nowMs || statusLocks) {
+      locked.push({ match_id: id, kickoff_at: m.kickoff_at })
+    }
+  }
+  if (locked.length > 0) {
+    return NextResponse.json(
+      { error: 'match_locked', round_code: roundCode, locked },
+      { status: 403 }
+    )
+  }
+
+  const { data: deleted, error: delErr } = await sb
+    .from('predictor_picks')
+    .delete()
+    .eq('profile_id', session.profile_id)
+    .in('match_id', matchIds)
+    .select('match_id')
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
+
+  return NextResponse.json({
+    round_code: roundCode,
+    cleared_count: deleted?.length ?? 0,
+    match_ids: (deleted ?? []).map((d) => d.match_id),
+  })
+}
+
 export const dynamic = 'force-dynamic'
 
 const VALID_ROUNDS = new Set([

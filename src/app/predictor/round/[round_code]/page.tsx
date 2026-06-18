@@ -134,6 +134,11 @@ export default function RoundPicksPage({
 
   const [matches, setMatches] = useState<PredictorMatch[]>([])
   const [picks, setPicks] = useState<Record<string, PickState>>({})
+  // Match ids that exist as rows in predictor_picks server-side. Updated
+  // on initial fetch and after every successful save/clear. Drives whether
+  // "clear" hits the DELETE endpoint or is a local-only state wipe.
+  const [persistedIds, setPersistedIds] = useState<Set<string>>(new Set())
+  const [clearing, setClearing] = useState<Set<string>>(new Set())
   // Per-match score breakdown for this profile. Populated only for matches
   // that have been scored by /api/predictor/score-match (status='final' +
   // recompute ran). Keyed by match.id.
@@ -175,6 +180,7 @@ export default function RoundPicksPage({
           }
         }
         setPicks(initial)
+        setPersistedIds(new Set((j.my_picks || []).map((p: { match_id: string }) => p.match_id)))
       } catch { /* */ }
     })()
     return () => { cancelled = true }
@@ -252,6 +258,58 @@ export default function RoundPicksPage({
     }))
   }
 
+  async function clearPick(matchId: string) {
+    // Local-only clear if this pick was never saved server-side.
+    if (!persistedIds.has(matchId)) {
+      setPicks((cur) => {
+        const next = { ...cur }
+        delete next[matchId]
+        return next
+      })
+      return
+    }
+    if (clearing.has(matchId)) return
+    setClearing((cur) => new Set(cur).add(matchId))
+    setMsg(null)
+    try {
+      const r = await fetch('/api/predictor/picks', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ round_code, match_ids: [matchId] }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok) {
+        if (j?.error === 'match_locked') {
+          setMsg({ kind: 'err', text: 'Match already kicked off — picks are locked.' })
+        } else {
+          setMsg({ kind: 'err', text: j?.error || 'Clear failed.' })
+        }
+        return
+      }
+      // Success: drop from local state + persisted set.
+      setPicks((cur) => {
+        const next = { ...cur }
+        delete next[matchId]
+        return next
+      })
+      setPersistedIds((cur) => {
+        const next = new Set(cur)
+        next.delete(matchId)
+        return next
+      })
+      setMsg({ kind: 'ok', text: 'Pick cleared. You can add a new one now.' })
+    } catch {
+      setMsg({ kind: 'err', text: 'Network error.' })
+    } finally {
+      setClearing((cur) => {
+        const next = new Set(cur)
+        next.delete(matchId)
+        return next
+      })
+    }
+  }
+
   async function submit() {
     if (!canSubmit || busy) return
     setBusy(true); setMsg(null)
@@ -300,6 +358,12 @@ export default function RoundPicksPage({
         setPicks((cur) => Object.fromEntries(Object.entries(cur).map(
           ([k, v]) => [k, { ...v, dirty: false }]
         )))
+        // Anything we just submitted is now persisted server-side.
+        setPersistedIds((cur) => {
+          const next = new Set(cur)
+          for (const [mid] of submittablePicks) next.add(mid)
+          return next
+        })
         setMsg({ kind: 'ok', text: `Saved ${j.saved_count} pick${j.saved_count === 1 ? '' : 's'}.` })
       }
     } catch {
@@ -436,7 +500,14 @@ export default function RoundPicksPage({
               locked={matchLocked}
               matchLocked={matchLocked}
               drawNeedsPick={drawNeedsPick}
+              clearable={
+                !matchLocked &&
+                pick.home !== '' &&
+                pick.away !== ''
+              }
+              clearing={clearing.has(mt.id)}
               onChange={(patch) => setPick(mt.id, patch)}
+              onClear={() => clearPick(mt.id)}
               onGoalscorerSaved={(g) => setPick(mt.id, { ...g, dirty: false })}
             />
           )
@@ -512,7 +583,8 @@ export default function RoundPicksPage({
 }
 
 function MatchCard({
-  match, pick, score, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick, onChange, onGoalscorerSaved,
+  match, pick, score, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick,
+  clearable = false, clearing = false, onChange, onClear, onGoalscorerSaved,
 }: {
   match: PredictorMatch
   pick: PickState
@@ -523,7 +595,10 @@ function MatchCard({
   locked: boolean
   matchLocked?: boolean
   drawNeedsPick: boolean
+  clearable?: boolean
+  clearing?: boolean
   onChange: (patch: Partial<PickState>) => void
+  onClear?: () => void
   onGoalscorerSaved: (g: Partial<PickState>) => void
 }) {
   const isDraw = pick.home !== '' && pick.home === pick.away
@@ -578,21 +653,42 @@ function MatchCard({
           {matchLocked && !showResult && <span style={{ marginLeft: '0.5rem', color: C.muted, fontWeight: 800 }}>· LOCKED</span>}
           {showResult && <span style={{ marginLeft: '0.5rem', color: OUTCOME_BORDER[outcome], fontWeight: 800 }}>· FINAL</span>}
         </span>
-        {hasStars && (
-          <button
-            onClick={() => !locked && onChange({ is_star: !pick.is_star })}
-            disabled={locked}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: locked ? 'default' : 'pointer',
-              color: pick.is_star ? C.gold : '#2a3550',
-              fontSize: '1.15rem',
-              padding: 0,
-            }}
-            aria-label="Toggle star"
-          >★</button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {clearable && onClear && (
+            <button
+              onClick={() => !clearing && onClear()}
+              disabled={clearing}
+              title="Drop this pick (lets you pick a different match)"
+              aria-label="Clear pick"
+              style={{
+                background: 'rgba(248,113,113,0.08)',
+                border: '1px solid rgba(248,113,113,0.35)',
+                borderRadius: '0.35rem',
+                color: '#F87171',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                cursor: clearing ? 'default' : 'pointer',
+                padding: '0.15rem 0.45rem',
+                opacity: clearing ? 0.6 : 1,
+              }}
+            >{clearing ? '…' : '✕ Clear'}</button>
+          )}
+          {hasStars && (
+            <button
+              onClick={() => !locked && onChange({ is_star: !pick.is_star })}
+              disabled={locked}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: locked ? 'default' : 'pointer',
+                color: pick.is_star ? C.gold : '#2a3550',
+                fontSize: '1.15rem',
+                padding: 0,
+              }}
+              aria-label="Toggle star"
+            >★</button>
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
         <TeamSide team={match.home_team_code} align="right" />
