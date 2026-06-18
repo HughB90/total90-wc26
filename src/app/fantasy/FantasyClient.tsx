@@ -164,6 +164,8 @@ export default function FantasyClient() {
   const [selectedComp, setSelectedComp] = useState('WC2026')
   const [selectedRound, setSelectedRound] = useState('ALL')
   const [selectedPos, setSelectedPos] = useState<PosType>('ALL')
+  const [selectedTeam, setSelectedTeam] = useState<string>('ALL')
+  const [allTeams, setAllTeams] = useState<string[]>([])
   const [scoreMode, setScoreMode] = useState<'total' | 'per90'>('total')
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
@@ -193,18 +195,28 @@ export default function FantasyClient() {
       limit: '500',
     })
     if (search) params.set('search', search)
+    if (selectedTeam !== 'ALL') params.set('nation', selectedTeam)
 
     fetch(`/api/fantasy/players?${params}`)
       .then(r => r.json())
       .then(data => {
         setPlayers(data)
         setLoading(false)
+        // Seed the team list from the first unfiltered fetch so the dropdown
+        // always shows every nation, not just the currently filtered one.
+        if (selectedTeam === 'ALL' && Array.isArray(data) && data.length > 0) {
+          setAllTeams(prev => {
+            if (prev.length > 0) return prev
+            const teams = Array.from(new Set(data.map((p: Player) => p.team).filter(Boolean))).sort()
+            return teams as string[]
+          })
+        }
       })
       .catch(e => {
         console.error(e)
         setLoading(false)
       })
-  }, [selectedComp, selectedRound, selectedPos, search, scoreMode])
+  }, [selectedComp, selectedRound, selectedPos, selectedTeam, search, scoreMode])
 
   const currentComp = competitions.find(c => c.code === selectedComp)
   const rounds = currentComp?.rounds || []
@@ -273,6 +285,18 @@ export default function FantasyClient() {
               <option key={r.code} value={r.code}>
                 {r.name} ({r.playedCount}/{r.fixtureCount})
               </option>
+            ))}
+          </select>
+
+          {/* Team dropdown */}
+          <select
+            value={selectedTeam}
+            onChange={e => setSelectedTeam(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="ALL">All Teams</option>
+            {allTeams.map(t => (
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
 
