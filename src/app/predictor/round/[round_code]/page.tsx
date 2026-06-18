@@ -428,7 +428,12 @@ export default function RoundPicksPage({
               isKnockout={isKnockout}
               hasStars={hasStars}
               hasGoalscorer={hasGoalscorer}
-              locked={locked || matchLocked}
+              // Lock is purely per-match — `matchLocked` is true only once that
+              // specific match has kicked off. We deliberately do NOT mix in the
+              // round-level `locked` flag here: doing so would freeze every
+              // unkicked match in the round the moment ANY match in it started.
+              // (That was the R2 "can't edit picks" regression.)
+              locked={matchLocked}
               matchLocked={matchLocked}
               drawNeedsPick={drawNeedsPick}
               onChange={(patch) => setPick(mt.id, patch)}
