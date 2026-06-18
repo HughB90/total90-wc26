@@ -42,10 +42,17 @@ interface RoundSummary {
 }
 
 // sessionStorage cache keys. Bumped if the response shape changes.
-// v2: shape changed to include post-match result fields + per-pick scores.
-const CACHE_VERSION = 'v2'
+// v3: winner pick now stores bonus_cap / days_late for late-entry display.
+const CACHE_VERSION = 'v3'
 const ROUNDS_CACHE_KEY = `predictor.picks.rounds.${CACHE_VERSION}`
 const WINNER_CACHE_KEY = `predictor.picks.winner.${CACHE_VERSION}`
+
+interface WinnerPickCache {
+  team_code: string
+  bonus_cap: number
+  days_late: number
+  penalty_pts: number
+}
 
 function readCache<T>(key: string): T | null {
   if (typeof window === 'undefined') return null
@@ -70,7 +77,7 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
   // Hydrate from sessionStorage so flipping to the Picks tab a second time
   // renders instantly; we still re-fetch in the background to refresh data.
   const [rounds, setRounds] = useState<RoundSummary[] | null>(() => readCache<RoundSummary[]>(ROUNDS_CACHE_KEY))
-  const [winnerPick, setWinnerPick] = useState<string | null>(() => readCache<string | null>(WINNER_CACHE_KEY))
+  const [winnerPick, setWinnerPick] = useState<WinnerPickCache | null>(() => readCache<WinnerPickCache | null>(WINNER_CACHE_KEY))
 
   useEffect(() => {
     let cancelled = false
@@ -159,10 +166,17 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
         try {
           const r = await fetchWithTimeout('/api/predictor/winner')
           const j = await r.json().catch(() => null)
-          const code = j?.pick?.team_code ?? null
+          const next: WinnerPickCache | null = j?.pick?.team_code
+            ? {
+                team_code: j.pick.team_code,
+                bonus_cap: j.pick.bonus_cap ?? 40,
+                days_late: j.pick.days_late ?? 0,
+                penalty_pts: j.pick.penalty_pts ?? 0,
+              }
+            : null
           if (!cancelled) {
-            setWinnerPick(code)
-            writeCache(WINNER_CACHE_KEY, code)
+            setWinnerPick(next)
+            writeCache(WINNER_CACHE_KEY, next)
           }
         } catch { /* timeout or network — leave as null */ }
       })()
@@ -184,9 +198,9 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
         {winnerPick ? (
           // Trust the API: if it returned a pick, render it regardless of the
           // parent's `authed` prop (which can lag the actual session cookie).
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0, flexWrap: 'wrap' }}>
             <img
-              src={flagUrl(winnerPick)}
+              src={flagUrl(winnerPick.team_code)}
               alt=""
               loading="lazy"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
@@ -199,11 +213,24 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
               minWidth: 0,
-            }}>{winnerPick}</strong>
+            }}>{winnerPick.team_code}</strong>
+            <span style={{
+              color: winnerPick.days_late > 0 ? C.gold : C.green,
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              whiteSpace: 'nowrap',
+            }}>
+              Max +{winnerPick.bonus_cap}
+              {winnerPick.days_late > 0 && (
+                <span style={{ color: C.muted, fontWeight: 600 }}>
+                  {' '}({winnerPick.days_late}d late)
+                </span>
+              )}
+            </span>
           </div>
         ) : !authed ? (
           <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-            Sign in to pick your champion. Worth 40 pts.
+            Sign in to pick your champion. Worth up to 40 pts.
           </p>
         ) : (
           <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0 }}>No pick yet.</p>
