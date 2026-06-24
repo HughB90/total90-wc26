@@ -18,46 +18,48 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
 import { createServerSupabase, createAdminSupabase } from '@/lib/supabase-server'
 import { setProfileCookie } from '@/lib/auth-cookies'
 import { hashPin, isValidPin } from '@/lib/auth-crypto'
+import { sendEmail } from '@/lib/email/send'
 
 async function sendWelcomeEmail(
   email: string,
+  accountId: string,
   firstName: string,
   managerName: string
 ) {
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) return
+  const html = `
+    <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0A0F2E;color:#F0F4FF;padding:2rem;border-radius:1rem;">
+      <img src="https://wc26.total90.com/total90-logo-green.png" alt="Total90" style="width:48px;height:48px;display:block;margin:0 auto 1rem;" />
+      <h1 style="color:#FBBF24;text-align:center;font-size:1.4rem;margin:0 0 0.5rem;">Welcome to the Bracket Challenge!</h1>
+      <p style="text-align:center;color:#8899CC;margin:0 0 2rem;">World Cup 2026 · Make your picks</p>
+
+      <div style="background:#0F1C4D;border:1px solid #1E3A6E;border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;">
+        <p style="margin:0 0 0.5rem;color:#8899CC;font-size:0.85rem;">ACCOUNT DETAILS</p>
+        <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">Email:</strong> <span style="color:#FBBF24;">${email}</span></p>
+        <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">First Name:</strong> <span style="color:#FBBF24;">${firstName}</span></p>
+        <p style="margin:0;"><strong style="color:#F0F4FF;">Manager:</strong> <span style="color:#FBBF24;">${managerName}</span></p>
+      </div>
+
+      <p style="text-align:center;color:#8899CC;font-size:0.85rem;margin:0 0 1rem;">Sign in any time with your email and password.</p>
+
+      <a href="https://wc26.total90.com/bracket" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:0.875rem;border-radius:0.875rem;text-decoration:none;">
+        Go to My Bracket →
+      </a>
+    </div>
+  `
   try {
-    const resend = new Resend(apiKey)
-    await resend.emails.send({
-      from: 'Total90 <noreply@total90.com>',
+    // Welcome is transactional: send even if user later toggles marketing off,
+    // BUT unsub_all=true still blocks. (Realistic: brand-new account with
+    // unsub_all=true is impossible — trigger creates a fresh prefs row.)
+    await sendEmail({
       to: email,
+      accountId,
+      type: 'welcome',
       subject: '🏆 Your WC2026 account is ready',
-      html: `
-        <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#0A0F2E;color:#F0F4FF;padding:2rem;border-radius:1rem;">
-          <img src="https://wc26.total90.com/total90-logo-green.png" alt="Total90" style="width:48px;height:48px;display:block;margin:0 auto 1rem;" />
-          <h1 style="color:#FBBF24;text-align:center;font-size:1.4rem;margin:0 0 0.5rem;">Welcome to the Bracket Challenge!</h1>
-          <p style="text-align:center;color:#8899CC;margin:0 0 2rem;">World Cup 2026 · Make your picks</p>
-
-          <div style="background:#0F1C4D;border:1px solid #1E3A6E;border-radius:0.875rem;padding:1.5rem;margin-bottom:1.5rem;">
-            <p style="margin:0 0 0.5rem;color:#8899CC;font-size:0.85rem;">ACCOUNT DETAILS</p>
-            <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">Email:</strong> <span style="color:#FBBF24;">${email}</span></p>
-            <p style="margin:0 0 0.5rem;"><strong style="color:#F0F4FF;">First Name:</strong> <span style="color:#FBBF24;">${firstName}</span></p>
-            <p style="margin:0;"><strong style="color:#F0F4FF;">Manager:</strong> <span style="color:#FBBF24;">${managerName}</span></p>
-          </div>
-
-          <p style="text-align:center;color:#8899CC;font-size:0.85rem;margin:0 0 1rem;">Sign in any time with your email and password.</p>
-
-          <a href="https://wc26.total90.com/bracket" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:0.875rem;border-radius:0.875rem;text-decoration:none;">
-            Go to My Bracket →
-          </a>
-
-          <p style="text-align:center;color:#4A6080;font-size:0.75rem;margin-top:1.5rem;">Total90 · wc26.total90.com</p>
-        </div>
-      `,
+      html,
+      transactional: true,
     })
   } catch {
     // Non-blocking
@@ -165,7 +167,9 @@ export async function POST(req: NextRequest) {
     await setProfileCookie(profile.id)
 
     // 5. Fire-and-forget welcome email.
-    sendWelcomeEmail(normalizedEmail, first_name.trim(), manager_name.trim()).catch(() => {})
+    sendWelcomeEmail(normalizedEmail, userId, first_name.trim(), manager_name.trim()).catch(
+      () => {}
+    )
 
     return NextResponse.json(
       {
