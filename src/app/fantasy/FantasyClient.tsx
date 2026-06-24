@@ -103,58 +103,134 @@ const C = {
 }
 
 // ─── Breakdown metadata ──────────────────────────────────────────────────────
-// Maps the v1.4 scoring controller's breakdown keys to:
-//   label  → human-friendly name shown in the drawer
-//   rawKey → corresponding raw_stats integer key (so we can show "1 goal × 7")
-// Categories follow the 7-group taxonomy from scoring-controller-v1.4.csv.
+// Maps the v1.4 scoring controller's breakdown keys (camelCase Opta names)
+// to:
+//   label    → human-friendly stat name shown in the drawer
+//   category → one of the 7 v1.4 taxonomy groups
+//
+// The breakdown JSON from /api/fantasy/player/[opta_id] already uses Opta's
+// canonical key names, so rawKey == breakdown key (identity lookup against
+// raw_stats). Anything not in this map falls through to a sensible default.
 
-const BREAKDOWN_META: Record<string, { label: string; rawKey?: string }> = {
-  // Attacking
-  mins:           { label: 'Minutes played' },
-  goals:          { label: 'Goals', rawKey: 'goals' },
-  assist:         { label: 'Assists', rawKey: 'goalAssist' },
-  shot_on_target: { label: 'Shots on target', rawKey: 'ontargetScoringAtt' },
-  shot_off_target:{ label: 'Shots off target' },
-  fouled:         { label: 'Fouls drawn', rawKey: 'wasFouled' },
-  dribble:        { label: '1v1 won', rawKey: 'wonContest' },
-  aerial_won:     { label: 'Aerial duels won', rawKey: 'aerialWon' },
+type BreakdownCategory =
+  | 'attacking'
+  | 'defensive'
+  | 'discipline'
+  | 'passing'
+  | 'possession'
+  | 'playmaker'
+  | 'goalkeepers'
 
-  // Defensive
-  clean_sheet:    { label: 'Clean sheet' },
-  goals_conceded: { label: 'Goals conceded' },
-  foul:           { label: 'Fouls committed', rawKey: 'fouls' },
-  interception:   { label: 'Interceptions', rawKey: 'interceptionWon' },
-  tackle:         { label: 'Tackles won', rawKey: 'wonTackle' },
-  block:          { label: 'Blocks', rawKey: 'outfielderBlock' },
+const CATEGORY_LABEL: Record<BreakdownCategory, string> = {
+  attacking: 'Attacking',
+  defensive: 'Defensive',
+  discipline: 'Discipline',
+  passing: 'Passing',
+  possession: 'Possession',
+  playmaker: 'Playmaker',
+  goalkeepers: 'Goalkeeping',
+}
 
-  // Discipline
-  offside:        { label: 'Offsides', rawKey: 'totalOffside' },
-  own_goal:       { label: 'Own goal' },
-  yellow:         { label: 'Yellow card', rawKey: 'yellowCard' },
-  red:            { label: 'Red card', rawKey: 'redCard' },
+// Order matters only as a stable tiebreaker — the UI sorts categories by
+// subtotal magnitude (descending) so the biggest contributors float to the top.
+const CATEGORY_ORDER: BreakdownCategory[] = [
+  'attacking',
+  'playmaker',
+  'passing',
+  'possession',
+  'defensive',
+  'goalkeepers',
+  'discipline',
+]
 
-  // Passing
-  accurate_pass:    { label: 'Accurate passes', rawKey: 'accuratePass' },
-  accurate_long_ball:{ label: 'Accurate long balls', rawKey: 'accurateLongBalls' },
-  accurate_cross:   { label: 'Accurate crosses', rawKey: 'accurateCrossNocorner' },
-  final_third_pass: { label: 'Passes into final third', rawKey: 'successfulFinalThirdPasses' },
-  pen_area_pass:    { label: 'Passes into penalty area', rawKey: 'successfulPenAreaEntries' },
+const BREAKDOWN_META: Record<string, { label: string; category: BreakdownCategory }> = {
+  // ─── Attacking ────────────────────────────────────────────────
+  minsPlayed:                  { label: 'Minutes played',         category: 'attacking' },
+  goals:                       { label: 'Goals',                  category: 'attacking' },
+  attIboxGoal:                 { label: 'Goal (in the box)',      category: 'attacking' },
+  attHdGoal:                   { label: 'Headed goal',            category: 'attacking' },
+  attPenGoal:                  { label: 'Penalty scored',         category: 'attacking' },
+  attGoalLowLeft:              { label: 'Goal — low left',        category: 'attacking' },
+  attGoalLowRight:             { label: 'Goal — low right',       category: 'attacking' },
+  totalScoringAtt:             { label: 'Shots',                  category: 'attacking' },
+  ontargetAttAssist:           { label: 'Shot on target',         category: 'attacking' },
+  offtargetAttAssist:          { label: 'Shot off target',        category: 'attacking' },
+  postScoringAtt:              { label: 'Shot off post',          category: 'attacking' },
+  attSvLowLeft:                { label: 'Shot saved — low left',  category: 'attacking' },
+  attSvLowRight:               { label: 'Shot saved — low right', category: 'attacking' },
+  attSvHighLeft:               { label: 'Shot saved — high left', category: 'attacking' },
+  attSvHighRight:              { label: 'Shot saved — high right',category: 'attacking' },
+  touchesInOppBox:             { label: 'Touches in opp box',     category: 'attacking' },
+  wasFouled:                   { label: 'Fouls drawn',            category: 'attacking' },
+  wonContest:                  { label: '1v1 won (dribble)',      category: 'attacking' },
+  penAreaEntries:              { label: 'Penalty area entries',   category: 'attacking' },
 
-  // Playmaker
-  key_pass:       { label: 'Key passes', rawKey: 'totalAttAssist' },
-  through_ball:   { label: 'Through balls', rawKey: 'accurateThroughBall' },
-  touch_in_box:   { label: 'Touches in opp box', rawKey: 'touchesInOppBox' },
-  winning_goal:   { label: 'Match-winning goal', rawKey: 'winningGoal' },
+  // ─── Playmaker ────────────────────────────────────────────────
+  goalAssist:                  { label: 'Assist',                 category: 'playmaker' },
+  goalAssistSetplay:           { label: 'Assist (set piece)',     category: 'playmaker' },
+  secondGoalAssist:            { label: 'Second assist',          category: 'playmaker' },
+  assistBlockedShot:           { label: 'Assist (blocked shot)',  category: 'playmaker' },
+  assistHandballWon:           { label: 'Assist (handball won)',  category: 'playmaker' },
+  assistOwnGoal:               { label: 'Assist (own goal)',      category: 'playmaker' },
+  totalAttAssist:              { label: 'Key pass',               category: 'playmaker' },
+  bigChanceCreated:            { label: 'Big chance created',     category: 'playmaker' },
+  accurateThroughBall:         { label: 'Through balls (acc.)',   category: 'playmaker' },
+  accuratePullBack:            { label: 'Pull-back (acc.)',       category: 'playmaker' },
+  winningGoal:                 { label: 'Match-winning goal',     category: 'playmaker' },
 
-  // Possession
-  ball_recovery:  { label: 'Ball recoveries', rawKey: 'ballRecovery' },
-  dispossessed:   { label: 'Dispossessed', rawKey: 'dispossessed' },
-  poss_lost:      { label: 'Possession lost', rawKey: 'possLostAll' },
+  // ─── Passing ──────────────────────────────────────────────────
+  accuratePass:                { label: 'Accurate passes',          category: 'passing' },
+  accurateLongBalls:           { label: 'Accurate long balls',      category: 'passing' },
+  accurateCrossNocorner:       { label: 'Accurate crosses (open)',  category: 'passing' },
+  accurateChippedPass:         { label: 'Accurate chipped passes',  category: 'passing' },
+  accurateFlickOn:             { label: 'Accurate flick-ons',       category: 'passing' },
+  accurateLayoffs:             { label: 'Accurate lay-offs',        category: 'passing' },
+  successfulFinalThirdPasses:  { label: 'Passes into final third',  category: 'passing' },
 
-  // Goalkeeper-only
-  save:           { label: 'Saves', rawKey: 'saves' },
-  keeper_throw:   { label: 'GK throws (accurate)', rawKey: 'accurateKeeperThrows' },
-  goal_kick:      { label: 'Goal kicks (accurate)', rawKey: 'accurateGoalKicks' },
+  // ─── Defensive ────────────────────────────────────────────────
+  cleanSheet:                  { label: 'Clean sheet',             category: 'defensive' },
+  goalsConceded:               { label: 'Goals conceded',          category: 'defensive' },
+  totalTackle:                 { label: 'Tackles',                 category: 'defensive' },
+  lastManTackle:               { label: 'Last-man tackle',         category: 'defensive' },
+  outfielderBlock:             { label: 'Blocks',                  category: 'defensive' },
+  sixYardBlock:                { label: 'Six-yard block',          category: 'defensive' },
+  interceptionsInBox:          { label: 'Interceptions (in box)',  category: 'defensive' },
+  offsideProvoked:             { label: 'Offsides provoked',       category: 'defensive' },
+  aerialWon:                   { label: 'Aerial duels won',        category: 'defensive' },
+  duelWon:                     { label: 'Duels won',               category: 'defensive' },
+
+  // ─── Possession ───────────────────────────────────────────────
+  ballRecovery:                { label: 'Ball recoveries',     category: 'possession' },
+  dispossessed:                { label: 'Dispossessed',        category: 'possession' },
+  possLostAll:                 { label: 'Possession lost',     category: 'possession' },
+  turnover:                    { label: 'Turnover',            category: 'possession' },
+  duelLost:                    { label: 'Duels lost',          category: 'possession' },
+
+  // ─── Discipline ───────────────────────────────────────────────
+  fouls:                       { label: 'Fouls committed',     category: 'discipline' },
+  yellowCard:                  { label: 'Yellow card',         category: 'discipline' },
+  totalOffside:                { label: 'Offside',             category: 'discipline' },
+  errorLeadToShot:             { label: 'Error → shot',        category: 'discipline' },
+  errorLeadToGoal:             { label: 'Error → goal',        category: 'discipline' },
+
+  // ─── Goalkeeping ──────────────────────────────────────────────
+  saves:                       { label: 'Saves',                  category: 'goalkeepers' },
+  divingSave:                  { label: 'Diving saves',           category: 'goalkeepers' },
+  savedObox:                   { label: 'Saves (outside box)',    category: 'goalkeepers' },
+  punches:                     { label: 'Punches',                category: 'goalkeepers' },
+  goodHighClaim:               { label: 'High claims',            category: 'goalkeepers' },
+  accurateKeeperThrows:        { label: 'Keeper throws (acc.)',   category: 'goalkeepers' },
+  accurateKeeperSweeper:       { label: 'Keeper sweeper (acc.)',  category: 'goalkeepers' },
+  accurateGoalKicks:           { label: 'Goal kicks (acc.)',      category: 'goalkeepers' },
+}
+
+// Fallback category for any breakdown key we haven't explicitly mapped.
+function categoryFor(key: string): BreakdownCategory {
+  return BREAKDOWN_META[key]?.category ?? 'attacking'
+}
+
+function labelFor(key: string): string {
+  return BREAKDOWN_META[key]?.label ?? key
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -828,90 +904,125 @@ function PlayerDrawer({
                   {expandedMatch === i ? 'Hide' : 'Show'} breakdown
                 </button>
 
-                {expandedMatch === i && (
-                  <div style={{ marginTop: '0.75rem', fontSize: '0.7rem' }}>
-                    {/* Header row */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 42px 48px 58px',
-                      gap: '0.5rem',
-                      padding: '0.25rem 0',
-                      borderBottom: `1px solid ${C.border}`,
-                      fontSize: '0.6rem',
-                      letterSpacing: '0.05em',
-                      color: C.muted,
-                      textTransform: 'uppercase',
-                    }}>
-                      <span>Stat</span>
-                      <span style={{ textAlign: 'right' }}>Count</span>
-                      <span style={{ textAlign: 'right' }}>Mult</span>
-                      <span style={{ textAlign: 'right' }}>Points</span>
-                    </div>
-                    {Object.entries(m.breakdown)
-                      .sort(([, a], [, b]) => Math.abs(b as number) - Math.abs(a as number))
-                      .map(([key, val]) => {
-                        const meta = BREAKDOWN_META[key]
-                        const label = meta?.label || key
-                        const rawKey = meta?.rawKey
-                        const count = rawKey ? (m.raw_stats?.[rawKey] ?? 0) : undefined
-                        const points = val as number
-                        const mult = (count && count !== 0) ? (points / count) : undefined
-                        const fmt = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2)
-                        const pos = points >= 0
+                {expandedMatch === i && (() => {
+                  // Group breakdown entries by 7-group category taxonomy.
+                  // Each item: { key, label, count, points }
+                  const fmt = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2)
+                  const groups = new Map<BreakdownCategory, {
+                    items: Array<{ key: string; label: string; count: number; points: number }>
+                    subtotal: number
+                  }>()
+                  for (const [key, valRaw] of Object.entries(m.breakdown)) {
+                    const points = valRaw as number
+                    if (points === 0) continue // hide zero-point lines to reduce noise
+                    const cat = categoryFor(key)
+                    const count = (m.raw_stats?.[key] ?? 0) as number
+                    const label = labelFor(key)
+                    const g = groups.get(cat) ?? { items: [], subtotal: 0 }
+                    g.items.push({ key, label, count, points })
+                    g.subtotal += points
+                    groups.set(cat, g)
+                  }
+                  // Sort items inside each group by points descending (abs value).
+                  for (const g of groups.values()) {
+                    g.items.sort((a, b) => Math.abs(b.points) - Math.abs(a.points))
+                  }
+                  // Sort categories by subtotal magnitude descending; ties broken
+                  // by the canonical CATEGORY_ORDER list.
+                  const sortedCats = Array.from(groups.entries()).sort((a, b) => {
+                    const diff = Math.abs(b[1].subtotal) - Math.abs(a[1].subtotal)
+                    if (diff !== 0) return diff
+                    return CATEGORY_ORDER.indexOf(a[0]) - CATEGORY_ORDER.indexOf(b[0])
+                  })
+
+                  return (
+                    <div style={{ marginTop: '0.75rem', fontSize: '0.72rem' }}>
+                      {sortedCats.map(([cat, group]) => {
+                        const subtotalPos = group.subtotal >= 0
                         return (
-                          <div
-                            key={key}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: '1fr 42px 48px 58px',
-                              gap: '0.5rem',
-                              padding: '0.3rem 0',
+                          <div key={cat} style={{ marginBottom: '0.85rem' }}>
+                            {/* Category header w/ subtotal */}
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'baseline',
+                              justifyContent: 'space-between',
+                              padding: '0.35rem 0 0.3rem',
                               borderBottom: `1px solid ${C.border}`,
-                              alignItems: 'center',
-                            }}
-                          >
-                            <span style={{ color: C.text }}>{label}</span>
-                            <span style={{ textAlign: 'right', color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
-                              {count !== undefined ? count : '—'}
-                            </span>
-                            <span style={{ textAlign: 'right', color: C.muted, fontVariantNumeric: 'tabular-nums' }}>
-                              {mult !== undefined ? `×${fmt(mult)}` : '—'}
-                            </span>
-                            <span style={{
-                              textAlign: 'right',
-                              color: pos ? C.accent : '#ff5252',
-                              fontWeight: 600,
-                              fontVariantNumeric: 'tabular-nums',
+                              marginBottom: '0.3rem',
                             }}>
-                              {pos ? '+' : ''}{fmt(points)}
-                            </span>
+                              <span style={{
+                                color: C.gold,
+                                fontWeight: 700,
+                                fontSize: '0.78rem',
+                                letterSpacing: '0.02em',
+                              }}>
+                                {CATEGORY_LABEL[cat]}
+                              </span>
+                              <span style={{
+                                color: subtotalPos ? C.accent : '#ff5252',
+                                fontWeight: 800,
+                                fontSize: '0.95rem',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}>
+                                {subtotalPos ? '+' : ''}{fmt(group.subtotal)} pts
+                              </span>
+                            </div>
+                            {/* Items */}
+                            {group.items.map(it => {
+                              const pos = it.points >= 0
+                              return (
+                                <div
+                                  key={it.key}
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '1fr auto',
+                                    gap: '0.5rem',
+                                    padding: '0.25rem 0',
+                                    alignItems: 'baseline',
+                                  }}
+                                >
+                                  <span style={{ color: C.text }}>
+                                    {it.label}
+                                    <span style={{ color: C.muted, marginLeft: '0.4rem', fontVariantNumeric: 'tabular-nums' }}>
+                                      {fmt(it.count)}
+                                    </span>
+                                  </span>
+                                  <span style={{
+                                    color: pos ? C.accent : '#ff5252',
+                                    fontWeight: 600,
+                                    fontVariantNumeric: 'tabular-nums',
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {pos ? '+' : ''}{fmt(it.points)} pts
+                                  </span>
+                                </div>
+                              )
+                            })}
                           </div>
                         )
                       })}
-                    {/* Total */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 42px 48px 58px',
-                      gap: '0.5rem',
-                      padding: '0.5rem 0 0.25rem',
-                      marginTop: '0.25rem',
-                      borderTop: `2px solid ${C.border}`,
-                      fontWeight: 700,
-                    }}>
-                      <span style={{ color: C.text }}>Total</span>
-                      <span></span>
-                      <span></span>
-                      <span style={{
-                        textAlign: 'right',
-                        color: C.accent,
-                        fontSize: '0.85rem',
-                        fontVariantNumeric: 'tabular-nums',
+                      {/* Total */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                        padding: '0.6rem 0 0.25rem',
+                        marginTop: '0.25rem',
+                        borderTop: `2px solid ${C.border}`,
                       }}>
-                        {m.fantasy_points}
-                      </span>
+                        <span style={{ color: C.text, fontWeight: 700, fontSize: '0.82rem' }}>Total</span>
+                        <span style={{
+                          color: C.accent,
+                          fontWeight: 800,
+                          fontSize: '1rem',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}>
+                          {fmt(m.fantasy_points)} pts
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </div>
             ))}
           </div>
