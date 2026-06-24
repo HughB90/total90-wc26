@@ -31,7 +31,7 @@ export function buildFooter(unsubToken: string, type: string): string {
         &nbsp;·&nbsp;
         <a href="${unsubAllUrl}" style="color:#FBBF24;text-decoration:underline;">Unsubscribe from all Total90 emails</a>
       </p>
-      <p style="margin:0 0 0.25rem;color:#4A6080;">Total90 LLC · [ADDRESS TBD]</p>
+      <p style="margin:0 0 0.25rem;color:#4A6080;">Total90 LLC · 6230 Waldo Drive, New Orleans, LA 70122</p>
       <p style="margin:0;color:#4A6080;">© ${new Date().getFullYear()} Total90 · wc26.total90.com</p>
     </div>
   `

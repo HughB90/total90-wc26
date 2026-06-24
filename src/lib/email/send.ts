@@ -108,7 +108,7 @@ export async function sendEmail(args: SendEmailArgs): Promise<SendEmailResult> {
     // line so we stay CAN-SPAM compliant.
     finalHtml = `${html}
       <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid #1E3A6E;text-align:center;font-family:system-ui,sans-serif;color:#4A6080;font-size:0.75rem;line-height:1.6;">
-        <p style="margin:0 0 0.25rem;">Total90 LLC · [ADDRESS TBD]</p>
+        <p style="margin:0 0 0.25rem;">Total90 LLC · 6230 Waldo Drive, New Orleans, LA 70122</p>
         <p style="margin:0;">© ${new Date().getFullYear()} Total90 · wc26.total90.com</p>
       </div>`
   }
