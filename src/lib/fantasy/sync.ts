@@ -427,6 +427,8 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
     competition_id: string
     opta_player_id: string
     name: string
+    first_name: string | null
+    last_name: string | null
     team: string
     position: string | undefined
     pos_type: PosType
@@ -522,6 +524,8 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
             item.player.matchName ||
             item.player.shortName ||
             `${item.player.firstName || ''} ${item.player.lastName || ''}`.trim(),
+          first_name: item.player.firstName || null,
+          last_name: item.player.lastName || null,
           team: item.teamName,
           position: item.player.position || item.player.matchPosition,
           pos_type: item.posType,

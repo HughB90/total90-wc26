@@ -110,3 +110,15 @@ VALUES
   ('EURO2024', 'UEFA Euro 2024', 'EURO2024_TMCL_PLACEHOLDER', '2024', false),
   ('WC2022', 'FIFA World Cup 2022', 'WC2022_TMCL_PLACEHOLDER', '2022', false)
 ON CONFLICT (code) DO NOTHING;
+
+-- ============================================================================
+-- 2026-06-25 — Full first/last name on fantasy player stats (search by first name)
+-- ============================================================================
+ALTER TABLE fantasy_player_match_stats
+  ADD COLUMN IF NOT EXISTS first_name TEXT,
+  ADD COLUMN IF NOT EXISTS last_name TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_fantasy_player_match_stats_first_name
+  ON fantasy_player_match_stats (first_name);
+CREATE INDEX IF NOT EXISTS idx_fantasy_player_match_stats_last_name
+  ON fantasy_player_match_stats (last_name);
