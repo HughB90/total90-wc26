@@ -311,13 +311,15 @@ export default function FantasyClient() {
   }, [selectedComp, selectedRound, selectedPos, selectedTeam, scoreMode])
 
   // Client-side, diacritic-insensitive search.
-  // Matches the query against the normalized display name (Opta matchName, e.g.
-  // 'L. Díaz'), team name, full first name, full last name, and full name.
-  // So typing 'Luis' finds 'L. Díaz', 'Luis Diaz' finds him too, and existing
-  // 'Diaz' still works.
+  // Haystack = normalized display name (Opta matchName, e.g. 'L. Díaz'),
+  // team, full first name, full last name, full name.
+  // Multi-word queries split on whitespace and each token must appear somewhere
+  // in the haystack. So 'Luis' finds 'L. Díaz', 'Luis Diaz' finds him too
+  // (because 'luis' and 'diaz' both appear), and existing 'Diaz' still works.
   const filteredPlayers = useMemo(() => {
     const q = normalize(search)
     if (!q) return players
+    const tokens = q.split(/\s+/).filter(Boolean)
     return players.filter(p => {
       const first = p.first_name || ''
       const last = p.last_name || ''
@@ -329,7 +331,7 @@ export default function FantasyClient() {
         normalize(last),
         normalize(full),
       ].join(' ')
-      return haystack.includes(q)
+      return tokens.every(t => haystack.includes(t))
     })
   }, [players, search])
 
