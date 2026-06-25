@@ -321,18 +321,38 @@ export async function scoreMatchById(
   if (affectedProfileIds.size > 0) {
     const profileIdList = Array.from(affectedProfileIds)
 
-    const { data: allScores, error: scoresErr } = await sb
-      .from('predictor_scores')
-      .select('profile_id, match_id, total_pts, exact_pts')
-      .in('profile_id', profileIdList)
-
-    if (scoresErr) {
-      console.error('[score-match] scores re-read error:', scoresErr.message)
-      return { ok: false, error: scoresErr.message, status: 500 }
+    // PostgREST caps a single response at 1000 rows by default. Once the
+    // tournament gets going (51 players × ~30 finalized matches ≈ 1500+
+    // predictor_scores rows even just at R2), an un-paginated .in() silently
+    // truncates and the aggregator under-counts every user's points. Page
+    // in 1000-row chunks until the page is short, then stop.
+    //
+    // Bug history: 2026-06-25 — Daniel Rickett reported losing R2 + R3 pts
+    // between rounds. Root cause was this exact 1000-row cap on a global
+    // .in(profile_id, ...) query; users alphabetically late in the result
+    // set had their late-round score rows silently dropped, so the cache
+    // re-sum produced a partial total. Fix: paginate.
+    const PAGE_SIZE = 1000
+    const allScores: { profile_id: string; match_id: string; total_pts: number | null; exact_pts: number | null }[] = []
+    let pageStart = 0
+    while (true) {
+      const { data: page, error: pageErr } = await sb
+        .from('predictor_scores')
+        .select('profile_id, match_id, total_pts, exact_pts')
+        .in('profile_id', profileIdList)
+        .range(pageStart, pageStart + PAGE_SIZE - 1)
+      if (pageErr) {
+        console.error('[score-match] scores re-read error:', pageErr.message)
+        return { ok: false, error: pageErr.message, status: 500 }
+      }
+      const rows = page ?? []
+      allScores.push(...rows)
+      if (rows.length < PAGE_SIZE) break
+      pageStart += PAGE_SIZE
     }
 
     const referencedMatchIds = Array.from(
-      new Set((allScores ?? []).map((s) => s.match_id as string)),
+      new Set(allScores.map((s) => s.match_id as string)),
     )
 
     const matchIdToRound = new Map<string, RoundCode>()
@@ -360,7 +380,7 @@ export async function scoreMatchById(
       aggs.set(pid, { total_pts: 0, exact_score_pts_only: 0, buckets: emptyBuckets() })
     }
 
-    for (const s of allScores ?? []) {
+    for (const s of allScores) {
       const pid = s.profile_id as string
       const agg = aggs.get(pid)
       if (!agg) continue

@@ -63,6 +63,20 @@ function makeMock(initial: Record<string, Row[]>) {
         filters.push((r) => vals.includes(r[col]))
         return builder
       },
+      // Mirror PostgREST's `.range(from, to)` (inclusive). Returns awaitable.
+      range(fromIdx: number, toIdx: number) {
+        const rangeBuilder = {
+          then(
+            resolve: (v: { data: Row[]; error: null }) => void,
+            _reject?: (e: unknown) => void,
+          ) {
+            const matched = tbl.rows.filter((r) => filters.every((f) => f(r)))
+            const sliced = matched.slice(fromIdx, toIdx + 1)
+            resolve({ data: sliced, error: null })
+          },
+        }
+        return rangeBuilder
+      },
       async maybeSingle() {
         const matched = tbl.rows.filter((r) => filters.every((f) => f(r)))
         if (matched.length === 0) return { data: null, error: null }
