@@ -45,10 +45,14 @@ export interface MyTeamCardProps {
   // Person's last name (profiles.last_name) e.g. "Brown". Optional —
   // legacy profiles created before 2026-06-04 may not have one.
   lastName: string | null
-  total: number                // all-rounds total (0 until Wave D)
+  total: number                // all-rounds total
   // Per-round scores keyed by round_code; missing keys render as 0.
   perRound: Record<string, number>
   winnerScore: number          // 0 or 40
+  // Caller's global rank (1-indexed). null = unranked / still loading.
+  globalRank?: number | null
+  // Total managers in the global ranking (denominator). null when unknown.
+  globalTotal?: number | null
 }
 
 export default function MyTeamCard({
@@ -59,6 +63,8 @@ export default function MyTeamCard({
   total,
   perRound,
   winnerScore,
+  globalRank = null,
+  globalTotal = null,
 }: MyTeamCardProps) {
   const rounds: RoundScore[] = ROUND_LABELS.map((rm) => ({
     code: rm.code,
@@ -71,8 +77,18 @@ export default function MyTeamCard({
       <div style={cardHeader}>
         <span>My Team</span>
         {authed && (
-          <span style={{ color: C.gold, fontSize: '0.78rem', fontWeight: 800 }}>
-            Total: {total}
+          <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '0.6rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {globalRank != null && (
+              <span style={{ color: C.muted, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.04em' }}>
+                GLOBAL <span style={{ color: C.text }}>#{globalRank}</span>
+                {globalTotal != null && (
+                  <span style={{ color: C.muted }}> / {globalTotal}</span>
+                )}
+              </span>
+            )}
+            <span style={{ color: C.gold, fontSize: '0.78rem', fontWeight: 800 }}>
+              Total: {total}
+            </span>
           </span>
         )}
       </div>

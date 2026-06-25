@@ -221,10 +221,75 @@ function PredictorHome() {
   )
 }
 
+interface MyScoresState {
+  total: number
+  winnerScore: number
+  perRound: Record<string, number>
+  globalRank: number | null
+  globalTotal: number | null
+}
+
+const INITIAL_SCORES: MyScoresState = {
+  total: 0,
+  winnerScore: 0,
+  perRound: {},
+  globalRank: null,
+  globalTotal: null,
+}
+
 function LeaderboardTab({ authed, authedReady, me }: { authed: boolean; authedReady: boolean; me: MeProfile | null }) {
-  const [winnerScore] = useState(0) // Wave D will hydrate from /api/predictor/scores
-  const [perRound] = useState<Record<string, number>>({}) // Wave D
-  const [total] = useState(0)
+  const [scores, setScores] = useState<MyScoresState>(INITIAL_SCORES)
+
+  // Hydrate scores from /api/predictor/leaderboard/me which returns the
+  // caller's RankedRow (per-round buckets + winner_pick_pts + total) plus
+  // their global rank. We pair it with /api/predictor/leaderboard?per_page=1
+  // just to read total_count for the "#N / M" denominator.
+  useEffect(() => {
+    if (!authed || !me) {
+      setScores(INITIAL_SCORES)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [meRes, pubRes] = await Promise.all([
+          fetch('/api/predictor/leaderboard/me?scope=global', {
+            credentials: 'include',
+            cache: 'no-store',
+          }),
+          fetch('/api/predictor/leaderboard?scope=global&page=1&per_page=1', {
+            credentials: 'include',
+          }),
+        ])
+        const meJson = await meRes.json().catch(() => null)
+        const pubJson = await pubRes.json().catch(() => null)
+        if (cancelled) return
+        const row = meJson?.my_row ?? null
+        const perRound: Record<string, number> = row
+          ? {
+              group_r1: row.r1_pts ?? 0,
+              group_r2: row.r2_pts ?? 0,
+              group_r3: row.r3_pts ?? 0,
+              r32: row.r32_pts ?? 0,
+              r16: row.r16_pts ?? 0,
+              qf: row.qf_pts ?? 0,
+              sf: row.sf_pts ?? 0,
+              final: row.final_pts ?? 0,
+            }
+          : {}
+        setScores({
+          total: row?.total ?? 0,
+          winnerScore: row?.winner_pick_pts ?? 0,
+          perRound,
+          globalRank: meJson?.my_rank ?? null,
+          globalTotal: typeof pubJson?.total_count === 'number' ? pubJson.total_count : null,
+        })
+      } catch {
+        /* silent — leave zeros */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [authed, me])
 
   return (
     <div style={{ display: 'grid', gap: '0.85rem', minWidth: 0 }}>
@@ -233,9 +298,11 @@ function LeaderboardTab({ authed, authedReady, me }: { authed: boolean; authedRe
         managerName={me?.manager_name ?? null}
         firstName={me?.first_name ?? null}
         lastName={me?.last_name ?? null}
-        total={total}
-        perRound={perRound}
-        winnerScore={winnerScore}
+        total={scores.total}
+        perRound={scores.perRound}
+        winnerScore={scores.winnerScore}
+        globalRank={scores.globalRank}
+        globalTotal={scores.globalTotal}
       />
       {/* Render the global leaderboard for everyone (incl. anon) once auth probe finishes,
           so we don't double-fetch and so anon visitors still see the rankings. */}
