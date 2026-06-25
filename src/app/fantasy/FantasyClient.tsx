@@ -11,6 +11,8 @@ type PosType = 'ALL' | 'GKP' | 'DEF' | 'MID' | 'FOR'
 interface Player {
   opta_player_id: string
   name: string
+  first_name?: string | null
+  last_name?: string | null
   team: string
   position: string
   pos_type: PosType
@@ -87,6 +89,17 @@ interface PlayerMatch {
   breakdown: Record<string, number>
   raw_stats: Record<string, number>
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Diacritic-insensitive lowercase trim. Strips combining marks via NFD so
+// 'Díaz' → 'diaz', 'Mbappé' → 'mbappe', 'Müller' → 'muller'.
+const normalize = (s: string) =>
+  (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 
@@ -270,7 +283,10 @@ export default function FantasyClient() {
       sort: scoreMode === 'per90' ? 'fantasy_points_per_90:desc' : 'fantasy_points:desc',
       limit: '500',
     })
-    if (search) params.set('search', search)
+    // NOTE: `search` is intentionally NOT sent to the API. Server-side search
+    // is a case-sensitive prefix-only ilike on `name`, which can't strip
+    // diacritics. We do filtering client-side via `filteredPlayers` below so
+    // 'Mbappe' finds 'K. Mbappé', etc.
     if (selectedTeam !== 'ALL') params.set('nation', selectedTeam)
 
     fetch(`/api/fantasy/players?${params}`)
@@ -292,7 +308,32 @@ export default function FantasyClient() {
         console.error(e)
         setLoading(false)
       })
-  }, [selectedComp, selectedRound, selectedPos, selectedTeam, search, scoreMode])
+  }, [selectedComp, selectedRound, selectedPos, selectedTeam, scoreMode])
+
+  // Client-side, diacritic-insensitive search.
+  // Haystack = normalized display name (Opta matchName, e.g. 'L. Díaz'),
+  // team, full first name, full last name, full name.
+  // Multi-word queries split on whitespace and each token must appear somewhere
+  // in the haystack. So 'Luis' finds 'L. Díaz', 'Luis Diaz' finds him too
+  // (because 'luis' and 'diaz' both appear), and existing 'Diaz' still works.
+  const filteredPlayers = useMemo(() => {
+    const q = normalize(search)
+    if (!q) return players
+    const tokens = q.split(/\s+/).filter(Boolean)
+    return players.filter(p => {
+      const first = p.first_name || ''
+      const last = p.last_name || ''
+      const full = `${first} ${last}`.trim()
+      const haystack = [
+        normalize(p.name),
+        normalize(p.team),
+        normalize(first),
+        normalize(last),
+        normalize(full),
+      ].join(' ')
+      return tokens.every(t => haystack.includes(t))
+    })
+  }, [players, search])
 
   const currentComp = competitions.find(c => c.code === selectedComp)
   const rounds = currentComp?.rounds || []
@@ -482,19 +523,23 @@ export default function FantasyClient() {
         <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
           <p style={{ color: C.muted, fontSize: '0.9rem' }}>Loading players...</p>
         </div>
-      ) : players.length === 0 ? (
+      ) : filteredPlayers.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-          <p style={{ color: C.muted, fontSize: '0.9rem' }}>No players found for this selection.</p>
+          <p style={{ color: C.muted, fontSize: '0.9rem' }}>
+            {search
+              ? `No players match "${search}".`
+              : 'No players found for this selection.'}
+          </p>
         </div>
       ) : (
         <>
           {/* Mobile compact list (< 720px) */}
           <div className="fantasy-mobile-list">
-            <MobileList players={players} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
+            <MobileList players={filteredPlayers} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
           </div>
           {/* Desktop wide grid (>= 720px) — horizontally scrolling */}
           <div className="fantasy-desktop-grid" style={{ overflowX: 'auto' }}>
-            <StatsGrid players={players} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
+            <StatsGrid players={filteredPlayers} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
           </div>
           <style jsx global>{`
             .fantasy-mobile-list { display: block; }
@@ -775,6 +820,13 @@ function PlayerDrawer({
   onClose: () => void
 }) {
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null)
+  // Per-category collapse state, keyed by `${matchIndex}:${category}`.
+  // Default: empty object → all categories collapsed. Each toggles independently.
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
+  const toggleCategory = (matchIdx: number, cat: string) => {
+    const k = `${matchIdx}:${cat}`
+    setExpandedCategories(prev => ({ ...prev, [k]: !prev[k] }))
+  }
 
   return (
     <>
@@ -939,23 +991,59 @@ function PlayerDrawer({
                     <div style={{ marginTop: '0.75rem', fontSize: '0.72rem' }}>
                       {sortedCats.map(([cat, group]) => {
                         const subtotalPos = group.subtotal >= 0
+                        const isOpen = !!expandedCategories[`${i}:${cat}`]
                         return (
                           <div key={cat} style={{ marginBottom: '0.85rem' }}>
-                            {/* Category header w/ subtotal */}
-                            <div style={{
-                              display: 'flex',
-                              alignItems: 'baseline',
-                              justifyContent: 'space-between',
-                              padding: '0.35rem 0 0.3rem',
-                              borderBottom: `1px solid ${C.border}`,
-                              marginBottom: '0.3rem',
-                            }}>
+                            {/* Category header w/ subtotal — clickable to expand/collapse */}
+                            <button
+                              type="button"
+                              onClick={() => toggleCategory(i, cat)}
+                              aria-expanded={isOpen}
+                              aria-controls={`cat-${i}-${cat}`}
+                              style={{
+                                display: 'flex',
+                                width: '100%',
+                                alignItems: 'baseline',
+                                justifyContent: 'space-between',
+                                gap: '0.5rem',
+                                padding: '0.55rem 0 0.45rem',
+                                borderBottom: `1px solid ${C.border}`,
+                                marginBottom: isOpen ? '0.3rem' : 0,
+                                background: 'transparent',
+                                border: 'none',
+                                borderBottomStyle: 'solid',
+                                borderBottomWidth: '1px',
+                                borderBottomColor: C.border,
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                textAlign: 'left',
+                                color: 'inherit',
+                                minHeight: '40px', // mobile tap target
+                                WebkitTapHighlightColor: 'transparent',
+                              }}
+                            >
                               <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'baseline',
+                                gap: '0.4rem',
                                 color: C.gold,
                                 fontWeight: 700,
                                 fontSize: '0.78rem',
                                 letterSpacing: '0.02em',
                               }}>
+                                <span
+                                  aria-hidden="true"
+                                  style={{
+                                    display: 'inline-block',
+                                    width: '0.75rem',
+                                    color: C.muted,
+                                    fontSize: '0.7rem',
+                                    transition: 'transform 120ms ease',
+                                    transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                  }}
+                                >
+                                  ▸
+                                </span>
                                 {CATEGORY_LABEL[cat]}
                               </span>
                               <span style={{
@@ -966,8 +1054,10 @@ function PlayerDrawer({
                               }}>
                                 {subtotalPos ? '+' : ''}{fmt(group.subtotal)} pts
                               </span>
-                            </div>
-                            {/* Items */}
+                            </button>
+                            {/* Items — only rendered when category is expanded */}
+                            {isOpen && (
+                              <div id={`cat-${i}-${cat}`}>
                             {group.items.map(it => {
                               const pos = it.points >= 0
                               return (
@@ -998,6 +1088,8 @@ function PlayerDrawer({
                                 </div>
                               )
                             })}
+                              </div>
+                            )}
                           </div>
                         )
                       })}
