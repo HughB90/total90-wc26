@@ -11,6 +11,8 @@ type PosType = 'ALL' | 'GKP' | 'DEF' | 'MID' | 'FOR'
 interface Player {
   opta_player_id: string
   name: string
+  first_name?: string | null
+  last_name?: string | null
   team: string
   position: string
   pos_type: PosType
@@ -309,14 +311,24 @@ export default function FantasyClient() {
   }, [selectedComp, selectedRound, selectedPos, selectedTeam, scoreMode])
 
   // Client-side, diacritic-insensitive search.
-  // Matches the query against the normalized player name AND team name.
-  // (DB only stores Opta `matchName` like 'K. Mbappé', so the practical effect
-  // is substring + accent-stripped match.)
+  // Matches the query against the normalized display name (Opta matchName, e.g.
+  // 'L. Díaz'), team name, full first name, full last name, and full name.
+  // So typing 'Luis' finds 'L. Díaz', 'Luis Diaz' finds him too, and existing
+  // 'Diaz' still works.
   const filteredPlayers = useMemo(() => {
     const q = normalize(search)
     if (!q) return players
     return players.filter(p => {
-      const haystack = `${normalize(p.name)} ${normalize(p.team)}`
+      const first = p.first_name || ''
+      const last = p.last_name || ''
+      const full = `${first} ${last}`.trim()
+      const haystack = [
+        normalize(p.name),
+        normalize(p.team),
+        normalize(first),
+        normalize(last),
+        normalize(full),
+      ].join(' ')
       return haystack.includes(q)
     })
   }, [players, search])

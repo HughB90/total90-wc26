@@ -24,6 +24,8 @@ type PosType = 'GKP' | 'DEF' | 'MID' | 'FOR'
 interface AggregatedPlayer {
   opta_player_id: string
   name: string
+  first_name: string | null
+  last_name: string | null
   team: string
   position: string
   pos_type: PosType
@@ -167,6 +169,8 @@ export async function GET(req: Request) {
       const player: AggregatedPlayer = {
         opta_player_id: optaId,
         name: first.name,
+        first_name: first.first_name ?? null,
+        last_name: first.last_name ?? null,
         team: first.team,
         position: first.position,
         pos_type: first.pos_type,
