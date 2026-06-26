@@ -54,6 +54,20 @@ const COLOR = {
   border: 'rgba(0,230,118,0.18)',
 }
 
+// Position accent colors — match the player-card pills (GK red, DEF green,
+// MID gold, FWD blue). Used to tint the position word in the subtitle.
+const POSITION_COLOR: Record<CardPosition, string> = {
+  GK: '#E63946',
+  DEF: '#2ECC71',
+  MID: '#F4C430',
+  FWD: '#3D5AFE',
+}
+
+// Soft glow used on the white title text — keeps it readable on the navy bg
+// and matches the gentle bloom on the player-card pills.
+const WHITE_GLOW =
+  '0 0 8px rgba(255,255,255,0.55), 0 0 18px rgba(255,255,255,0.35), 0 2px 0 rgba(0,0,0,0.45)'
+
 const FALLBACK_AVATAR =
   'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png'
 
@@ -193,28 +207,37 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
         >
           <div
             style={{
-              color: COLOR.green,
+              color: COLOR.white,
               fontSize: 56,
               fontWeight: 900,
               fontStyle: 'italic',
               letterSpacing: '0.02em',
-              textShadow: '0 2px 0 rgba(0,0,0,0.4), 0 0 12px rgba(0,230,118,0.35)',
+              textShadow: WHITE_GLOW,
             }}
           >
             TOTAL90 Fantasy
           </div>
           <div
             style={{
-              color: COLOR.green,
+              color: COLOR.white,
               fontSize: 42,
               fontWeight: 800,
               fontStyle: 'italic',
               letterSpacing: '0.02em',
               marginTop: 6,
-              textShadow: '0 2px 0 rgba(0,0,0,0.4)',
+              textShadow: WHITE_GLOW,
             }}
           >
-            Top 10 {positionLabel(position)} · {roundLabel}
+            Top 10{' '}
+            <span
+              style={{
+                color: POSITION_COLOR[position],
+                textShadow: `0 0 8px ${POSITION_COLOR[position]}AA, 0 0 18px ${POSITION_COLOR[position]}66, 0 2px 0 rgba(0,0,0,0.45)`,
+              }}
+            >
+              {positionLabel(position)}
+            </span>{' '}
+            · {roundLabel}
           </div>
           <div
             style={{
@@ -223,10 +246,11 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
               fontWeight: 600,
               letterSpacing: '0.15em',
               marginTop: 8,
-              opacity: 0.9,
+              opacity: 0.95,
+              textShadow: '0 0 6px rgba(255,255,255,0.35), 0 2px 0 rgba(0,0,0,0.4)',
             }}
           >
-            METRIC: <span style={{ color: COLOR.green, fontWeight: 800 }}>{metric.label.toUpperCase()}</span>
+            METRIC: <span style={{ color: COLOR.white, fontWeight: 800 }}>{metric.label.toUpperCase()}</span>
           </div>
         </div>
 
