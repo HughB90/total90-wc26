@@ -356,16 +356,38 @@ export default function FantasyClient() {
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1.5rem 1rem 5rem', overflowX: 'hidden' }}>
       {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-          <Activity size={24} color={C.mint} />
-          <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.6rem', margin: 0 }}>
-            Fantasy Stats
-          </h1>
+      <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <Activity size={24} color={C.mint} />
+            <h1 style={{ color: C.gold, fontWeight: 900, fontSize: '1.6rem', margin: 0 }}>
+              Fantasy Stats
+            </h1>
+          </div>
+          <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0 }}>
+            Live fantasy points · v1.4 scoring · All rounds
+          </p>
         </div>
-        <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0 }}>
-          Live fantasy points · v1.4 scoring · All rounds
-        </p>
+        <a
+          href="/fantasy/social"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            background: C.mint,
+            color: C.bg,
+            fontWeight: 800,
+            fontSize: '0.85rem',
+            letterSpacing: '0.02em',
+            padding: '0.55rem 1rem',
+            borderRadius: 999,
+            textDecoration: 'none',
+            border: `1px solid ${C.mint}`,
+          }}
+          aria-label="Generate social graphic"
+        >
+          📸 Generate Social Graphic
+        </a>
       </div>
 
       {/* Filters */}
