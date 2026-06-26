@@ -97,7 +97,6 @@ export default function FantasySocialPage() {
   const [metric, setMetric] = useState<string>('fantasy_points')
   const [format, setFormat] = useState<CardFormat>('1080x1350')
   const [background, setBackground] = useState<'stadium-1' | 'stadium-2'>('stadium-1')
-  const [heroOverride, setHeroOverride] = useState<string>('') // '' = default to top photo
 
   // Data
   const [competitions, setCompetitions] = useState<Competition[]>([])
@@ -163,8 +162,6 @@ export default function FantasySocialPage() {
       }
       setPlayers((body.players || []) as PerformerRow[])
       setHasLoadedOnce(true)
-      // Reset hero override when data changes \u2014 default to first player with photo
-      setHeroOverride('')
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e)
       setErr(`Couldn't load players: ${m}`)
@@ -179,13 +176,6 @@ export default function FantasySocialPage() {
     loadPlayers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Map opta_id -> player for hero override lookup
-  const heroLookup = useMemo(() => {
-    const m = new Map<string, PerformerRow>()
-    for (const p of players) m.set(p.opta_player_id, p)
-    return m
-  }, [players])
 
   // ────────── PNG download ──────────
   const onDownload = useCallback(async () => {
@@ -386,24 +376,6 @@ export default function FantasySocialPage() {
               </div>
             </div>
 
-            {/* Hero player override */}
-            <div style={cardStyle}>
-              <label style={labelStyle}>Hero player (right-side image)</label>
-              <select
-                value={heroOverride}
-                onChange={(e) => setHeroOverride(e.target.value)}
-                style={inputStyle}
-                disabled={players.length === 0}
-              >
-                <option value="">Default \u2014 top-ranked with photo</option>
-                {players.map((p) => (
-                  <option key={p.opta_player_id} value={p.opta_player_id} disabled={!p.photo_url}>
-                    #{p.rank} {p.name} ({p.team}){p.photo_url ? '' : ' \u2014 no photo'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Action buttons */}
             <div style={cardStyle}>
               <button
@@ -481,8 +453,6 @@ export default function FantasySocialPage() {
                   metric={{ label: activeMetric.label, format: activeMetric.format }}
                   players={players}
                   background={background}
-                  heroOverrideOptaId={heroOverride || null}
-                  heroOptaLookup={heroLookup}
                 />
               </div>
             </div>

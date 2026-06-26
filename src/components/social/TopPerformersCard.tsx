@@ -42,10 +42,6 @@ export interface TopPerformersCardProps {
   metric: MetricMeta
   players: PerformerRow[] // up to 10
   background: 'stadium-1' | 'stadium-2'
-  /** opta_player_id of the player to feature on the right; defaults to rank #1 with a photo */
-  heroOverrideOptaId?: string | null
-  /** Used so the hero lookup can find the chosen player */
-  heroOptaLookup?: Map<string, PerformerRow>
 }
 
 const COLOR = {
@@ -67,12 +63,15 @@ function flagSrc(code: string | null): string | null {
 }
 
 function displayName(p: PerformerRow): string {
-  // Prefer "F. Lastname" if both parts present, else fall back to `name`
+  // Use Opta's short/display name (matchName) — e.g. "K. Mbappé", "Saka",
+  // "Cristiano Ronaldo". Falls back to constructed "F. Lastname" only if
+  // the display field is empty.
+  if (p.name && p.name.trim()) return p.name.toUpperCase()
   if (p.last_name && p.first_name) {
     const fi = p.first_name.trim().charAt(0)
     return `${fi}. ${p.last_name}`.toUpperCase()
   }
-  return (p.name || '').toUpperCase()
+  return (p.last_name || '').toUpperCase()
 }
 
 function positionLabel(p: CardPosition): string {
@@ -97,17 +96,6 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
   const headerH = Math.round(height * 0.12)
   const bodyH = height - headerH
 
-  // Hero player: override or first player with a photo
-  const heroPick = (() => {
-    if (props.heroOverrideOptaId && props.heroOptaLookup) {
-      const o = props.heroOptaLookup.get(props.heroOverrideOptaId)
-      if (o && o.photo_url) return o
-    }
-    return players.find((p) => !!p.photo_url) || players[0] || null
-  })()
-
-  const hasHero = !!(heroPick && heroPick.photo_url)
-
   // Row sizing — pack 10 rows comfortably into bodyH
   const rowCount = Math.max(players.length, 1)
   const rowGap = 12
@@ -119,8 +107,8 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
   // Photo pill size = full row height (per template)
   const photoSize = rowH
 
-  // Body row width: leave room for hero on the right (~38% of width) when hero present
-  const rowsContainerWidth = hasHero ? Math.round(width * 0.66) : width - sidePad * 2
+  // Rows always take full width (hero player removed per spec)
+  const rowsContainerWidth = width - sidePad * 2
 
   const bgUrl = background === 'stadium-1' ? '/social-templates/stadium-1.jpg' : '/social-templates/stadium-2.jpg'
 
@@ -165,17 +153,6 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
           }}
         />
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          top: `${headerH}px`,
-          left: 0,
-          width: `${width}px`,
-          height: `${bodyH}px`,
-          background: 'linear-gradient(180deg, rgba(10,15,46,0.65) 0%, rgba(10,15,46,0.78) 100%)',
-        }}
-      />
-
       {/* Header bar */}
       <div
         style={{
@@ -414,40 +391,6 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
           )
         })}
       </div>
-
-      {/* Hero player */}
-      {hasHero && heroPick && (
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            bottom: 0,
-            width: `${Math.round(width * 0.42)}px`,
-            height: `${Math.round(bodyH * 0.92)}px`,
-            zIndex: 1,
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={heroPick.photo_url as string}
-            alt=""
-            crossOrigin="anonymous"
-            referrerPolicy="no-referrer"
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              objectPosition: 'bottom right',
-              filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.6))',
-              display: 'block',
-            }}
-          />
-        </div>
-      )}
 
       {/* Footer watermark */}
       <div
