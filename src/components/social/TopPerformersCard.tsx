@@ -73,7 +73,9 @@ const FALLBACK_AVATAR =
 
 function flagSrc(code: string | null): string | null {
   if (!code) return null
-  return `https://flagcdn.com/w160/${code}.png`
+  // Same-origin proxy (see /api/flag/[code]) — avoids cross-origin / CORS
+  // races during html-to-image canvas export so all 10 flag cells render.
+  return `/api/flag/${code}`
 }
 
 function displayName(p: PerformerRow): string {

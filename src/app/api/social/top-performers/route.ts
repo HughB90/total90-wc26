@@ -322,27 +322,26 @@ export async function GET(request: Request) {
 
     const top = aggregated.slice(0, limit)
 
-    // Best-effort photo join via s3_players (name + nationality).
-    const teamSet = Array.from(new Set(top.map((p) => p.team).filter(Boolean)))
-    const photoMap = new Map<string, string | null>()
+    // Photo join via t90_players keyed on opta_id (canonical). Falls back to
+    // s3_players name+nationality for the rare case a row is missing.
+    const optaIds = top.map((p) => p.opta_player_id).filter(Boolean)
+    const photoById = new Map<string, string | null>()
 
-    if (teamSet.length > 0) {
-      const { data: photos, error: photoErr } = await sb
-        .from('s3_players')
-        .select('name, nationality, photo_url')
-        .in('nationality', teamSet)
-      if (!photoErr && photos) {
-        for (const row of photos as Array<{ name: string | null; nationality: string | null; photo_url: string | null }>) {
-          if (!row.name || !row.nationality) continue
-          const key = `${row.nationality.toLowerCase()}::${row.name.toLowerCase()}`
-          photoMap.set(key, row.photo_url ?? null)
+    if (optaIds.length > 0) {
+      const { data: t90Rows, error: t90Err } = await sb
+        .from('t90_players')
+        .select('opta_id, photo_url')
+        .in('opta_id', optaIds)
+      if (!t90Err && t90Rows) {
+        for (const row of t90Rows as Array<{ opta_id: string | null; photo_url: string | null }>) {
+          if (!row.opta_id) continue
+          photoById.set(row.opta_id, row.photo_url ?? null)
         }
       }
     }
 
     const players = top.map((p, i) => {
-      const key = `${p.team.toLowerCase()}::${p.name.toLowerCase()}`
-      const photo_url = photoMap.get(key) ?? null
+      const photo_url = photoById.get(p.opta_player_id) ?? null
       return {
         rank: i + 1,
         opta_player_id: p.opta_player_id,
