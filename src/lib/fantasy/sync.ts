@@ -260,9 +260,9 @@ export function deriveRoundCode(
 }
 
 const ROUND_LABELS: Record<string, string> = {
-  'WC2026-MD1': 'Round 1: Group Stage #1',
-  'WC2026-MD2': 'Round 2: Group Stage #2',
-  'WC2026-MD3': 'Round 3: Group Stage #3',
+  'WC2026-MD1': 'Round 1: Group Stage',
+  'WC2026-MD2': 'Round 2: Group Stage',
+  'WC2026-MD3': 'Round 3: Group Stage',
   'WC2026-R32': 'Round 4: Round of 32',
   'WC2026-R16': 'Round 5: Round of 16',
   'WC2026-QF': 'Round 6: Quarter Finals',
