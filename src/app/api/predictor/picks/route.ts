@@ -212,8 +212,12 @@ export async function POST(req: NextRequest) {
   if (GROUP_ROUNDS.has(roundCode) && picks.length > GROUP_ROUND_CAP) {
     return badRequest('group_round_max_16_picks', { received: picks.length })
   }
-  if (isKnockout && picks.length !== ROUND_EXPECTED_COUNT[roundCode]) {
-    return badRequest('knockout_round_all_matches_required', {
+  // Knockout batch sanity: cannot exceed the round's match count. The
+  // "all matches required" check happens AFTER we load persisted picks,
+  // so partial-batch edits (e.g. saving 15 unlocked picks when 1 match is
+  // already final + persisted) are allowed.
+  if (isKnockout && picks.length > ROUND_EXPECTED_COUNT[roundCode]) {
+    return badRequest('knockout_round_too_many_picks', {
       received: picks.length,
       expected: ROUND_EXPECTED_COUNT[roundCode],
     })
@@ -281,8 +285,31 @@ export async function POST(req: NextRequest) {
     }))
   }
 
-  // Persisted-set cap (group rounds only — knockouts use the fixed-count
-  // check above). This is THE fix for the 17-pick bug.
+  // Knockout coverage check: the UNION of persisted picks + this batch
+  // must cover every match in the round. This replaces the old "batch
+  // must contain all matches" rule, which broke partial edits once any
+  // match locked (the UI strips locked matches from the POST payload).
+  // Bug fix 2026-06-29: R32 user with 16/16 picks + Match 73 final could
+  // never re-save because batch was 15 and rule rejected.
+  if (isKnockout) {
+    const expected = ROUND_EXPECTED_COUNT[roundCode]
+    const coverage = new Set<string>()
+    for (const e of existingPicks) coverage.add(e.match_id)
+    for (const p of picks) coverage.add(p.match_id)
+    if (coverage.size !== expected) {
+      return NextResponse.json(
+        {
+          error: 'knockout_round_all_matches_required',
+          covered: coverage.size,
+          expected,
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  // Persisted-set cap (group rounds only — knockouts use the union
+  // coverage check above). This is THE fix for the 17-pick bug.
   const capResult = checkPersistedSetCap(
     roundCode,
     existingPicks,
