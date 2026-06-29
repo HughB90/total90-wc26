@@ -287,50 +287,17 @@ export async function POST(req: NextRequest) {
     }))
   }
 
-  // Knockout coverage check: persisted picks + this batch must cover every
-  // match in the round that the user CAN still pick — i.e. all matches
-  // except locked ones the user never picked. Locked matches the user
-  // already picked are kept in coverage (no regression for the 16/16
-  // edit case from PR #45); locked matches with no existing pick are
-  // forgiven (no way to retroactively pick a kicked-off match).
+  // Knockout: no coverage requirement. Users can save any number of
+  // picks (1..expected). The original "all matches required" rule blocked
+  // users from saving when matches kept locking faster than they could
+  // pick. Now we trust the UI to surface 'you have X of Y picks' and
+  // let the user save whatever they want.
   //
-  // Bug 2026-06-29: new users on R32 couldn't save because Match 73 (final)
-  // and Match 74 (live) reduced max possible picks to 14, but coverage rule
-  // demanded 16. Result: "knockout_round_all_matches_required" on every save.
-  if (isKnockout) {
-    const expected = ROUND_EXPECTED_COUNT[roundCode]
-    const nowMs = Date.now()
-    const existingIds = new Set(existingPicks.map((e) => e.match_id))
-    // "Pickable" = unlocked OR already-persisted by this user.
-    const pickableIds = new Set<string>()
-    for (const m of matchRows || []) {
-      if (isPickLockBypassed(m.id)) { pickableIds.add(m.id); continue }
-      const koMs = new Date(m.kickoff_at).getTime()
-      const statusLocks = !!m.status && m.status !== 'scheduled'
-      const locked = Number.isNaN(koMs) || koMs <= nowMs || statusLocks
-      if (!locked || existingIds.has(m.id)) pickableIds.add(m.id)
-    }
-    const coverage = new Set<string>()
-    for (const e of existingPicks) coverage.add(e.match_id)
-    for (const p of picks) coverage.add(p.match_id)
-    // Coverage must include every pickable match. Picks the user submits
-    // for locked matches they never owned are already filtered out by the
-    // match_locked guard above, so coverage ∩ pickable == coverage here.
-    let missing = 0
-    for (const id of pickableIds) if (!coverage.has(id)) missing++
-    if (missing > 0) {
-      return NextResponse.json(
-        {
-          error: 'knockout_round_all_matches_required',
-          covered: coverage.size,
-          pickable: pickableIds.size,
-          expected,
-          missing,
-        },
-        { status: 400 }
-      )
-    }
-  }
+  // Server still enforces the BATCH cannot exceed expected count (sanity
+  // check above) and the per-match lock guard (no posting picks for
+  // already-kicked-off matches unless PICK_LOCK_BYPASS_MATCHES allows).
+  // History: PR #45 fixed full-batch edits; PR #50 added pickable-coverage;
+  // 2026-06-29 dropped coverage entirely — partial saves are fine.
 
   // Persisted-set cap (group rounds only — knockouts use the union
   // coverage check above). This is THE fix for the 17-pick bug.
