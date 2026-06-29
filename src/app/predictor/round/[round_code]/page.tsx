@@ -242,7 +242,11 @@ export default function RoundPicksPage({
   }, [isKnockout, matches, matchLockedById, persistedIds, expected])
   const tooManyGroup = !isKnockout && filledPicks.length > capForGroup
   const tooManyStars = hasStars && starCount > 1
-  const knockoutShort = isKnockout && filledPicks.length < pickableCount
+  // Advisory: 'you could pick more'. NOT a save blocker — partial knockout
+  // saves are allowed server-side as of 2026-06-29.
+  const knockoutShort = isKnockout && filledPicks.length < pickableCount && filledPicks.length > 0
+  // Hard block: cannot submit with zero filled picks on knockout (nothing to save)
+  const knockoutEmpty = isKnockout && filledPicks.length === 0
   // For draw-winner validation, only consider matches we can actually
   // submit (unlocked). Locked matches are read-only — if they need a draw
   // winner that was never set, that's water under the bridge.
@@ -253,7 +257,7 @@ export default function RoundPicksPage({
   // "Round locked" = every match in the round has kicked off. Until then,
   // the user can keep editing unlocked matches.
   const fullyLocked = matches.length > 0 && matches.every((m) => matchLockedById[m.id])
-  const canSubmit = !fullyLocked && dirtyPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner
+  const canSubmit = !fullyLocked && dirtyPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutEmpty && !drawNeedsWinner
 
   function setPick(matchId: string, patch: Partial<PickState>) {
     setPicks((cur) => ({
@@ -549,7 +553,8 @@ export default function RoundPicksPage({
           <span style={{ color: C.muted, fontSize: '0.78rem' }}>
             {tooManyGroup && <span style={{ color: C.red }}>{filledPicks.length}/16 — drop {filledPicks.length - 16}</span>}
             {tooManyStars && <span style={{ color: C.red }}> · Too many stars</span>}
-            {knockoutShort && <span style={{ color: C.red }}>Pick all {pickableCount} remaining matches ({filledPicks.length}/{pickableCount})</span>}
+            {knockoutShort && <span style={{ color: C.muted }}>{filledPicks.length}/{pickableCount} picked — save what you have, add more anytime</span>}
+            {knockoutEmpty && <span style={{ color: C.red }}>Pick at least one match to save</span>}
             {drawNeedsWinner && <span style={{ color: C.red }}>Choose draw advancer</span>}
             {canSubmit && <span>Ready to submit {dirtyPicks.length} change{dirtyPicks.length === 1 ? '' : 's'}</span>}
             {!canSubmit && filledPicks.length === 0 && <span>No picks yet</span>}
