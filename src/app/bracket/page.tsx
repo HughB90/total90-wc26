@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import AuthHeader from '@/components/AuthHeader'
 import AuthModal from '@/components/AuthModal'
 
@@ -48,24 +48,48 @@ function flagUrl(country: string) {
 }
 function cleanName(s: string) { return s.replace(/\s*\(.*\)$/, '').trim() }
 
-// R32 bracket: 16 matchups covering 12×1st + 12×2nd + 8×Best3rd = 32 teams
-const R32_MATCHUPS: { id: string; s1: string; s2: string }[] = [
-  { id: 'M1',  s1: '1st · Group A', s2: 'Best 3rd Qualifier #1' },
-  { id: 'M2',  s1: '1st · Group B', s2: '2nd · Group A' },
-  { id: 'M3',  s1: '1st · Group C', s2: '2nd · Group B' },
-  { id: 'M4',  s1: '2nd · Group C', s2: 'Best 3rd Qualifier #2' },
-  { id: 'M5',  s1: '1st · Group D', s2: 'Best 3rd Qualifier #3' },
-  { id: 'M6',  s1: '1st · Group E', s2: '2nd · Group D' },
-  { id: 'M7',  s1: '1st · Group F', s2: '2nd · Group E' },
-  { id: 'M8',  s1: '2nd · Group F', s2: 'Best 3rd Qualifier #4' },
-  { id: 'M9',  s1: '1st · Group G', s2: 'Best 3rd Qualifier #5' },
-  { id: 'M10', s1: '1st · Group H', s2: '2nd · Group G' },
-  { id: 'M11', s1: '1st · Group I', s2: '2nd · Group H' },
-  { id: 'M12', s1: '2nd · Group I', s2: 'Best 3rd Qualifier #6' },
-  { id: 'M13', s1: '1st · Group J', s2: 'Best 3rd Qualifier #7' },
-  { id: 'M14', s1: '1st · Group K', s2: '2nd · Group J' },
-  { id: 'M15', s1: '1st · Group L', s2: '2nd · Group K' },
-  { id: 'M16', s1: '2nd · Group L', s2: 'Best 3rd Qualifier #8' },
+// R32 bracket: 16 matches in FIFA 2026 Annex-C order.
+// IDs M1..M16 are stable internal slot identifiers — NOT to be confused with
+// FIFA's official match numbers (73..88). Pairings here drive R16_PAIRS below
+// (consecutive pairs feed the same R16 match).
+//
+// Each side is a SlotRef:
+//   { kind: 'winner'|'runner', group: 'A'..'L' } — group winner or runner-up
+//   { kind: 'third', slot: 0..7 }                — best-3rd slot, populated by the
+//                                                  FIFA Annex-C allocation table.
+type SlotRef =
+  | { kind: 'winner'; group: string }
+  | { kind: 'runner'; group: string }
+  | { kind: 'third'; slot: number }
+
+const R32_MATCHUPS: { id: string; fifaNo: number; s1: SlotRef; s2: SlotRef }[] = [
+  // Top half
+  { id: 'M1',  fifaNo: 79, s1: { kind: 'winner', group: 'A' }, s2: { kind: 'third', slot: 0 } },
+  { id: 'M2',  fifaNo: 73, s1: { kind: 'runner', group: 'A' }, s2: { kind: 'runner', group: 'B' } },
+  { id: 'M3',  fifaNo: 85, s1: { kind: 'winner', group: 'B' }, s2: { kind: 'third', slot: 1 } },
+  { id: 'M4',  fifaNo: 76, s1: { kind: 'winner', group: 'C' }, s2: { kind: 'runner', group: 'F' } },
+  { id: 'M5',  fifaNo: 81, s1: { kind: 'winner', group: 'D' }, s2: { kind: 'third', slot: 2 } },
+  { id: 'M6',  fifaNo: 88, s1: { kind: 'runner', group: 'D' }, s2: { kind: 'runner', group: 'G' } },
+  { id: 'M7',  fifaNo: 74, s1: { kind: 'winner', group: 'E' }, s2: { kind: 'third', slot: 3 } },
+  { id: 'M8',  fifaNo: 75, s1: { kind: 'winner', group: 'F' }, s2: { kind: 'runner', group: 'C' } },
+  // Bottom half
+  { id: 'M9',  fifaNo: 82, s1: { kind: 'winner', group: 'G' }, s2: { kind: 'third', slot: 4 } },
+  { id: 'M10', fifaNo: 78, s1: { kind: 'runner', group: 'E' }, s2: { kind: 'runner', group: 'I' } },
+  { id: 'M11', fifaNo: 77, s1: { kind: 'winner', group: 'I' }, s2: { kind: 'third', slot: 5 } },
+  { id: 'M12', fifaNo: 84, s1: { kind: 'winner', group: 'H' }, s2: { kind: 'runner', group: 'J' } },
+  { id: 'M13', fifaNo: 86, s1: { kind: 'winner', group: 'J' }, s2: { kind: 'runner', group: 'H' } },
+  { id: 'M14', fifaNo: 83, s1: { kind: 'runner', group: 'K' }, s2: { kind: 'runner', group: 'L' } },
+  { id: 'M15', fifaNo: 87, s1: { kind: 'winner', group: 'K' }, s2: { kind: 'third', slot: 6 } },
+  { id: 'M16', fifaNo: 80, s1: { kind: 'winner', group: 'L' }, s2: { kind: 'third', slot: 7 } },
+]
+
+// All knockout match IDs (R32 + R16 + QF + SF + 3rd-place + Final) for cascade-clear.
+const ALL_KNOCKOUT_IDS = [
+  ...Array.from({ length: 16 }, (_, i) => `M${i + 1}`),
+  ...Array.from({ length: 8 }, (_, i) => `R16_${i + 1}`),
+  ...Array.from({ length: 4 }, (_, i) => `QF_${i + 1}`),
+  'SF_1', 'SF_2',
+  'THIRD', 'FINAL',
 ]
 
 // R16: pairs of R32 winners
@@ -170,6 +194,8 @@ function GroupStageTab({ userId, savedPicks, onSaved, onPicksSaved, onAuthRequir
   useEffect(() => { setPicks(savedPicks) }, [savedPicks])
 
   const hasResults = Object.keys(groupResults).length > 0
+  // Lock picks once real group_results are seeded (group stage is final).
+  const locked = hasResults
 
   // Compute results scoring
   let totalCorrect = 0, totalPts = 0
@@ -186,6 +212,7 @@ function GroupStageTab({ userId, savedPicks, onSaved, onPicksSaved, onAuthRequir
   }
 
   function handleTeamClick(group: string, team: string) {
+    if (locked) return
     setPicks(prev => {
       const current = prev[group] ?? []
       const idx = current.indexOf(team)
@@ -313,7 +340,7 @@ function GroupStageTab({ userId, savedPicks, onSaved, onPicksSaved, onAuthRequir
           )
         })}
       </div>
-      <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />
+      {!locked && <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />}
     </div>
   )
 }
@@ -334,6 +361,8 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onPicksSaved, 
   useEffect(() => { setChecked(savedPicks) }, [savedPicks])
 
   const hasThirdResults = thirdResults.length > 0
+  // Lock once real third_results are seeded (group stage is final).
+  const locked = hasThirdResults
 
   // Compute 3rd place results scoring
   const thirdCorrectCount = hasThirdResults
@@ -347,6 +376,7 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onPicksSaved, 
     : 0
 
   function toggle(group: string) {
+    if (locked) return
     setChecked(prev => {
       if (prev.includes(group)) return prev.filter(g => g !== group)
       if (prev.length >= 8) return prev
@@ -379,8 +409,17 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onPicksSaved, 
   return (
     <div>
       <p style={{ color: C.muted, fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-        Pick the 8 best 3rd-place teams that will advance to the Round of 32.
+        {locked
+          ? 'Group stage final — your picks are locked and scored.'
+          : 'Pick the 8 best 3rd-place teams that will advance to the Round of 32.'}
       </p>
+      {locked && (
+        <div style={{ backgroundColor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: '0.75rem', padding: '0.6rem 1rem', marginBottom: '1rem' }}>
+          <p style={{ color: C.gold, fontWeight: 700, fontSize: '0.85rem', margin: 0 }}>
+            🔒 Group stage final — your picks are locked and scored.
+          </p>
+        </div>
+      )}
       <p style={{ color: checked.length >= 8 ? C.gold : C.muted, fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>
         {checked.length}/8 selected
       </p>
@@ -528,52 +567,61 @@ function ThirdPlaceTab({ userId, savedPicks, groupPicks, onSaved, onPicksSaved, 
           )
         })}
       </div>
-      <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />
+      {!locked && <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />}
     </div>
   )
 }
 
 // ─── Knockout Tab ─────────────────────────────────────────────────────────────
-function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound = 'r32', onSaved, onPicksSaved, onAuthRequired }: {
+function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, groupResults = {}, thirdResults = [], activeRound = 'r32', onSaved, onPicksSaved, onAuthRequired }: {
   userId: string | null
   savedPicks: KnockoutPicks
   activeRound?: string
   groupPicks: GroupPicks
   thirdPicks: ThirdPicks
+  /** Real group standings from bracket_config (post-group stage). Empty = pre-group-stage. */
+  groupResults?: GroupPicks
+  /** Real 8 best-3rd team names in FIFA slot order (slot 0..7). Empty = pre-group-stage. */
+  thirdResults?: string[]
   onPicksSaved?: (picks: KnockoutPicks) => void
   onSaved?: () => void
   onAuthRequired?: () => void
 }) {
   const [picks, setPicks] = useState<KnockoutPicks>(savedPicks)
   const [status, setStatus] = useState<SaveStatus>('idle')
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Latest picks ref so the debounced saver always reads fresh state.
+  const picksRef = useRef(picks)
+  useEffect(() => { picksRef.current = picks }, [picks])
 
   useEffect(() => { setPicks(savedPicks) }, [savedPicks])
 
-  // Resolve a label like "1st · Group A" to the actual team name from group picks
-  function resolveLabel(label: string): string {
-    const firstMatch = label.match(/^1st · Group ([A-L])$/)
-    if (firstMatch) {
-      const ranked = groupPicks[firstMatch[1]] ?? []
-      return ranked[0] ?? label
+  const haveLiveResults = Object.keys(groupResults).length > 0 && thirdResults.length === 8
+
+  // Resolve a SlotRef to the actual team. Prefers real bracket_config results;
+  // falls back to the user's own group/3rd picks (pre-knockout-unlock preview).
+  function resolveSlot(ref: SlotRef): string | null {
+    if (ref.kind === 'winner') {
+      const order = groupResults[ref.group] ?? groupPicks[ref.group] ?? []
+      return order[0] ?? null
     }
-    const secondMatch = label.match(/^2nd · Group ([A-L])$/)
-    if (secondMatch) {
-      const ranked = groupPicks[secondMatch[1]] ?? []
-      return ranked[1] ?? label
+    if (ref.kind === 'runner') {
+      const order = groupResults[ref.group] ?? groupPicks[ref.group] ?? []
+      return order[1] ?? null
     }
-    const thirdMatch = label.match(/^Best 3rd Qualifier #(\d)$/)
-    if (thirdMatch) {
-      const slot = parseInt(thirdMatch[1]) - 1
-      const group = thirdPicks[slot]
-      if (group) {
-        const ranked = groupPicks[group] ?? []
-        const teams = WC_GROUPS[group]
-        const auto4th = teams.find(t => !ranked.includes(t))
-        const third = ranked[2] ?? (ranked.length === 3 ? auto4th : null)
-        if (third) return third  // Return just the country name — no suffix
-      }
+    if (ref.kind === 'third') {
+      if (haveLiveResults) return thirdResults[ref.slot] ?? null
+      // Fallback: derive from user's 3rd-place group picks. Pre-knockout-unlock
+      // this is a preview only; mapping is the user's selection order.
+      const group = thirdPicks[ref.slot]
+      if (!group) return null
+      const ranked = groupPicks[group] ?? []
+      const teams = WC_GROUPS[group]
+      const auto4th = teams.find(t => !ranked.includes(t))
+      const third = ranked[2] ?? (ranked.length === 3 ? auto4th : null)
+      return third ?? null
     }
-    return label
+    return null
   }
 
   // Get the winner label for a given matchup id
@@ -581,24 +629,93 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
     return picks[matchId] ?? null
   }
 
-  function handlePick(matchId: string, value: string) {
-    setPicks(prev => ({ ...prev, [matchId]: value }))
-    setStatus('idle')
+  // Cascade-clear: when a pick changes such that a previously-saved downstream
+  // winner is no longer reachable from this match's subtree, blow away that
+  // pick (and everything below it).
+  function downstreamOf(matchId: string): string[] {
+    // Returns the chain of match IDs that depend on matchId's winner.
+    // R32 (M1..M16) → R16_n where R16_PAIRS[n] includes its ID
+    // R16 → QF → SF → THIRD / FINAL
+    const out: string[] = []
+    const visit = (id: string) => {
+      // Find children:
+      // R32 child = R16_n where R16_PAIRS[n-1] contains id
+      for (let i = 0; i < R16_PAIRS.length; i++) {
+        if (R16_PAIRS[i][0] === id || R16_PAIRS[i][1] === id) {
+          const r16 = `R16_${i + 1}`
+          out.push(r16); visit(r16)
+        }
+      }
+      for (let i = 0; i < QF_PAIRS.length; i++) {
+        if (QF_PAIRS[i][0] === id || QF_PAIRS[i][1] === id) {
+          const qf = `QF_${i + 1}`
+          out.push(qf); visit(qf)
+        }
+      }
+      for (let i = 0; i < SF_PAIRS.length; i++) {
+        if (SF_PAIRS[i][0] === id || SF_PAIRS[i][1] === id) {
+          const sf = `SF_${i + 1}`
+          out.push(sf); visit(sf)
+        }
+      }
+      // SF winners feed FINAL; SF losers feed THIRD.
+      if (id === 'SF_1' || id === 'SF_2') {
+        if (!out.includes('FINAL')) out.push('FINAL')
+        if (!out.includes('THIRD')) out.push('THIRD')
+      }
+    }
+    visit(matchId)
+    return out
   }
 
-  async function handleSave() {
+  function handlePick(matchId: string, value: string) {
+    setPicks(prev => {
+      // If editing changes the winner of matchId, clear downstream picks that
+      // referenced the previous winner (since they may no longer be valid).
+      const prevWinner = prev[matchId]
+      const next = { ...prev, [matchId]: value }
+      if (prevWinner && prevWinner !== value) {
+        for (const d of downstreamOf(matchId)) {
+          // Clear if downstream pick equals the old winner (it's now impossible)
+          if (next[d] === prevWinner) delete next[d]
+        }
+      }
+      return next
+    })
+    setStatus('idle')
+    scheduleSave()
+  }
+
+  // Debounced auto-save (500ms after the last edit).
+  function scheduleSave() {
+    if (!userId) {
+      if (onAuthRequired) onAuthRequired()
+      return
+    }
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => { void doSave() }, 500)
+  }
+
+  async function doSave() {
+    if (!userId) return
     setStatus('saving')
     try {
+      const payload = picksRef.current
       const res = await fetch('/api/bracket/picks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, phase: 'knockout', picks }),
+        body: JSON.stringify({ userId, phase: 'knockout', picks: payload }),
       })
-      const data = await res.json() as { ok?: boolean }
+      const data = await res.json() as { ok?: boolean; error?: string }
+      if (data.error === 'SESSION_EXPIRED') {
+        localStorage.removeItem('bracket_user_id')
+        localStorage.removeItem('bracket_display_name')
+        window.location.reload()
+        return
+      }
       if (data.ok) {
         setStatus('saved')
-        onPicksSaved?.(picks)
-        setTimeout(() => { onSaved?.() }, 700)
+        onPicksSaved?.(payload)
       } else {
         setStatus('error')
       }
@@ -607,14 +724,29 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
     }
   }
 
+  // Flush pending save on unmount (e.g. tab change).
+  useEffect(() => () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); void doSave() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Manual save button — also advances tabs like the legacy flow.
+  async function handleSave() {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    await doSave()
+    setTimeout(() => { onSaved?.() }, 700)
+  }
+
   function MatchupRow({
     matchId, opt1, opt2, label,
   }: { matchId: string; opt1: string; opt2: string; label: string }) {
     const winner = picks[matchId] ?? ''
-    const r1 = resolveLabel(opt1)
-    const r2 = resolveLabel(opt2)
-    const isPlaceholder1 = r1.startsWith('Winner') || r1 === '?' || r1.startsWith('Best')
-    const isPlaceholder2 = r2.startsWith('Winner') || r2 === '?' || r2.startsWith('Best')
+    // opt1/opt2 are already resolved team names (or placeholder strings) by the
+    // caller; render them as-is.
+    const r1 = opt1
+    const r2 = opt2
+    const isPlaceholder1 = !r1 || r1.startsWith('Winner') || r1 === '?' || r1.startsWith('Best') || r1.startsWith('TBD')
+    const isPlaceholder2 = !r2 || r2.startsWith('Winner') || r2 === '?' || r2.startsWith('Best') || r2.startsWith('TBD')
 
     function TeamRow({ team, isPlaceholder, side }: { team: string; isPlaceholder: boolean; side: 1 | 2 }) {
       const isSelected = winner === team
@@ -716,18 +848,37 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
     </h3>
   )
 
+  // Compact auto-save badge for the knockout rounds (idle = empty, no flash).
+  const SaveIndicator = () => {
+    if (status === 'idle') return null
+    const label = status === 'saving' ? 'Saving…' : status === 'saved' ? '✓ Saved' : '✗ Error'
+    const color = status === 'saving' ? C.muted : status === 'saved' ? C.green : '#ef4444'
+    const bg = status === 'saving' ? 'rgba(136,153,204,0.08)' : status === 'saved' ? 'rgba(0,230,118,0.08)' : 'rgba(239,68,68,0.08)'
+    return (
+      <span style={{
+        display: 'inline-block', color, backgroundColor: bg,
+        border: `1px solid ${color}33`, fontSize: '0.72rem', fontWeight: 700,
+        padding: '2px 10px', borderRadius: '999px', marginLeft: '0.5rem',
+      }}>{label}</span>
+    )
+  }
+
   return (
     <div>
       <p style={{ color: C.muted, fontSize: '0.8rem', marginBottom: '1rem' }}>
-        Pick the winner of each matchup. Later rounds unlock as you make earlier picks.
+        Pick the winner of each matchup. Picks save automatically. <SaveIndicator />
       </p>
 
       {activeRound === 'r32' && (<>
         <SectionHeader title="Round of 32 — 16 matches" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          {R32_MATCHUPS.map(m => (
-            <MatchupRow key={m.id} matchId={m.id} opt1={m.s1} opt2={m.s2} label={m.id} />
-          ))}
+          {R32_MATCHUPS.map(m => {
+            const t1 = resolveSlot(m.s1) ?? 'TBD'
+            const t2 = resolveSlot(m.s2) ?? 'TBD'
+            return (
+              <MatchupRow key={m.id} matchId={m.id} opt1={t1} opt2={t2} label={`Match ${m.fifaNo}`} />
+            )
+          })}
         </div>
       </>)}
 
@@ -735,7 +886,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
         <SectionHeader title="Round of 16 — 8 matches" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {r16Rows.map(({ rid, w1, w2 }) => (
-            <MatchupRow key={rid} matchId={rid} opt1={w1} opt2={w2} label={rid.replace('_', ' ')} />
+            <MatchupRow key={rid} matchId={rid} opt1={w1.startsWith('Winner ') ? 'TBD' : w1} opt2={w2.startsWith('Winner ') ? 'TBD' : w2} label={rid.replace('_', ' ')} />
           ))}
         </div>
       </>)}
@@ -744,7 +895,7 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
         <SectionHeader title="Quarter-Finals — 4 matches" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {qfRows.map(({ qid, w1, w2 }) => (
-            <MatchupRow key={qid} matchId={qid} opt1={w1} opt2={w2} label={qid.replace('_', ' ')} />
+            <MatchupRow key={qid} matchId={qid} opt1={w1.startsWith('Winner ') || w1 === '?' ? 'TBD' : w1} opt2={w2.startsWith('Winner ') || w2 === '?' ? 'TBD' : w2} label={qid.replace('_', ' ')} />
           ))}
         </div>
       </>)}
@@ -753,16 +904,16 @@ function KnockoutTab({ userId, savedPicks, groupPicks, thirdPicks, activeRound =
         <SectionHeader title="Semi-Finals — 2 matches" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           {sfRows.map(({ sid, w1, w2 }) => (
-            <MatchupRow key={sid} matchId={sid} opt1={w1} opt2={w2} label={sid.replace('_', ' ')} />
+            <MatchupRow key={sid} matchId={sid} opt1={w1.startsWith('Winner ') ? 'TBD' : w1} opt2={w2.startsWith('Winner ') ? 'TBD' : w2} label={sid.replace('_', ' ')} />
           ))}
         </div>
       </>)}
 
       {activeRound === 'final' && (<>
         <SectionHeader title="3rd Place Match" />
-        <MatchupRow matchId="THIRD" opt1={sf1l ?? 'SF1 Loser'} opt2={sf2l ?? 'SF2 Loser'} label="3rd Place" />
+        <MatchupRow matchId="THIRD" opt1={sf1l ?? 'TBD'} opt2={sf2l ?? 'TBD'} label="3rd Place" />
         <SectionHeader title="Final" />
-        <MatchupRow matchId="FINAL" opt1={sf1w ?? 'SF1 Winner'} opt2={sf2w ?? 'SF2 Winner'} label="Final" />
+        <MatchupRow matchId="FINAL" opt1={sf1w ?? 'TBD'} opt2={sf2w ?? 'TBD'} label="Final" />
       </>)}
 
       <SaveButton status={status} onClick={handleSave} userId={userId} onAuthRequired={onAuthRequired} />
@@ -1341,6 +1492,28 @@ export default function BracketPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [picksLoaded, setPicksLoaded] = useState(false)
+  // Live bracket truth from /api/bracket/results (group/3rd results, knockout outcomes).
+  // Empty defaults until the fetch completes — then drives R32 hydration + locking.
+  const [liveGroupResults, setLiveGroupResults] = useState<GroupPicks>({})
+  const [liveThirdResults, setLiveThirdResults] = useState<string[]>([])
+  // (knockout_results fetched too; passed through to scoring server-side. Kept
+  // for future client-side breakdown use but not yet read by the UI.)
+  const [, setLiveKnockoutResults] = useState<KnockoutPicks>({})
+
+  // Hydrate live results on mount. Public endpoint, no auth required.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/bracket/results', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((d: { ok?: boolean; group_results?: GroupPicks; third_results?: string[]; knockout_results?: KnockoutPicks }) => {
+        if (cancelled || !d.ok) return
+        setLiveGroupResults(d.group_results ?? {})
+        setLiveThirdResults(d.third_results ?? [])
+        setLiveKnockoutResults(d.knockout_results ?? {})
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
   const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
   const [myLeagues, setMyLeagues] = useState<{ id: string; name: string; inviteCode: string; memberCount: number; myRank: number; myScore: number }[]>([])
   const [leagueView, setLeagueView] = useState<{ leagueCode: string; leagueName: string } | null>(null)
@@ -1591,7 +1764,7 @@ export default function BracketPage() {
             onSaved={() => setActiveTab('third')}
             onPicksSaved={(p) => setGroupPicks(p)}
             onAuthRequired={handleAuthRequired}
-            groupResults={{}}
+            groupResults={liveGroupResults}
           />
         )}
         {activeTab === 'third' && (
@@ -1605,7 +1778,7 @@ export default function BracketPage() {
             onSaved={knockoutLocked && !adminUnlock ? undefined : () => setActiveTab('r32')}
             onPicksSaved={(p) => setThirdPicks(p)}
             onAuthRequired={handleAuthRequired}
-            thirdResults={[]}
+            thirdResults={liveThirdResults}
           />
         )}
         {KNOCKOUT_TABS.includes(activeTab) && knockoutLocked && !adminUnlock && (
@@ -1635,7 +1808,7 @@ export default function BracketPage() {
           </div>
         )}
         {KNOCKOUT_TABS.includes(activeTab) && (!knockoutLocked || adminUnlock) && (
-          <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} activeRound={activeTab}
+          <KnockoutTab userId={userId} savedPicks={knockoutPicks} groupPicks={groupPicks} thirdPicks={thirdPicks} groupResults={liveGroupResults} thirdResults={liveThirdResults} activeRound={activeTab}
             onSaved={() => {
               const order = ['r32','r16','qf','sf','final','leaderboard']
               const next = order[order.indexOf(activeTab) + 1]

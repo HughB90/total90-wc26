@@ -88,6 +88,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'SESSION_EXPIRED', message: 'Your session has expired. Please log out and sign in again.' }, { status: 401 })
     }
 
+    // Lock group + 3rd-place picks once the group stage is final. The bracket
+    // page exposes the locked state to the UI; this server-side check is the
+    // authoritative guard against late writes (e.g. stale clients).
+    if (phase === 'group' || phase === 'third') {
+      const { data: gr } = await (
+        supabase.from('bracket_config').select('value').eq('key', 'group_results').maybeSingle() as any
+      )
+      const grValue = gr?.value
+      const groupResultsSet = grValue && typeof grValue === 'object' && Object.keys(grValue).length > 0
+      if (groupResultsSet) {
+        return NextResponse.json(
+          { error: 'phase_locked', message: 'Group stage is final — group and 3rd-place picks are locked.' },
+          { status: 403 },
+        )
+      }
+    }
+
     // Check if entry exists for this user + phase (match by either id).
     const orParts = [`profile_id.eq.${resolved.profileId}`]
     if (resolved.userId) orParts.unshift(`user_id.eq.${resolved.userId}`)
