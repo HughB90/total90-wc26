@@ -37,6 +37,7 @@ import {
   checkStarRule,
   splitByMatchLock,
   GROUP_ROUND_CAP,
+  isPickLockBypassed,
 } from '@/lib/predictor-pick-validation'
 
 /**
@@ -95,10 +96,11 @@ export async function DELETE(req: NextRequest) {
     if (m.round_code !== roundCode) return badRequest('match_round_mismatch', { match_id: id, expected_round: roundCode })
   }
 
-  // Per-match lock guard
+  // Per-match lock guard (DELETE path — same bypass as POST)
   const nowMs = Date.now()
   const locked: Array<{ match_id: string; kickoff_at: string | null }> = []
   for (const id of matchIds) {
+    if (isPickLockBypassed(id)) continue
     const m = byId.get(id)!
     const koMs = new Date(m.kickoff_at).getTime()
     const statusLocks = !!m.status && m.status !== 'scheduled'
@@ -302,6 +304,7 @@ export async function POST(req: NextRequest) {
     // "Pickable" = unlocked OR already-persisted by this user.
     const pickableIds = new Set<string>()
     for (const m of matchRows || []) {
+      if (isPickLockBypassed(m.id)) { pickableIds.add(m.id); continue }
       const koMs = new Date(m.kickoff_at).getTime()
       const statusLocks = !!m.status && m.status !== 'scheduled'
       const locked = Number.isNaN(koMs) || koMs <= nowMs || statusLocks

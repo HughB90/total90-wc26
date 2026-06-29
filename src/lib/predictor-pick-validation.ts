@@ -93,12 +93,24 @@ export interface LockSplit {
  * Unknown match_ids (not present in the supplied matches array) are
  * returned separately so the caller can reject the whole batch.
  */
+/**
+ * One-off bypass: comma-separated list of match_ids whose kickoff/status
+ * locks are ignored. Used for ops fixes when a match must remain pickable
+ * past kickoff (e.g. half-time extensions after a save bug). Empty when
+ * unset — default lock behavior applies.
+ */
+function bypassedMatchIds(): Set<string> {
+  const raw = (typeof process !== 'undefined' && process.env && process.env.PICK_LOCK_BYPASS_MATCHES) || ''
+  return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))
+}
+
 export function splitByMatchLock<T extends IncomingPick>(
   incoming: T[],
   matches: MatchLockRow[],
   nowMs: number = Date.now()
 ): { unlocked: T[]; lockedDetails: Array<{ match_id: string; kickoff_at: string | null }>; unknown: string[] } {
   const matchById = new Map(matches.map((m) => [m.id, m]))
+  const bypass = bypassedMatchIds()
   const unlocked: T[] = []
   const lockedDetails: Array<{ match_id: string; kickoff_at: string | null }> = []
   const unknown: string[] = []
@@ -106,6 +118,10 @@ export function splitByMatchLock<T extends IncomingPick>(
     const m = matchById.get(p.match_id)
     if (!m) {
       unknown.push(p.match_id)
+      continue
+    }
+    if (bypass.has(p.match_id)) {
+      unlocked.push(p)
       continue
     }
     const koMs = new Date(m.kickoff_at).getTime()
@@ -117,6 +133,15 @@ export function splitByMatchLock<T extends IncomingPick>(
     }
   }
   return { unlocked, lockedDetails, unknown }
+}
+
+/**
+ * Exposed for routes/UI to honor the same bypass when computing pickable
+ * sets. Returns true iff the match should be treated as unlocked due to
+ * the env override.
+ */
+export function isPickLockBypassed(matchId: string): boolean {
+  return bypassedMatchIds().has(matchId)
 }
 
 /**
