@@ -226,9 +226,23 @@ export default function RoundPicksPage({
   // Validations
   const capForGroup = 16
   const expected = ROUND_EXPECTED[round_code] ?? 0
+  // Pickable count = matches not already locked at page load, OR matches the
+  // user already had a pick on (those stay in coverage). Mirrors the server's
+  // coverage rule. Fixes the bug where new users on R32 with 2 matches
+  // already kicked off could never satisfy the 16-pick requirement.
+  const pickableCount = useMemo(() => {
+    if (!isKnockout) return expected
+    let n = 0
+    for (const m of matches) {
+      const locked = matchLockedById[m.id]
+      const persisted = persistedIds.has(m.id)
+      if (!locked || persisted) n++
+    }
+    return n
+  }, [isKnockout, matches, matchLockedById, persistedIds, expected])
   const tooManyGroup = !isKnockout && filledPicks.length > capForGroup
   const tooManyStars = hasStars && starCount > 1
-  const knockoutShort = isKnockout && filledPicks.length !== expected
+  const knockoutShort = isKnockout && filledPicks.length < pickableCount
   // For draw-winner validation, only consider matches we can actually
   // submit (unlocked). Locked matches are read-only — if they need a draw
   // winner that was never set, that's water under the bridge.
@@ -535,7 +549,7 @@ export default function RoundPicksPage({
           <span style={{ color: C.muted, fontSize: '0.78rem' }}>
             {tooManyGroup && <span style={{ color: C.red }}>{filledPicks.length}/16 — drop {filledPicks.length - 16}</span>}
             {tooManyStars && <span style={{ color: C.red }}> · Too many stars</span>}
-            {knockoutShort && <span style={{ color: C.red }}>Pick all {expected} matches</span>}
+            {knockoutShort && <span style={{ color: C.red }}>Pick all {pickableCount} remaining matches ({filledPicks.length}/{pickableCount})</span>}
             {drawNeedsWinner && <span style={{ color: C.red }}>Choose draw advancer</span>}
             {canSubmit && <span>Ready to submit {dirtyPicks.length} change{dirtyPicks.length === 1 ? '' : 's'}</span>}
             {!canSubmit && filledPicks.length === 0 && <span>No picks yet</span>}
