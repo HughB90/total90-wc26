@@ -210,47 +210,51 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
         )}
       </Pill>
 
-      {/* 8 Round pills */}
-      {(rounds ?? PREDICTOR_ROUND_OPTIONS.map((rm) => ({ code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }))).map((r) => (
-        <Pill
-          key={r.code}
-          title={r.label}
-          editHref={`/predictor/round/${r.code}`}
-          rightExtra={
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              {r.finalized_count > 0 && (
-                <span style={{
-                  color: C.green,
-                  fontSize: '0.7rem',
-                  fontWeight: 800,
-                  whiteSpace: 'nowrap',
-                }}>{r.round_pts > 0 ? `+${r.round_pts}` : r.round_pts} pts</span>
-              )}
-              <span style={{ color: C.muted, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-                {r.picks.length} pick{r.picks.length === 1 ? '' : 's'}
+      {/* 8 Round pills — finalized rounds collapsed by default, click to expand */}
+      {(rounds ?? PREDICTOR_ROUND_OPTIONS.map((rm) => ({ code: rm.code, label: rm.label, picks: [], matchCount: 0, round_pts: 0, finalized_count: 0 }))).map((r) => {
+        const isFinalized = r.matchCount > 0 && r.finalized_count === r.matchCount
+        return (
+          <Pill
+            key={r.code}
+            title={r.label}
+            editHref={`/predictor/round/${r.code}`}
+            defaultCollapsed={isFinalized}
+            rightExtra={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                {r.finalized_count > 0 && (
+                  <span style={{
+                    color: C.green,
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    whiteSpace: 'nowrap',
+                  }}>{r.round_pts > 0 ? `+${r.round_pts}` : r.round_pts} pts</span>
+                )}
+                <span style={{ color: C.muted, fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                  {r.picks.length} pick{r.picks.length === 1 ? '' : 's'}
+                </span>
               </span>
-            </span>
-          }
-        >
-          {r.picks.length > 0 ? (
-            // Trust the API: render picks whenever they're present, regardless
-            // of the parent's `authed` prop. The parent can lag the cookie.
-            <div style={{ display: 'grid', gap: '0.4rem', minWidth: 0 }}>
-              {r.picks.map((p) => (
-                <PickSummaryRow key={p.match_id} pick={p} showGoalscorer={GOALSCORER_ROUND_CODES.has(r.code)} />
-              ))}
-            </div>
-          ) : !authed ? (
-            <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
-              Sign in to make picks.
-            </p>
-          ) : !rounds ? (
-            <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>Loading…</p>
-          ) : (
-            <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>No picks yet.</p>
-          )}
-        </Pill>
-      ))}
+            }
+          >
+            {r.picks.length > 0 ? (
+              // Trust the API: render picks whenever they're present, regardless
+              // of the parent's `authed` prop. The parent can lag the cookie.
+              <div style={{ display: 'grid', gap: '0.4rem', minWidth: 0 }}>
+                {r.picks.map((p) => (
+                  <PickSummaryRow key={p.match_id} pick={p} showGoalscorer={GOALSCORER_ROUND_CODES.has(r.code)} />
+                ))}
+              </div>
+            ) : !authed ? (
+              <p style={{ color: C.muted, fontSize: '0.82rem', margin: 0, lineHeight: 1.5 }}>
+                Sign in to make picks.
+              </p>
+            ) : !rounds ? (
+              <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>Loading…</p>
+            ) : (
+              <p style={{ color: C.muted, fontSize: '0.78rem', margin: 0 }}>No picks yet.</p>
+            )}
+          </Pill>
+        )
+      })}
     </div>
   )
 }
@@ -260,12 +264,28 @@ function Pill({
   editHref,
   rightExtra,
   children,
+  defaultCollapsed = false,
 }: {
   title: string
   editHref: string
   rightExtra?: React.ReactNode
   children: React.ReactNode
+  defaultCollapsed?: boolean
 }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  // Re-sync if the parent's default flips (e.g. cache hydrates, round just
+  // finalized) and the user hasn't manually toggled yet — light-touch UX.
+  // We track whether the user manually toggled to avoid stomping their choice.
+  const [userToggled, setUserToggled] = useState(false)
+  useEffect(() => {
+    if (!userToggled) setCollapsed(defaultCollapsed)
+  }, [defaultCollapsed, userToggled])
+
+  const toggle = () => {
+    setUserToggled(true)
+    setCollapsed((v) => !v)
+  }
+
   return (
     <div style={{
       backgroundColor: C.card,
@@ -275,35 +295,58 @@ function Pill({
       minWidth: 0,
       overflow: 'hidden',
     }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '0.5rem',
-        marginBottom: '0.5rem',
-        minWidth: 0,
-      }}>
-        <span style={{
-          color: C.gold,
-          fontSize: '0.72rem',
-          fontWeight: 800,
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={toggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+          marginBottom: collapsed ? 0 : '0.5rem',
           minWidth: 0,
-          flex: 1,
-        }}>{title}</span>
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, flex: 1 }}>
+          <span aria-hidden="true" style={{
+            display: 'inline-block',
+            color: C.muted,
+            fontSize: '0.7rem',
+            width: '0.7rem',
+            textAlign: 'center',
+            transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            transition: 'transform 120ms ease',
+            lineHeight: 1,
+          }}>▾</span>
+          <span style={{
+            color: C.gold,
+            fontSize: '0.72rem',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            minWidth: 0,
+          }}>{title}</span>
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
           {rightExtra}
-          <Link href={editHref} style={editBtnStyle}>
+          <Link
+            href={editHref}
+            style={editBtnStyle}
+            onClick={(e) => e.stopPropagation()}
+          >
             <span aria-hidden="true">✏️</span>
             <span>Edit</span>
           </Link>
         </div>
       </div>
-      {children}
+      {!collapsed && children}
     </div>
   )
 }
