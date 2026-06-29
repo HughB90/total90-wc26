@@ -1318,7 +1318,15 @@ export default function BracketPage() {
   const [groupPicks, setGroupPicks] = useState<GroupPicks>({})
   const [thirdPicks, setThirdPicks] = useState<ThirdPicks>([])
   const [knockoutPicks, setKnockoutPicks] = useState<KnockoutPicks>({})
-  const [knockoutLocked, setKnockoutLocked] = useState(true)
+  // Knockout stage unlock: 2026-06-28 12:00 UTC (group stage ends).
+  // Was hard-locked behind a state default that was never flipped —
+  // unlock is now date-driven on the client so the page mirrors prod
+  // truth once the group stage wraps. Server endpoints still enforce
+  // per-match kickoff locks; this gate only controls bracket UI access.
+  const KNOCKOUT_UNLOCK_MS = Date.UTC(2026, 5, 28, 12, 0, 0) // Jun 28, 2026 12:00 UTC
+  const [knockoutLocked, setKnockoutLocked] = useState(
+    () => (typeof Date !== 'undefined' ? Date.now() < KNOCKOUT_UNLOCK_MS : true)
+  )
   const [adminUnlock, setAdminUnlock] = useState(false)
   const KNOCKOUT_TABS = ['r32','r16','qf','sf','final']
 
@@ -1328,6 +1336,9 @@ export default function BracketPage() {
     if (typeof window === 'undefined') return
     const url = new URL(window.location.href)
     setAdminUnlock(url.searchParams.get('unlock') === '1')
+    // Re-evaluate the date lock on mount (handles SSR/CSR drift).
+    setKnockoutLocked(Date.now() < KNOCKOUT_UNLOCK_MS)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [picksLoaded, setPicksLoaded] = useState(false)
   const [myRank, setMyRank] = useState<{ rank: number; total: number; score: number } | null>(null)
