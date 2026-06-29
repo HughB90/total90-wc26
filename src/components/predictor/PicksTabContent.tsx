@@ -176,6 +176,42 @@ export default function PicksTabContent({ authed }: { authed: boolean }) {
 
   return (
     <div style={{ display: 'grid', gap: '0.85rem', minWidth: 0 }}>
+      {/* Knockout Bracket CTA — opens carousel for R32→Final in one screen. */}
+      <Link
+        href="/predictor/knockout"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+          backgroundColor: 'rgba(251,191,36,0.10)',
+          border: `1px solid ${C.gold}`,
+          borderRadius: '0.7rem',
+          padding: '0.75rem 1rem',
+          textDecoration: 'none',
+          minWidth: 0,
+        }}
+      >
+        <span style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0 }}>
+          <span style={{
+            color: C.gold,
+            fontSize: '0.72rem',
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}>🏆 Knockout Bracket</span>
+          <span style={{ color: C.text, fontSize: '0.82rem', fontWeight: 700, minWidth: 0 }}>
+            Pick R32 → Final in one screen
+          </span>
+        </span>
+        <span style={{
+          color: C.gold,
+          fontSize: '0.85rem',
+          fontWeight: 900,
+          flexShrink: 0,
+        }}>→</span>
+      </Link>
+
       {/* Tournament Winner pill */}
       <Pill
         title="Tournament Winner"
