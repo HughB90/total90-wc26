@@ -15,7 +15,7 @@
     },
     {
       "path": "/api/cron/sync-fantasy",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
