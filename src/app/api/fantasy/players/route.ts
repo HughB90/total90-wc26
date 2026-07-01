@@ -1,16 +1,23 @@
 /**
  * GET /api/fantasy/players
- * 
+ *
  * Query params:
  *   - competition (default: WC2026)
  *   - round (default: ALL → aggregate; or specific round_code like 'WC2026-MD1')
- *   - position (ALL | GK | DEF | MID | FWD)
+ *   - position (ALL | GKP | DEF | MID | FOR)
  *   - nation (optional team name filter)
  *   - sort (default: fantasy_points:desc)
  *   - limit (default 100, max 500)
  *   - search (name prefix match)
- * 
- * Returns aggregated player stats when round=ALL, per-round otherwise.
+ *
+ * Aggregation policy (Hugh mandate 2026-07-01):
+ *   Sums live in Postgres. This route is a thin projection over the
+ *   fantasy_player_totals / fantasy_player_round_totals views.
+ *   No JS-side reduce loops over match rows. No pagination bugs.
+ *
+ *   If you ever find yourself reduce()-ing match_stats rows here again,
+ *   stop and fix the view instead. See:
+ *   supabase/migrations/2026-07-01-fantasy-player-totals-view.sql
  */
 
 import { NextResponse } from 'next/server'
@@ -55,7 +62,7 @@ interface AggregatedPlayer {
     off: number
   }
   passing: {
-    pass_acc: number // percentage
+    pass_acc: number
     acc_long: number
     ppa: number
     ft3: number
@@ -80,6 +87,80 @@ interface AggregatedPlayer {
   }
 }
 
+// Numeric fields in the view come back as string (Postgres numeric).
+// Coerce them once at the edge.
+const num = (v: unknown): number => {
+  if (v === null || v === undefined) return 0
+  const n = typeof v === 'number' ? v : parseFloat(String(v))
+  return Number.isFinite(n) ? n : 0
+}
+
+function toPlayer(row: Record<string, unknown>): AggregatedPlayer {
+  const p: AggregatedPlayer = {
+    opta_player_id: String(row.opta_player_id),
+    name: String(row.name ?? ''),
+    first_name: (row.first_name as string) ?? null,
+    last_name: (row.last_name as string) ?? null,
+    team: String(row.team ?? ''),
+    position: String(row.position ?? ''),
+    pos_type: (row.pos_type as PosType) ?? 'MID',
+    games_played: num(row.games_played),
+    mins_total: num(row.mins_total),
+    fantasy_points_total: num(row.fantasy_points_total),
+    fantasy_points_avg: num(row.fantasy_points_avg),
+    fantasy_points_per_90: num(row.fantasy_points_per_90),
+    attacking: {
+      goals: num(row.goals),
+      assists: num(row.assists),
+      sot: num(row.sot),
+      sh: num(row.sh),
+      kp: num(row.kp),
+      bc: num(row.bc),
+    },
+    defensive: {
+      tackles: num(row.tackles),
+      interceptions: num(row.interceptions),
+      blocks: num(row.blocks),
+      clean_sheets: num(row.clean_sheets),
+    },
+    discipline: {
+      yc: num(row.yc),
+      rc: num(row.rc),
+      og: num(row.og),
+      off: num(row.off_),
+    },
+    passing: {
+      pass_acc: num(row.pass_acc),
+      acc_long: num(row.acc_long),
+      ppa: num(row.ppa),
+      ft3: num(row.ft3),
+    },
+    playmaker: {
+      kp: num(row.kp),
+      bc: num(row.bc),
+      through_balls: num(row.through_balls),
+      touches_in_box: num(row.touches_in_box),
+      winning_goals: num(row.winning_goals),
+    },
+    possession: {
+      recoveries: num(row.recoveries),
+      duels_won: num(row.duels_won),
+      dispossessed: num(row.dispossessed),
+      poss_lost: num(row.poss_lost),
+    },
+  }
+
+  if (p.pos_type === 'GKP') {
+    p.gk = {
+      saves: num(row.saves),
+      high_claims: num(row.high_claims),
+      pen_saves: num(row.pen_saves),
+    }
+  }
+
+  return p
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url)
@@ -93,7 +174,6 @@ export async function GET(req: Request) {
 
     const supabase = createAdminSupabase()
 
-    // Get competition ID
     const { data: comp } = await supabase
       .from('fantasy_competitions')
       .select('id')
@@ -104,156 +184,58 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Competition not found' }, { status: 404 })
     }
 
-    // Optional per-round filter → resolve fixture ids up front
-    let fixtureIdFilter: string[] | null = null
+    // Route: ALL rounds → totals view; specific round → round-scoped view.
+    // Both views own the aggregation math in Postgres.
+    const viewName =
+      round === 'ALL' ? 'fantasy_player_totals' : 'fantasy_player_round_totals'
+
+    let q = supabase.from(viewName).select('*').eq('competition_id', comp.id)
+
     if (round !== 'ALL') {
-      const { data: fixtures } = await supabase
-        .from('fantasy_fixtures')
-        .select('id')
-        .eq('competition_id', comp.id)
-        .eq('round_code', round)
-      fixtureIdFilter = fixtures?.map(f => f.id) || []
-      if (fixtureIdFilter.length === 0) {
-        return NextResponse.json([])
-      }
+      q = q.eq('round_code', round)
+    }
+    if (position !== 'ALL') {
+      q = q.eq('pos_type', position)
+    }
+    if (nation) {
+      q = q.eq('team', nation)
+    }
+    if (search) {
+      q = q.ilike('name', `${search}%`)
     }
 
-    // Paginate: Supabase default page limit is 1000 rows, but the WC2026
-    // match-stats table has thousands of rows and we need ALL of them
-    // in order to aggregate per-player totals correctly. Loop with
-    // .range() until we exhaust the result set. (Bug fix 2026-07-01:
-    // Messi's MD1 row was being dropped because it sat past row 1000.)
-    const PAGE = 1000
-    const rows: any[] = []
-    for (let from = 0; ; from += PAGE) {
-      let q = supabase
-        .from('fantasy_player_match_stats')
-        .select('*')
-        .eq('competition_id', comp.id)
-      if (fixtureIdFilter) q = q.in('fixture_id', fixtureIdFilter)
-      if (position !== 'ALL') q = q.eq('pos_type', position)
-      if (nation) q = q.eq('team', nation)
-      if (search) q = q.ilike('name', `${search}%`)
-      const { data: page, error } = await q.range(from, from + PAGE - 1)
-      if (error) throw error
-      if (!page || page.length === 0) break
-      rows.push(...page)
-      if (page.length < PAGE) break
-    }
-
-    // Aggregate by player
-    const playerMap = new Map<string, any[]>()
-    for (const row of rows || []) {
-      if (!playerMap.has(row.opta_player_id)) {
-        playerMap.set(row.opta_player_id, [])
-      }
-      playerMap.get(row.opta_player_id)!.push(row)
-    }
-
-    const aggregated: AggregatedPlayer[] = []
-
-    for (const [optaId, matches] of playerMap) {
-      const first = matches[0]
-      const gamesPlayed = matches.length
-      const minsTotal = matches.reduce((sum, m) => sum + (m.mins || 0), 0)
-      const ptsTotal = matches.reduce((sum, m) => sum + (m.fantasy_points || 0), 0)
-
-      // Aggregate raw stats
-      const sumRawStat = (key: string) =>
-        matches.reduce((sum, m) => sum + ((m.raw_stats?.[key] as number) || 0), 0)
-
-      const totalPass = sumRawStat('totalPass')
-      const accuratePass = sumRawStat('accuratePass')
-      const passAcc = totalPass > 0 ? Math.round((accuratePass / totalPass) * 100) : 0
-
-      const player: AggregatedPlayer = {
-        opta_player_id: optaId,
-        name: first.name,
-        first_name: first.first_name ?? null,
-        last_name: first.last_name ?? null,
-        team: first.team,
-        position: first.position,
-        pos_type: first.pos_type,
-        games_played: gamesPlayed,
-        mins_total: minsTotal,
-        fantasy_points_total: Math.round(ptsTotal * 100) / 100,
-        fantasy_points_avg: Math.round((ptsTotal / gamesPlayed) * 100) / 100,
-        fantasy_points_per_90: minsTotal > 0
-          ? Math.round((ptsTotal * 90 / minsTotal) * 100) / 100
-          : 0,
-        attacking: {
-          goals: sumRawStat('goals'),
-          assists: sumRawStat('goalAssist'),
-          sot: sumRawStat('ontargetScoringAtt'),
-          sh: sumRawStat('totalScoringAtt'),
-          kp: sumRawStat('totalAttAssist'),
-          bc: sumRawStat('bigChanceCreated'),
-        },
-        defensive: {
-          tackles: sumRawStat('wonTackle'),
-          interceptions: sumRawStat('interceptionWon'),
-          blocks: sumRawStat('outfielderBlock'),
-          clean_sheets: matches.filter(m => m.breakdown?.clean_sheet).length,
-        },
-        discipline: {
-          yc: sumRawStat('yellowCard'),
-          rc: sumRawStat('redCard'),
-          og: sumRawStat('ownGoals'),
-          off: sumRawStat('totalOffside'),
-        },
-        passing: {
-          pass_acc: passAcc,
-          acc_long: sumRawStat('accurateLongBalls'),
-          ppa: sumRawStat('successfulPenAreaEntries'),
-          ft3: sumRawStat('successfulFinalThirdPasses'),
-        },
-        playmaker: {
-          kp: sumRawStat('totalAttAssist'),
-          bc: sumRawStat('bigChanceCreated'),
-          through_balls: sumRawStat('accurateThroughBall'),
-          touches_in_box: sumRawStat('touchesInOppBox'),
-          winning_goals: sumRawStat('winningGoal'),
-        },
-        possession: {
-          recoveries: sumRawStat('ballRecovery'),
-          duels_won: sumRawStat('duelWon'),
-          dispossessed: sumRawStat('dispossessed'),
-          poss_lost: sumRawStat('possLostAll'),
-        },
-      }
-
-      if (first.pos_type === 'GKP') {
-        player.gk = {
-          saves: sumRawStat('saves'),
-          high_claims: sumRawStat('goodHighClaim'),
-          pen_saves: sumRawStat('penaltySave'),
-        }
-      }
-
-      aggregated.push(player)
-    }
-
-    // Sort
+    // Push sort + limit into Postgres so we don't have to page.
+    // Per-90 needs a floor of 25 minutes to filter out late-sub noise; we
+    // still fetch all rows and filter/sort in JS because Supabase's
+    // .order() can't express the conditional per-90 comparator. Row
+    // count here is bounded (~1k players max at 2.5k match rows).
     const [sortField, sortDir] = sort.split(':')
-    aggregated.sort((a, b) => {
-      let aVal: any = a
-      let bVal: any = b
-      if (sortField === 'fantasy_points') {
-        aVal = a.fantasy_points_total
-        bVal = b.fantasy_points_total
-      } else if (sortField === 'fantasy_points_per_90' || sortField === 'pts_per_90') {
-        // Require at least 25 minutes to qualify for per-90 ranking (filters out late-sub noise)
-        aVal = a.mins_total >= 25 ? a.fantasy_points_per_90 : -1
-        bVal = b.mins_total >= 25 ? b.fantasy_points_per_90 : -1
-      } else if (sortField === 'name') {
-        aVal = a.name
-        bVal = b.name
-      }
-      if (sortDir === 'desc') return bVal > aVal ? 1 : -1
-      return aVal > bVal ? 1 : -1
-    })
 
-    const result = aggregated.slice(0, limit)
+    if (sortField === 'fantasy_points') {
+      q = q.order('fantasy_points_total', { ascending: sortDir !== 'desc' })
+    } else if (sortField === 'name') {
+      q = q.order('name', { ascending: sortDir !== 'desc' })
+    } else {
+      // Fetch enough to let JS sort by per-90 with the 25-min floor.
+      q = q.order('fantasy_points_total', { ascending: false })
+    }
+
+    // Safe upper bound: at most ~50 players × 48 nations. 5000 covers
+    // any plausible dataset without hitting Supabase's 1000-row default.
+    const { data: rows, error } = await q.range(0, 4999)
+    if (error) throw error
+
+    let players = (rows ?? []).map(toPlayer)
+
+    if (sortField === 'fantasy_points_per_90' || sortField === 'pts_per_90') {
+      players.sort((a, b) => {
+        const av = a.mins_total >= 25 ? a.fantasy_points_per_90 : -1
+        const bv = b.mins_total >= 25 ? b.fantasy_points_per_90 : -1
+        return sortDir === 'desc' ? bv - av : av - bv
+      })
+    }
+
+    const result = players.slice(0, limit)
 
     return NextResponse.json(result, {
       headers: {
