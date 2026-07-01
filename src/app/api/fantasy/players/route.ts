@@ -104,42 +104,42 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Competition not found' }, { status: 404 })
     }
 
-    // Build query
-    let query = supabase
-      .from('fantasy_player_match_stats')
-      .select('*')
-      .eq('competition_id', comp.id)
-
+    // Optional per-round filter → resolve fixture ids up front
+    let fixtureIdFilter: string[] | null = null
     if (round !== 'ALL') {
-      // Join with fixtures to filter by round
       const { data: fixtures } = await supabase
         .from('fantasy_fixtures')
         .select('id')
         .eq('competition_id', comp.id)
         .eq('round_code', round)
-      
-      const fixtureIds = fixtures?.map(f => f.id) || []
-      if (fixtureIds.length === 0) {
+      fixtureIdFilter = fixtures?.map(f => f.id) || []
+      if (fixtureIdFilter.length === 0) {
         return NextResponse.json([])
       }
-      query = query.in('fixture_id', fixtureIds)
     }
 
-    if (position !== 'ALL') {
-      query = query.eq('pos_type', position)
+    // Paginate: Supabase default page limit is 1000 rows, but the WC2026
+    // match-stats table has thousands of rows and we need ALL of them
+    // in order to aggregate per-player totals correctly. Loop with
+    // .range() until we exhaust the result set. (Bug fix 2026-07-01:
+    // Messi's MD1 row was being dropped because it sat past row 1000.)
+    const PAGE = 1000
+    const rows: any[] = []
+    for (let from = 0; ; from += PAGE) {
+      let q = supabase
+        .from('fantasy_player_match_stats')
+        .select('*')
+        .eq('competition_id', comp.id)
+      if (fixtureIdFilter) q = q.in('fixture_id', fixtureIdFilter)
+      if (position !== 'ALL') q = q.eq('pos_type', position)
+      if (nation) q = q.eq('team', nation)
+      if (search) q = q.ilike('name', `${search}%`)
+      const { data: page, error } = await q.range(from, from + PAGE - 1)
+      if (error) throw error
+      if (!page || page.length === 0) break
+      rows.push(...page)
+      if (page.length < PAGE) break
     }
-
-    if (nation) {
-      query = query.eq('team', nation)
-    }
-
-    if (search) {
-      query = query.ilike('name', `${search}%`)
-    }
-
-    const { data: rows, error } = await query
-
-    if (error) throw error
 
     // Aggregate by player
     const playerMap = new Map<string, any[]>()
