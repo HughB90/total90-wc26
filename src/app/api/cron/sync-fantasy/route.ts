@@ -39,6 +39,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { runFantasySync } from '@/lib/fantasy/sync'
 
 export const dynamic = 'force-dynamic'
@@ -84,6 +85,55 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
     }
 
+    // ── Live-window short-circuit ─────────────────────────────────────────
+    // Cron runs every 5 min; full sync (Opta MA1/MA2 + scoring service)
+    // is only meaningful when a fixture is about to kick off, currently
+    // in progress, or just finished. Outside that window we'd repeatedly
+    // re-pull Opta + re-score finalized fixtures for nothing.
+    //
+    // Live window = any predictor_matches row whose kickoff_at lies in
+    // [now − 4h, now + 15min]. The 4h tail covers full match (~2h),
+    // post-FT stat finalization, and Opta's lag flipping status to 'Played'.
+    // The 15min lead lets us pre-warm stub fixture rows.
+    //
+    // predictor_matches is fed by the 1-min /api/cron/sync-wc26-fixtures
+    // cron (kickoff_at + status kept fresh), so this is a single cheap
+    // indexed SELECT (idx_predictor_matches_kickoff exists).
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+    const now = new Date()
+    const windowStart = new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString()
+    const windowEnd = new Date(now.getTime() + 15 * 60 * 1000).toISOString()
+    const { data: liveRows, error: liveErr } = await supabase
+      .from('predictor_matches')
+      .select('id, status, kickoff_at')
+      .gte('kickoff_at', windowStart)
+      .lte('kickoff_at', windowEnd)
+      .limit(1)
+
+    if (liveErr) {
+      console.warn(`[cron/sync-fantasy] live-window probe failed: ${liveErr.message}`)
+      // Fall through to full sync — probe failure shouldn't block scoring.
+    } else if (!liveRows || liveRows.length === 0) {
+      console.log(
+        `[cron/sync-fantasy] No live or recent fixtures in [${windowStart} .. ${windowEnd}], skipping full sync`
+      )
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: true,
+          reason: 'no_live_fixtures',
+          window_start: windowStart,
+          window_end: windowEnd,
+          ms: Date.now() - started,
+        },
+        { status: 200 }
+      )
+    }
+
     // Cap inner runtime to 50s — leaves a 10s safety margin under
     // Vercel's 60s function limit so the route can return cleanly.
     const result = await runFantasySync({
@@ -99,6 +149,7 @@ export async function GET(request: NextRequest) {
         fixtures_played: result.fixtures_played,
         players_scored: result.players_scored,
         players_failed: result.players_failed,
+        fixtures_skipped_already_scored: result.fixtures_skipped_already_scored,
         hit_deadline: result.hit_deadline,
         ms: Date.now() - started,
       },

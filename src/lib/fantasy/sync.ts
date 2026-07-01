@@ -60,10 +60,22 @@ export interface SyncResult {
   fixtures_played: number
   players_scored: number
   players_failed: number
+  /** Fixtures whose scoring was skipped because they're already fully scored
+   *  in fantasy_player_match_stats. Pure cost-savings counter. */
+  fixtures_skipped_already_scored: number
   ms: number
   hit_deadline: boolean
   failures: Array<{ opta_player_id: string; error: string }>
 }
+
+/**
+ * Minimum player-stat rows a fully-scored final match must have for the
+ * skip-already-scored guard to trip. 11 starters × 2 teams = 22; we use
+ * 22 as the floor. This is intentionally generous — a fixture with fewer
+ * than 22 stat rows is likely a partial/interrupted score from a deadline-
+ * hit prior run, so we re-score it to backfill.
+ */
+const MIN_PLAYERS_FOR_FULLY_SCORED = 22
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Config
@@ -438,9 +450,66 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
     raw_stats: Record<string, number>
     _opta_fixture_id: string
   }
+  // ── Skip-already-scored prefetch ────────────────────────────────────────
+  // Pull the current state of fantasy_fixtures + a count of existing
+  // fantasy_player_match_stats rows per fixture, indexed by opta_fixture_id.
+  // Used inside the played-fixtures loop to short-circuit Opta MA2 +
+  // scoring service calls for fixtures that are already final and fully
+  // scored. This is the primary fix for the "re-score every final match,
+  // every cron tick, forever" wasted-invocation pattern.
+  //
+  // Cost: two cheap SELECTs (indexed) before the loop, in exchange for
+  // skipping ~1.5k scoring calls per cycle once the tournament settles.
+  const existingFixtureState = new Map<
+    string,
+    { id: string; status: string | null; scored_count: number }
+  >()
+  {
+    const { data: existingFixtures, error: fxErr } = await supabase
+      .from('fantasy_fixtures')
+      .select('id, opta_fixture_id, status')
+      .eq('competition_id', compId)
+    if (fxErr) {
+      log(`   ⚠️  fantasy_fixtures prefetch failed: ${fxErr.message}`)
+    } else if (existingFixtures && existingFixtures.length > 0) {
+      for (const f of existingFixtures) {
+        existingFixtureState.set(f.opta_fixture_id as string, {
+          id: f.id as string,
+          status: (f.status as string | null) ?? null,
+          scored_count: 0,
+        })
+      }
+      const fixtureIds = existingFixtures.map((f) => f.id as string)
+      // Bulk count player stat rows per fixture. PostgREST doesn't expose
+      // GROUP BY directly, so pull (fixture_id) and tally client-side. This
+      // is bounded by tournament size (~104 fixtures × ~30 players = ~3k
+      // rows worst case), which is a single fast index scan.
+      const { data: statRows, error: statErr } = await supabase
+        .from('fantasy_player_match_stats')
+        .select('fixture_id')
+        .in('fixture_id', fixtureIds)
+      if (statErr) {
+        log(`   ⚠️  fantasy_player_match_stats prefetch failed: ${statErr.message}`)
+      } else if (statRows) {
+        const countByFixtureId = new Map<string, number>()
+        for (const r of statRows) {
+          const fid = r.fixture_id as string
+          countByFixtureId.set(fid, (countByFixtureId.get(fid) ?? 0) + 1)
+        }
+        for (const state of existingFixtureState.values()) {
+          state.scored_count = countByFixtureId.get(state.id) ?? 0
+        }
+      }
+    }
+    log(
+      `   prefetched state for ${existingFixtureState.size} existing fixtures (skip-already-scored guard armed)`
+    )
+  }
+
   const playerRows: PlayerRow[] = []
   const failures: SyncResult['failures'] = []
   let hitDeadline = false
+  let fixturesSkippedAlreadyScored = 0
 
   for (const m of played) {
     if (nearDeadline()) {
@@ -450,7 +519,31 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
     }
     const mi = m.matchInfo
     const fxId = mi.id
-    log(`\n🔄 Processing fixture ${fxId}...`)
+
+    // Skip-already-scored guard. A fixture is considered "done" when:
+    //   1. Our local fantasy_fixtures row exists and is marked 'played'.
+    //   2. The matching fantasy_player_match_stats row count is at or above
+    //      MIN_PLAYERS_FOR_FULLY_SCORED.
+    // Both conditions together rule out (a) brand-new fixtures we've never
+    // touched, (b) prior runs that hit the deadline mid-scoring (would have
+    // fewer rows than the floor), and (c) live matches mid-progress (since
+    // Opta only reports matchStatus='Played' at full time, those don't
+    // enter this loop in the first place).
+    const existing = existingFixtureState.get(fxId)
+    if (
+      existing &&
+      existing.status === 'played' &&
+      existing.scored_count >= MIN_PLAYERS_FOR_FULLY_SCORED
+    ) {
+      fixturesSkippedAlreadyScored++
+      log(
+        `⏭️  Skipping fixture ${fxId} — already fully scored (${existing.scored_count} players)`
+      )
+      continue
+    }
+    log(
+      `\n🔄 Scoring fixture ${fxId} (live or new; existing status=${existing?.status ?? 'none'}, players=${existing?.scored_count ?? 0})`
+    )
 
     let ma2: any
     try {
@@ -546,7 +639,9 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
     await new Promise((r) => setTimeout(r, 250))
   }
 
-  log(`\n📊 Summary: ${fixtureRows.length} fixtures, ${playerRows.length} player-match rows, ${failures.length} failures`)
+  log(
+    `\n📊 Summary: ${fixtureRows.length} fixtures, ${playerRows.length} player-match rows, ${failures.length} failures, ${fixturesSkippedAlreadyScored} fixtures skipped (already fully scored)`
+  )
 
   if (dryRun) {
     log('🚧 DRY RUN — no DB write')
@@ -561,6 +656,7 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
       fixtures_played: played.length,
       players_scored: playerRows.length,
       players_failed: failures.length,
+      fixtures_skipped_already_scored: fixturesSkippedAlreadyScored,
       ms: Date.now() - t0,
       hit_deadline: hitDeadline,
       failures,
@@ -608,6 +704,7 @@ export async function runFantasySync(opts: SyncOptions = {}): Promise<SyncResult
     fixtures_played: played.length,
     players_scored: upserted,
     players_failed: failures.length,
+    fixtures_skipped_already_scored: fixturesSkippedAlreadyScored,
     ms: Date.now() - t0,
     hit_deadline: hitDeadline,
     failures,
