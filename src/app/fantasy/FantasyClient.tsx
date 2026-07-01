@@ -21,6 +21,15 @@ interface Player {
   fantasy_points_total: number
   fantasy_points_avg: number
   fantasy_points_per_90: number
+  category_points?: {
+    attacking: number
+    playmaker: number
+    passing: number
+    defensive: number
+    possession: number
+    discipline: number
+    goalkeepers: number
+  }
   attacking: {
     goals: number
     assists: number
@@ -28,24 +37,34 @@ interface Player {
     sh: number
     kp: number
     bc: number
+    touches_in_box?: number
+    won_contest?: number
+    was_fouled?: number
   }
   defensive: {
     tackles: number
     interceptions: number
     blocks: number
     clean_sheets: number
+    aerial_won?: number
+    duels_won?: number
   }
   discipline: {
     yc: number
     rc: number
     og: number
     off: number
+    fouls?: number
+    err_shot?: number
+    err_goal?: number
   }
   passing: {
     pass_acc: number
     acc_long: number
     ppa: number
     ft3: number
+    acc_crosses?: number
+    acc_chipped?: number
   }
   playmaker: {
     kp: number
@@ -53,17 +72,141 @@ interface Player {
     through_balls: number
     touches_in_box: number
     winning_goals: number
+    second_assists?: number
   }
   possession: {
     recoveries: number
     duels_won: number
     dispossessed: number
     poss_lost: number
+    turnover?: number
   }
   gk?: {
     saves: number
     high_claims: number
     pen_saves: number
+    diving_saves?: number
+    punches?: number
+    keeper_throws_acc?: number
+  }
+}
+
+// StatView drives the PTS column + which stat columns render.
+// 'overall' preserves the historical layout; every other value is a
+// BreakdownCategory the /api/fantasy/players endpoint knows how to sort by.
+type StatView =
+  | 'overall'
+  | 'attacking'
+  | 'playmaker'
+  | 'passing'
+  | 'defensive'
+  | 'possession'
+  | 'discipline'
+  | 'goalkeepers'
+
+const STAT_VIEWS: Array<{ v: StatView; label: string }> = [
+  { v: 'overall',     label: 'Overall' },
+  { v: 'attacking',   label: 'Attacking' },
+  { v: 'playmaker',   label: 'Playmaker' },
+  { v: 'passing',     label: 'Passing' },
+  { v: 'defensive',   label: 'Defensive' },
+  { v: 'possession',  label: 'Possession' },
+  { v: 'discipline',  label: 'Discipline' },
+  { v: 'goalkeepers', label: 'Goalkeeping' },
+]
+
+// Pull the PTS number for a given stat view. Overall = total fantasy points;
+// otherwise pull from the category_points map (falls back to 0 for older
+// cached rows without category_points).
+function viewTotal(p: Player, view: StatView): number {
+  if (view === 'overall') return p.fantasy_points_total
+  return p.category_points?.[view] ?? 0
+}
+
+// Per-90 for the current stat view: category pts * 90 / mins, or the aggregate
+// fantasy_points_per_90 in overall mode.
+function viewPer90(p: Player, view: StatView): number {
+  if (view === 'overall') return p.fantasy_points_per_90
+  if (p.mins_total <= 0) return 0
+  return Math.round(((p.category_points?.[view] ?? 0) * 90 / p.mins_total) * 100) / 100
+}
+
+// Column set per stat view for the desktop StatsGrid. Kept lean (4–6 stat
+// columns) so the grid stays readable without heavy horizontal scroll.
+type StatColumn = {
+  key: string
+  label: string
+  accessor: (p: Player) => number | string
+  color?: string
+}
+
+function getStatColumns(view: StatView): StatColumn[] {
+  switch (view) {
+    case 'attacking':
+      return [
+        { key: 'g',   label: 'G',   accessor: p => p.attacking.goals || '-' },
+        { key: 'sh',  label: 'Sh',  accessor: p => p.attacking.sh || '-' },
+        { key: 'sot', label: 'SoT', accessor: p => p.attacking.sot || '-' },
+        { key: 'tib', label: 'TiB', accessor: p => p.attacking.touches_in_box || '-' },
+        { key: 'wc',  label: 'WC',  accessor: p => p.attacking.won_contest || '-' },
+        { key: 'fd',  label: 'FD',  accessor: p => p.attacking.was_fouled || '-' },
+      ]
+    case 'playmaker':
+      return [
+        { key: 'a',   label: 'A',   accessor: p => p.attacking.assists || '-' },
+        { key: 'kp',  label: 'KP',  accessor: p => p.playmaker.kp || '-' },
+        { key: 'bc',  label: 'BC',  accessor: p => p.playmaker.bc || '-' },
+        { key: 'tb',  label: 'TB',  accessor: p => p.playmaker.through_balls || '-' },
+        { key: '2a',  label: '2A',  accessor: p => p.playmaker.second_assists || '-' },
+        { key: 'tib', label: 'TiB', accessor: p => p.playmaker.touches_in_box || '-' },
+      ]
+    case 'passing':
+      return [
+        { key: 'acc',   label: 'Acc%',  accessor: p => p.passing.pass_acc ? `${p.passing.pass_acc}%` : '-' },
+        { key: 'long',  label: 'Long',  accessor: p => p.passing.acc_long || '-' },
+        { key: 'crs',   label: 'Cross', accessor: p => p.passing.acc_crosses || '-' },
+        { key: 'f3',    label: 'F3',    accessor: p => p.passing.ft3 || '-' },
+        { key: 'chip',  label: 'Chip',  accessor: p => p.passing.acc_chipped || '-' },
+      ]
+    case 'defensive':
+      return [
+        { key: 'tk',  label: 'Tk',   accessor: p => p.defensive.tackles || '-' },
+        { key: 'int', label: 'Int',  accessor: p => p.defensive.interceptions || '-' },
+        { key: 'bl',  label: 'Bl',   accessor: p => p.defensive.blocks || '-' },
+        { key: 'aer', label: 'Aer',  accessor: p => p.defensive.aerial_won || '-' },
+        { key: 'dw',  label: 'DW',   accessor: p => p.defensive.duels_won || '-' },
+        { key: 'cs',  label: 'CS',   accessor: p => p.defensive.clean_sheets || '-' },
+      ]
+    case 'possession':
+      return [
+        { key: 'rec', label: 'Rec',  accessor: p => p.possession.recoveries || '-' },
+        { key: 'dw',  label: 'DW',   accessor: p => p.possession.duels_won || '-' },
+        { key: 'dis', label: 'Disp', accessor: p => p.possession.dispossessed || '-' },
+        { key: 'pl',  label: 'PL',   accessor: p => p.possession.poss_lost || '-' },
+        { key: 'to',  label: 'TO',   accessor: p => p.possession.turnover || '-' },
+      ]
+    case 'discipline':
+      return [
+        { key: 'f',   label: 'F',    accessor: p => p.discipline.fouls || '-' },
+        { key: 'yc',  label: 'YC',   accessor: p => p.discipline.yc || '-' },
+        { key: 'rc',  label: 'RC',   accessor: p => p.discipline.rc || '-' },
+        { key: 'off', label: 'Off',  accessor: p => p.discipline.off || '-' },
+        { key: 'es',  label: 'E→Sh', accessor: p => p.discipline.err_shot || '-' },
+        { key: 'eg',  label: 'E→G',  accessor: p => p.discipline.err_goal || '-' },
+      ]
+    case 'goalkeepers':
+      return [
+        { key: 'sv',  label: 'Sv',    accessor: p => p.gk?.saves || '-' },
+        { key: 'ds',  label: 'DSv',   accessor: p => p.gk?.diving_saves || '-' },
+        { key: 'hc',  label: 'HC',    accessor: p => p.gk?.high_claims || '-' },
+        { key: 'ps',  label: 'PSv',   accessor: p => p.gk?.pen_saves || '-' },
+        { key: 'pun', label: 'Pun',   accessor: p => p.gk?.punches || '-' },
+        { key: 'kt',  label: 'KT',    accessor: p => p.gk?.keeper_throws_acc || '-' },
+      ]
+    case 'overall':
+    default:
+      // Preserve the original overall column set exactly.
+      return []
   }
 }
 
@@ -256,6 +399,7 @@ export default function FantasyClient() {
   const [selectedTeam, setSelectedTeam] = useState<string>('ALL')
   const [allTeams, setAllTeams] = useState<string[]>([])
   const [scoreMode, setScoreMode] = useState<'total' | 'per90'>('total')
+  const [statView, setStatView] = useState<StatView>('overall')
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -276,11 +420,25 @@ export default function FantasyClient() {
   // Fetch players when filters change
   useEffect(() => {
     setLoading(true)
+    // Sort key varies by stat view. Overall keeps the historical fantasy_points
+    // sort; category views use category:<cat> / category_per90:<cat> so the
+    // server sorts by the selected category's subtotal instead of the total.
+    let sortParam: string
+    if (statView === 'overall') {
+      sortParam = scoreMode === 'per90' ? 'fantasy_points_per_90:desc' : 'fantasy_points:desc'
+    } else {
+      sortParam = scoreMode === 'per90'
+        ? `category_per90:${statView}:desc`
+        : `category:${statView}:desc`
+    }
+    // When viewing Goalkeeping, force GKP filter server-side so we don't waste
+    // rows on outfielders with 0 GK points.
+    const effectivePos = statView === 'goalkeepers' ? 'GKP' : selectedPos
     const params = new URLSearchParams({
       competition: selectedComp,
       round: selectedRound,
-      position: selectedPos,
-      sort: scoreMode === 'per90' ? 'fantasy_points_per_90:desc' : 'fantasy_points:desc',
+      position: effectivePos,
+      sort: sortParam,
       limit: '500',
     })
     // NOTE: `search` is intentionally NOT sent to the API. Server-side search
@@ -308,7 +466,7 @@ export default function FantasyClient() {
         console.error(e)
         setLoading(false)
       })
-  }, [selectedComp, selectedRound, selectedPos, selectedTeam, scoreMode])
+  }, [selectedComp, selectedRound, selectedPos, selectedTeam, scoreMode, statView])
 
   // Client-side, diacritic-insensitive search.
   // Haystack = normalized display name (Opta matchName, e.g. 'L. Díaz'),
@@ -537,6 +695,29 @@ export default function FantasyClient() {
           {scoreMode === 'per90' && (
             <span style={{ fontSize: '0.65rem', fontStyle: 'italic' }}>min 25’ played</span>
           )}
+
+          {/* Stat View selector — pushes to the right on wider viewports */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginLeft: 'auto',
+          }}>
+            <span style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}>Stat View</span>
+            <select
+              value={statView}
+              onChange={e => setStatView(e.target.value as StatView)}
+              style={selectStyle}
+              aria-label="Stat category view"
+            >
+              {STAT_VIEWS.map(sv => (
+                <option key={sv.v} value={sv.v}>{sv.label}</option>
+              ))}
+            </select>
+            {statView === 'goalkeepers' && (
+              <span style={{ fontSize: '0.65rem', fontStyle: 'italic', color: C.gold }}>GKP only</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -557,11 +738,11 @@ export default function FantasyClient() {
         <>
           {/* Mobile compact list (< 720px) */}
           <div className="fantasy-mobile-list">
-            <MobileList players={filteredPlayers} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
+            <MobileList players={filteredPlayers} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} statView={statView} />
           </div>
           {/* Desktop wide grid (>= 720px) — horizontally scrolling */}
           <div className="fantasy-desktop-grid" style={{ overflowX: 'auto' }}>
-            <StatsGrid players={filteredPlayers} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} />
+            <StatsGrid players={filteredPlayers} onPlayerClick={handlePlayerClick} scoreMode={scoreMode} statView={statView} />
           </div>
           <style jsx global>{`
             .fantasy-mobile-list { display: block; }
@@ -594,12 +775,16 @@ export default function FantasyClient() {
 // No horizontal scroll, designed to fit on a 360px viewport without clipping.
 
 function MobileList({
-  players, onPlayerClick, scoreMode,
+  players, onPlayerClick, scoreMode, statView,
 }: {
   players: Player[]
   onPlayerClick: (p: Player) => void
   scoreMode: 'total' | 'per90'
+  statView: StatView
 }) {
+  // Category views tint the PTS number mint so it's visually clear the number
+  // is scoped to a subset, not the aggregate.
+  const ptsColor = statView === 'overall' ? C.gold : C.mint
   return (
     <div style={{ fontSize: '0.85rem' }}>
       {/* Sub-header */}
@@ -629,6 +814,8 @@ function MobileList({
       </div>
       {players.map(p => {
         const posColor = p.pos_type === 'GKP' ? C.gold : p.pos_type === 'DEF' ? '#5ec5ff' : p.pos_type === 'MID' ? C.mint : C.red
+        const total = viewTotal(p, statView)
+        const per90 = viewPer90(p, statView)
         return (
           <div
             key={p.opta_player_id}
@@ -673,13 +860,13 @@ function MobileList({
             <div style={{
               textAlign: 'right',
               fontWeight: 800,
-              color: C.gold,
+              color: ptsColor,
               fontSize: '1rem',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {scoreMode === 'per90'
-                ? (p.mins_total >= 25 ? p.fantasy_points_per_90.toFixed(1) : '—')
-                : p.fantasy_points_total.toFixed(1)}
+                ? (p.mins_total >= 25 ? per90.toFixed(1) : '—')
+                : total.toFixed(1)}
             </div>
             <div style={{
               textAlign: 'right',
@@ -694,8 +881,8 @@ function MobileList({
               fontSize: '0.8rem',
             }}>
               {scoreMode === 'per90'
-                ? p.fantasy_points_total.toFixed(1)
-                : p.fantasy_points_avg.toFixed(1)}
+                ? total.toFixed(1)
+                : (p.games_played > 0 ? (total / p.games_played).toFixed(1) : '0.0')}
             </div>
           </div>
         )
@@ -705,20 +892,34 @@ function MobileList({
 }
 
 function StatsGrid({
-  players, onPlayerClick, scoreMode,
+  players, onPlayerClick, scoreMode, statView,
 }: {
   players: Player[]
   onPlayerClick: (p: Player) => void
   scoreMode: 'total' | 'per90'
+  statView: StatView
 }) {
   const hasGK = players.some(p => p.pos_type === 'GKP')
+
+  // Overall view keeps its exact historical column set (no regression).
+  // Category views derive columns from getStatColumns() so each mode gets
+  // a tight, relevant slice of stats.
+  const isOverall = statView === 'overall'
+  const categoryCols = getStatColumns(statView)
+
+  // 300px identity + PTS(80) + MIN(80) + AVG/TOT(80) + N x 60px stat cols
+  const gridTemplateColumns = isOverall
+    ? `300px repeat(3, 80px) repeat(5, 60px) repeat(4, 60px) repeat(3, 60px)` + (hasGK ? ' repeat(3, 60px)' : '')
+    : `300px repeat(3, 80px) repeat(${categoryCols.length}, 68px)`
+
+  const ptsColor = isOverall ? C.gold : C.mint
 
   return (
     <div style={{ minWidth: '100%', fontSize: '0.8rem' }}>
       {/* Header */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '300px repeat(3, 80px) repeat(5, 60px) repeat(4, 60px) repeat(3, 60px)' + (hasGK ? ' repeat(3, 60px)' : ''),
+        gridTemplateColumns,
         gap: '0.5rem',
         backgroundColor: C.card,
         borderBottom: `2px solid ${C.border}`,
@@ -737,96 +938,117 @@ function StatsGrid({
         <div style={{ color: C.mint, textAlign: 'center' }}>
           {scoreMode === 'per90' ? 'TOT' : 'AVG'}
         </div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>G</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>A</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>SoT</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>Sh</div>
-        <div style={{ color: C.mint, textAlign: 'center' }}>KP</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>Tk</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>Int</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>Bl</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>CS</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>YC</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>RC</div>
-        <div style={{ color: C.muted, textAlign: 'center' }}>OG</div>
-        {hasGK && (
+        {isOverall ? (
           <>
-            <div style={{ color: C.gold, textAlign: 'center' }}>Sv</div>
-            <div style={{ color: C.gold, textAlign: 'center' }}>HC</div>
-            <div style={{ color: C.gold, textAlign: 'center' }}>PS</div>
+            <div style={{ color: C.mint, textAlign: 'center' }}>G</div>
+            <div style={{ color: C.mint, textAlign: 'center' }}>A</div>
+            <div style={{ color: C.mint, textAlign: 'center' }}>SoT</div>
+            <div style={{ color: C.mint, textAlign: 'center' }}>Sh</div>
+            <div style={{ color: C.mint, textAlign: 'center' }}>KP</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>Tk</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>Int</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>Bl</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>CS</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>YC</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>RC</div>
+            <div style={{ color: C.muted, textAlign: 'center' }}>OG</div>
+            {hasGK && (
+              <>
+                <div style={{ color: C.gold, textAlign: 'center' }}>Sv</div>
+                <div style={{ color: C.gold, textAlign: 'center' }}>HC</div>
+                <div style={{ color: C.gold, textAlign: 'center' }}>PS</div>
+              </>
+            )}
           </>
+        ) : (
+          categoryCols.map(col => (
+            <div key={col.key} style={{ color: C.mint, textAlign: 'center' }}>{col.label}</div>
+          ))
         )}
       </div>
 
       {/* Rows */}
-      {players.map(p => (
-        <div
-          key={p.opta_player_id}
-          onClick={() => onPlayerClick(p)}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '300px repeat(3, 80px) repeat(5, 60px) repeat(4, 60px) repeat(3, 60px)' + (hasGK ? ' repeat(3, 60px)' : ''),
-            gap: '0.5rem',
-            padding: '0.75rem 1rem',
-            borderBottom: `1px solid ${C.border}`,
-            cursor: 'pointer',
-            transition: 'background-color 0.15s',
-          }}
-          onMouseEnter={e => e.currentTarget.style.backgroundColor = C.card}
-          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          {/* Player identity */}
-          <div>
-            <div style={{ fontWeight: 700, color: C.text, marginBottom: '0.2rem' }}>{p.name}</div>
-            <div style={{ fontSize: '0.7rem', color: C.muted }}>
-              {p.pos_type} · {p.team}
+      {players.map(p => {
+        const total = viewTotal(p, statView)
+        const per90 = viewPer90(p, statView)
+        return (
+          <div
+            key={p.opta_player_id}
+            onClick={() => onPlayerClick(p)}
+            style={{
+              display: 'grid',
+              gridTemplateColumns,
+              gap: '0.5rem',
+              padding: '0.75rem 1rem',
+              borderBottom: `1px solid ${C.border}`,
+              cursor: 'pointer',
+              transition: 'background-color 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = C.card}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            {/* Player identity */}
+            <div>
+              <div style={{ fontWeight: 700, color: C.text, marginBottom: '0.2rem' }}>{p.name}</div>
+              <div style={{ fontSize: '0.7rem', color: C.muted }}>
+                {p.pos_type} · {p.team}
+              </div>
             </div>
+
+            {/* Fantasy */}
+            <div style={{ textAlign: 'center', fontWeight: 700, color: ptsColor }}>
+              {scoreMode === 'per90'
+                ? (p.mins_total >= 25 ? per90.toFixed(1) : '—')
+                : total.toFixed(1)}
+            </div>
+            <div style={{ textAlign: 'center' }}>{p.mins_total}</div>
+            <div style={{ textAlign: 'center' }}>
+              {scoreMode === 'per90'
+                ? total.toFixed(1)
+                : (p.games_played > 0 ? (total / p.games_played).toFixed(1) : '0.0')}
+            </div>
+
+            {isOverall ? (
+              <>
+                {/* Attacking */}
+                <div style={{ textAlign: 'center' }}>{p.attacking.goals || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.attacking.assists || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.attacking.sot || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.attacking.sh || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.attacking.kp || '-'}</div>
+
+                {/* Defensive */}
+                <div style={{ textAlign: 'center' }}>{p.defensive.tackles || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.defensive.interceptions || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.defensive.blocks || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.defensive.clean_sheets || '-'}</div>
+
+                {/* Discipline */}
+                <div style={{ textAlign: 'center' }}>{p.discipline.yc || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.discipline.rc || '-'}</div>
+                <div style={{ textAlign: 'center' }}>{p.discipline.og || '-'}</div>
+
+                {/* GK stats */}
+                {hasGK && (
+                  <>
+                    <div style={{ textAlign: 'center' }}>{p.gk?.saves || '-'}</div>
+                    <div style={{ textAlign: 'center' }}>{p.gk?.high_claims || '-'}</div>
+                    <div style={{ textAlign: 'center' }}>{p.gk?.pen_saves || '-'}</div>
+                  </>
+                )}
+              </>
+            ) : (
+              categoryCols.map(col => (
+                <div key={col.key} style={{ textAlign: 'center' }}>{col.accessor(p)}</div>
+              ))
+            )}
           </div>
-
-          {/* Fantasy */}
-          <div style={{ textAlign: 'center', fontWeight: 700, color: C.gold }}>
-            {scoreMode === 'per90'
-              ? (p.mins_total >= 25 ? p.fantasy_points_per_90.toFixed(1) : '—')
-              : p.fantasy_points_total.toFixed(1)}
-          </div>
-          <div style={{ textAlign: 'center' }}>{p.mins_total}</div>
-          <div style={{ textAlign: 'center' }}>
-            {scoreMode === 'per90'
-              ? p.fantasy_points_total.toFixed(1)
-              : p.fantasy_points_avg.toFixed(1)}
-          </div>
-
-          {/* Attacking */}
-          <div style={{ textAlign: 'center' }}>{p.attacking.goals || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.attacking.assists || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.attacking.sot || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.attacking.sh || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.attacking.kp || '-'}</div>
-
-          {/* Defensive */}
-          <div style={{ textAlign: 'center' }}>{p.defensive.tackles || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.defensive.interceptions || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.defensive.blocks || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.defensive.clean_sheets || '-'}</div>
-
-          {/* Discipline */}
-          <div style={{ textAlign: 'center' }}>{p.discipline.yc || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.discipline.rc || '-'}</div>
-          <div style={{ textAlign: 'center' }}>{p.discipline.og || '-'}</div>
-
-          {/* GK stats */}
-          {hasGK && (
-            <>
-              <div style={{ textAlign: 'center' }}>{p.gk?.saves || '-'}</div>
-              <div style={{ textAlign: 'center' }}>{p.gk?.high_claims || '-'}</div>
-              <div style={{ textAlign: 'center' }}>{p.gk?.pen_saves || '-'}</div>
-            </>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
+
 
 // ─── Player Drawer ────────────────────────────────────────────────────────────
 
