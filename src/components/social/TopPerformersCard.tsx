@@ -66,7 +66,7 @@ const POSITION_COLOR: Record<CardPosition, string> = {
 // Soft glow used on the white title text — keeps it readable on the navy bg
 // and matches the gentle bloom on the player-card pills.
 const WHITE_GLOW =
-  '0 0 8px rgba(255,255,255,0.55), 0 0 18px rgba(255,255,255,0.35), 0 2px 0 rgba(0,0,0,0.45)'
+  '0 0 8px rgba(255,255,255,0.28), 0 0 18px rgba(255,255,255,0.18), 0 2px 0 rgba(0,0,0,0.45)'
 
 const FALLBACK_AVATAR =
   'https://tituygkbondyjhzomwji.supabase.co/storage/v1/object/public/player-photos/players/default.png'
@@ -234,7 +234,7 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
             <span
               style={{
                 color: POSITION_COLOR[position],
-                textShadow: `0 0 8px ${POSITION_COLOR[position]}AA, 0 0 18px ${POSITION_COLOR[position]}66, 0 2px 0 rgba(0,0,0,0.45)`,
+                textShadow: `0 0 8px ${POSITION_COLOR[position]}55, 0 0 18px ${POSITION_COLOR[position]}33, 0 2px 0 rgba(0,0,0,0.45)`,
               }}
             >
               {positionLabel(position)}
@@ -249,7 +249,7 @@ export function TopPerformersCard(props: TopPerformersCardProps) {
               letterSpacing: '0.15em',
               marginTop: 8,
               opacity: 0.95,
-              textShadow: '0 0 6px rgba(255,255,255,0.35), 0 2px 0 rgba(0,0,0,0.4)',
+              textShadow: '0 0 6px rgba(255,255,255,0.18), 0 2px 0 rgba(0,0,0,0.4)',
             }}
           >
             METRIC: <span style={{ color: COLOR.white, fontWeight: 800 }}>{metric.label.toUpperCase()}</span>
