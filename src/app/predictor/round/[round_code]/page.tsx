@@ -443,7 +443,7 @@ export default function RoundPicksPage({
         }}>{label}</h1>
         <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
           {isKnockout
-            ? `Pick every match (${expected} total). 1 star allowed.`
+            ? `Pick every match (${expected} total).`
             : `Pick up to 16 of 24 matches. 1 star allowed.`}
         </p>
         {anyLocked && !fullyLocked && (
