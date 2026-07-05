@@ -270,7 +270,36 @@ export function PickSummaryRow({
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-        }}>⚽ {pick.goalscorer_name}{pick.goalscorer_team ? ` (${pick.goalscorer_team})` : ''}</div>
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.3rem',
+          alignSelf: 'center',
+        }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            ⚽ {pick.goalscorer_name}{pick.goalscorer_team ? ` (${pick.goalscorer_team})` : ''}
+          </span>
+          {showResult && (
+            <span
+              aria-label={scorerHit ? 'Goalscorer correct' : 'Goalscorer incorrect'}
+              title={scorerHit ? 'Scored (+2)' : 'Did not score'}
+              style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                fontWeight: 800,
+                fontSize: '0.75rem',
+                lineHeight: 1,
+                color: scorerHit ? '#00E676' : '#F87171',
+                border: `1px solid ${scorerHit ? 'rgba(0,230,118,0.45)' : 'rgba(248,113,113,0.45)'}`,
+                background: scorerHit ? 'rgba(0,230,118,0.12)' : 'rgba(248,113,113,0.10)',
+                borderRadius: '0.25rem',
+                padding: '1px 5px',
+                flexShrink: 0,
+              }}
+            >
+              {scorerHit ? '✓' : '✗'}
+            </span>
+          )}
+        </div>
       )}
     </div>
   )
