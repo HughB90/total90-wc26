@@ -106,6 +106,10 @@ interface GoalscorerPlayer {
   short_name: string | null
   last_name: string | null
   nationality: string | null
+  /** Tournament goals scored so far (populated for R16+). */
+  goals?: number
+  /** Minutes played so far this tournament (populated for R16+). */
+  mins?: number
 }
 
 interface PickState {
@@ -439,7 +443,7 @@ export default function RoundPicksPage({
         }}>{label}</h1>
         <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
           {isKnockout
-            ? `Pick every match (${expected} total). 1 star allowed.`
+            ? `Pick every match (${expected} total).`
             : `Pick up to 16 of 24 matches. 1 star allowed.`}
         </p>
         {anyLocked && !fullyLocked && (
@@ -757,6 +761,7 @@ function MatchCard({
           match={match}
           pick={pick}
           locked={locked}
+          isKnockout={isKnockout}
           onSaved={onGoalscorerSaved}
         />
       )}
@@ -765,11 +770,13 @@ function MatchCard({
 }
 
 function GoalscorerSection({
-  match, pick, locked, onSaved,
+  match, pick, locked, isKnockout, onSaved,
 }: {
   match: PredictorMatch
   pick: PickState
   locked: boolean
+  /** When true, the player picker hard-filters to players with logged minutes. */
+  isKnockout: boolean
   onSaved: (g: Partial<PickState>) => void
 }) {
   const saved = Boolean(pick.goalscorer_player_id && pick.goalscorer_team_code)
@@ -797,7 +804,11 @@ function GoalscorerSection({
     setLoadingPlayers(true)
     ;(async () => {
       try {
-        const r = await fetch(`/api/predictor/players?team_code=${encodeURIComponent(selTeam)}`, { credentials: 'include' })
+        // R16+ (knockout) rounds: only surface players who have logged
+        // minutes so far. Group rounds keep the full roster so day-1 pickers
+        // aren't empty. `isKnockout` is defined by the parent RoundCard.
+        const playedOnly = isKnockout ? '&played_only=1' : ''
+        const r = await fetch(`/api/predictor/players?team_code=${encodeURIComponent(selTeam)}${playedOnly}`, { credentials: 'include' })
         const j = await r.json().catch(() => null)
         if (cancelled) return
         setPlayers((j?.players ?? []) as GoalscorerPlayer[])
@@ -926,7 +937,11 @@ function GoalscorerSection({
                 {!selTeam ? 'Pick team first' : loadingPlayers ? 'Loading…' : (players && players.length === 0 ? 'No players available' : 'Select player')}
               </option>
               {(players ?? []).map((pl) => {
-                const label = pl.short_name || pl.name || pl.last_name || pl.id
+                const base = pl.short_name || pl.name || pl.last_name || pl.id
+                // Display tournament-goals count when >0 so the picker
+                // reads like a shortlist (e.g. "K. Mbappé (6)"). Silent
+                // when 0 to avoid noisy "(0)" everywhere.
+                const label = (pl.goals ?? 0) > 0 ? `${base} (${pl.goals})` : base
                 return <option key={pl.id} value={pl.id}>{label}</option>
               })}
             </select>
