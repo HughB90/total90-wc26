@@ -148,28 +148,31 @@ function buildHtml({ unsubToken, firstName }) {
 <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;background:#0A0F2E;color:#F0F4FF;padding:2rem 1.5rem;border-radius:1rem;">
   <img src="https://wc26.total90.com/total90-logo-green.png" alt="Total90" style="width:48px;height:48px;display:block;margin:0 auto 1rem;" />
 
-  <h1 style="color:#FBBF24;text-align:center;font-size:1.5rem;margin:0 0 0.25rem;">Round 3 starts today ⚽</h1>
-  <p style="text-align:center;color:#8899CC;margin:0 0 1.75rem;font-size:0.9rem;">Group Stage 3 · Make your picks before kickoff</p>
+  <h1 style="color:#FBBF24;text-align:center;font-size:1.5rem;margin:0 0 0.25rem;">Round 5 starts today ⚽</h1>
+  <p style="text-align:center;color:#8899CC;margin:0 0 1.75rem;font-size:0.9rem;">Round of 16 · Knockouts begin</p>
 
   <p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">${greeting}</p>
   <p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">
-    The final round of group stage is here. Every match decides who survives to the knockouts — and your picks lock at each kickoff.
+    The knockouts are here. One loss and you're out — and so are your picks if you don't lock them in.
+  </p>
+  <p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">
+    <strong style="color:#FBBF24;">New this round:</strong> pick an <strong>anytime goalscorer</strong> for each match. Nail it and rack up bonus points on top of your winner.
   </p>
 
   <div style="background:#0F1C4D;border:1px solid #1E3A6E;border-radius:0.875rem;padding:1.25rem;margin:1.5rem 0 1rem;">
     <p style="margin:0 0 0.5rem;color:#8899CC;font-size:0.8rem;letter-spacing:0.05em;">FIRST MATCH</p>
     <p style="margin:0 0 0.75rem;font-size:1.05rem;font-weight:700;color:#FBBF24;">${FIRST_KICK_STR}</p>
-    <p style="margin:0;color:#8899CC;font-size:0.85rem;">Last R3 kickoff: ${LAST_KICK_STR}</p>
+    <p style="margin:0;color:#8899CC;font-size:0.85rem;">Last R16 kickoff: ${LAST_KICK_STR}</p>
   </div>
 
   <div style="background:rgba(0,230,118,0.08);border:1px solid rgba(0,230,118,0.25);border-radius:0.75rem;padding:0.875rem 1rem;margin:0 0 1.25rem;">
     <p style="margin:0;color:#A8E6C5;font-size:0.85rem;line-height:1.5;">
-      <strong style="color:#00E676;">Reading this late?</strong> No problem — you can still make picks for any R3 match that hasn't kicked off yet. Only matches already started or finished are locked.
+      <strong style="color:#00E676;">Reading this late?</strong> No problem — you can still make picks for any R16 match that hasn't kicked off yet. Only matches already started or finished are locked.
     </p>
   </div>
 
-  <a href="https://wc26.total90.com/predictor/round/group_r3" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:1rem;border-radius:0.875rem;text-decoration:none;margin:0 0 1rem;">
-    Set My R3 Picks →
+  <a href="https://wc26.total90.com/predictor/round/r16" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:1rem;border-radius:0.875rem;text-decoration:none;margin:0 0 1rem;">
+    Set My R16 Picks →
   </a>
 
   <p style="text-align:center;color:#8899CC;font-size:0.85rem;margin:0 0 0.5rem;">
@@ -217,7 +220,7 @@ const transport = nodemailer.createTransport({
 await transport.verify()
 console.log('SMTP transport verified ✓')
 
-const SUBJECT = 'Round 3 is here — set your picks before kickoff ⚽'
+const SUBJECT = 'Round 5 is here — pick your Round of 16 winners + goalscorers ⚽'
 const FROM = smtp.from || `Total90 <${smtp.smtp_user}>`
 const EMAIL_TYPE = `round_reminder:${ROUND}`
 
