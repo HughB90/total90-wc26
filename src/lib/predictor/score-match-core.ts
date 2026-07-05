@@ -147,6 +147,18 @@ function emptyBuckets(): RoundBuckets {
 
 // ---------------------------------------------------------------------------
 // goalscorers jsonb shape parser
+//
+// Handles both legacy shapes (`player_id` / `id` / `playerId`) and the
+// canonical Opta shape written by wc26-fixtures-sync.ts:
+//   { scorer_id, scorer_name, contestant_id, minute, period_id, type,
+//     home_score, away_score }
+//
+// Excludes:
+//   - shootout goals (period_id === 5)
+//   - own goals (type === 'OG') — don't count for anytime scorer
+//
+// Returns raw opta scorer ids (strings). Callers must map these to
+// internal predictor player uuids before comparing against picks.
 // ---------------------------------------------------------------------------
 function parseGoalscorers(raw: unknown): string[] {
   if (!Array.isArray(raw)) {
@@ -159,19 +171,64 @@ function parseGoalscorers(raw: unknown): string[] {
   for (const entry of raw) {
     if (typeof entry === 'string') {
       ids.push(entry)
-    } else if (entry && typeof entry === 'object') {
-      const obj = entry as Record<string, unknown>
-      const candidate = obj.player_id ?? obj.id ?? obj.playerId
-      if (typeof candidate === 'string') {
-        ids.push(candidate)
-      } else {
-        console.warn('[score-match] unrecognized goalscorers entry shape:', Object.keys(obj))
-      }
-    } else {
+      continue
+    }
+    if (!entry || typeof entry !== 'object') {
       console.warn('[score-match] unrecognized goalscorers entry type:', typeof entry)
+      continue
+    }
+    const obj = entry as Record<string, unknown>
+
+    // Filter: shootout period.
+    if (obj.period_id === 5 || obj.period_id === '5') {
+      continue
+    }
+    // Filter: own goals.
+    if (typeof obj.type === 'string' && obj.type.toUpperCase() === 'OG') {
+      continue
+    }
+
+    const candidate =
+      obj.scorer_id ?? obj.player_id ?? obj.id ?? obj.playerId
+    if (typeof candidate === 'string') {
+      ids.push(candidate)
+    } else {
+      console.warn('[score-match] unrecognized goalscorers entry shape:', Object.keys(obj))
     }
   }
   return ids
+}
+
+// ---------------------------------------------------------------------------
+// Map raw opta scorer ids → internal predictor player uuids.
+//
+// The `predictor_matches.goalscorers` jsonb stores Opta's `scorerId`
+// (e.g. "5e9ilgrz3tzg9kd1gk3yvrahh"), but user picks store our internal
+// s3_players.id UUID (`goalscorer_player_id`). Without translation,
+// no pick will ever match.
+//
+// Unmapped opta ids are kept as-is (defensive) so legacy string entries
+// that already are UUIDs continue to work.
+// ---------------------------------------------------------------------------
+async function optaIdsToInternalIds(
+  sb: SupabaseClient,
+  optaIds: string[],
+): Promise<string[]> {
+  if (optaIds.length === 0) return []
+  const { data, error } = await sb
+    .from('s3_players')
+    .select('id, opta_id')
+    .in('opta_id', optaIds)
+  if (error) {
+    console.warn('[score-match] opta→internal lookup failed:', error.message)
+    return optaIds
+  }
+  const map = new Map<string, string>()
+  for (const row of data ?? []) {
+    const r = row as { id: string; opta_id: string | null }
+    if (r.opta_id) map.set(r.opta_id, r.id)
+  }
+  return optaIds.map((oid) => map.get(oid) ?? oid)
 }
 
 // ---------------------------------------------------------------------------
@@ -231,10 +288,12 @@ export async function scoreMatchById(
     }
   }
 
-  const scorerIds = parseGoalscorers(match.goalscorers)
+  const rawScorerIds = parseGoalscorers(match.goalscorers)
+  const scorerIds = await optaIdsToInternalIds(sb, rawScorerIds)
   console.log(
     `[score-match] match loaded round=${match.round_code} score=${match.home_score}-${match.away_score} ` +
-      `went_to_pks=${match.went_to_pks ?? false} pk_winner=${match.pk_winner_team_code} scorers=${scorerIds.length}`,
+      `went_to_pks=${match.went_to_pks ?? false} pk_winner=${match.pk_winner_team_code} ` +
+      `scorers=${scorerIds.length} (opta:${rawScorerIds.length})`,
   )
 
   // -- Load picks ----------------------------------------------------------
