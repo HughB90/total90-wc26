@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getProfileSession } from '@/lib/predictor-session'
 import { predictorAdmin } from '@/lib/predictor-db'
+import { resolveTeamAliases } from '@/lib/predictor/team-aliases'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,7 +84,15 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Validate player + nationality match
+  // Validate player + nationality match.
+  //
+  // s3_players has BOTH nationality variants for some teams (e.g. USA vs
+  // "United States", Bosnia and Herzegovina vs Bosnia-Herzegovina, Iran vs
+  // IR Iran) because we've imported from multiple sources over time. The
+  // players endpoint already dedupes-by-alias, so a user can legitimately
+  // pick a player row whose raw nationality string differs from the match's
+  // team_code string. Accept the pick if the player's nationality resolves
+  // into the same alias group as the match's team_code.
   const { data: player, error: playerErr } = await sb
     .from('s3_players')
     .select('id, nationality, short_name, name')
@@ -91,10 +100,12 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (playerErr) return NextResponse.json({ error: playerErr.message }, { status: 500 })
   if (!player) return badRequest('player_not_found', { player_id: playerId })
-  if (player.nationality !== teamCode) {
+  const teamAliases = new Set(resolveTeamAliases(teamCode))
+  if (!player.nationality || !teamAliases.has(player.nationality)) {
     return badRequest('player_nationality_mismatch', {
       player_nationality: player.nationality,
       team_code: teamCode,
+      allowed_aliases: [...teamAliases],
     })
   }
 
