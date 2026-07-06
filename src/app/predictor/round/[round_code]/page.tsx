@@ -528,6 +528,7 @@ export default function RoundPicksPage({
                 pick.away !== ''
               }
               clearing={clearing.has(mt.id)}
+              scorelinePersisted={persistedIds.has(mt.id)}
               onChange={(patch) => setPick(mt.id, patch)}
               onClear={() => clearPick(mt.id)}
               onGoalscorerSaved={(g) => setPick(mt.id, { ...g, dirty: false })}
@@ -607,7 +608,7 @@ export default function RoundPicksPage({
 
 function MatchCard({
   match, pick, score, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick,
-  clearable = false, clearing = false, onChange, onClear, onGoalscorerSaved,
+  clearable = false, clearing = false, scorelinePersisted = false, onChange, onClear, onGoalscorerSaved,
 }: {
   match: PredictorMatch
   pick: PickState
@@ -620,6 +621,8 @@ function MatchCard({
   drawNeedsPick: boolean
   clearable?: boolean
   clearing?: boolean
+  /** True once the user has actually submitted a scoreline for this match. */
+  scorelinePersisted?: boolean
   onChange: (patch: Partial<PickState>) => void
   onClear?: () => void
   onGoalscorerSaved: (g: Partial<PickState>) => void
@@ -762,6 +765,7 @@ function MatchCard({
           pick={pick}
           locked={locked}
           isKnockout={isKnockout}
+          scorelinePersisted={scorelinePersisted}
           onSaved={onGoalscorerSaved}
         />
       )}
@@ -770,13 +774,19 @@ function MatchCard({
 }
 
 function GoalscorerSection({
-  match, pick, locked, isKnockout, onSaved,
+  match, pick, locked, isKnockout, scorelinePersisted, onSaved,
 }: {
   match: PredictorMatch
   pick: PickState
   locked: boolean
   /** When true, the player picker hard-filters to players with logged minutes. */
   isKnockout: boolean
+  /**
+   * True once the user has actually submitted a scoreline pick for this
+   * match. Goalscorer saves are blocked until this is true — the API
+   * enforces the same rule (returns 409 scoreline_required otherwise).
+   */
+  scorelinePersisted: boolean
   onSaved: (g: Partial<PickState>) => void
 }) {
   const saved = Boolean(pick.goalscorer_player_id && pick.goalscorer_team_code)
@@ -829,7 +839,7 @@ function GoalscorerSection({
     }
   }, [players, selPlayer])
 
-  const canSave = !locked && !busy && Boolean(selTeam && selPlayer) && (
+  const canSave = !locked && !busy && scorelinePersisted && Boolean(selTeam && selPlayer) && (
     selPlayer !== pick.goalscorer_player_id || selTeam !== pick.goalscorer_team_code
   )
 
@@ -852,6 +862,8 @@ function GoalscorerSection({
         setErr('Sign in to save your goalscorer pick.')
       } else if (r.status === 403) {
         setErr('Round is locked.')
+      } else if (r.status === 409 && j?.error === 'scoreline_required') {
+        setErr('Submit your score prediction first, then set your goalscorer.')
       } else if (!r.ok) {
         setErr(j?.error || 'Save failed.')
       } else {
@@ -886,6 +898,20 @@ function GoalscorerSection({
       <div style={{ color: C.muted, fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
         Anytime Goalscorer
       </div>
+      {!locked && !scorelinePersisted && (
+        <div style={{
+          fontSize: '0.72rem',
+          color: '#FBBF24',
+          background: 'rgba(251,191,36,0.08)',
+          border: '1px solid rgba(251,191,36,0.3)',
+          borderRadius: '0.4rem',
+          padding: '0.35rem 0.55rem',
+          marginBottom: '0.4rem',
+          lineHeight: 1.4,
+        }}>
+          Pick your score above and hit <strong>Submit</strong> first — then you can lock in a goalscorer.
+        </div>
+      )}
       {!open && saved && (
         <button
           type="button"
