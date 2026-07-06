@@ -98,7 +98,11 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Try update first (preserves existing scoreline pick); if no row, insert.
+  // Update-only. The goalscorer route MUST NOT create a placeholder row
+  // with home_score=0, away_score=0 — that misled users into thinking they
+  // had submitted a scoreline pick when they hadn't. If the user hasn't
+  // saved a scoreline yet for this match, return 409 so the UI can prompt
+  // them to pick a winner first.
   const { data: updated, error: updErr } = await sb
     .from('predictor_picks')
     .update({
@@ -111,35 +115,21 @@ export async function POST(req: NextRequest) {
 
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
-  if (updated && updated.length > 0) {
-    return NextResponse.json({
-      match_id: matchId,
-      goalscorer_player_id: playerId,
-      goalscorer_team_code: teamCode,
-      created: false,
-    })
+  if (!updated || updated.length === 0) {
+    return NextResponse.json(
+      {
+        error: 'scoreline_required',
+        detail: 'Submit a score prediction for this match before saving a goalscorer.',
+        match_id: matchId,
+      },
+      { status: 409 }
+    )
   }
-
-  // No scoreline pick yet — insert a placeholder row carrying only the goalscorer.
-  // home/away score default to 0/0; the user's scoreline submission will upsert
-  // over this row via the unique (profile_id, match_id) constraint.
-  const { error: insErr } = await sb
-    .from('predictor_picks')
-    .insert({
-      profile_id: session.profile_id,
-      match_id: matchId,
-      home_score: 0,
-      away_score: 0,
-      goalscorer_player_id: playerId,
-      goalscorer_team_code: teamCode,
-    })
-
-  if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
 
   return NextResponse.json({
     match_id: matchId,
     goalscorer_player_id: playerId,
     goalscorer_team_code: teamCode,
-    created: true,
+    created: false,
   })
 }
