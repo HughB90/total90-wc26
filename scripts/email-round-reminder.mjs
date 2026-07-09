@@ -139,40 +139,69 @@ console.log(`Last kickoff:  ${fmt(lastKickoff)}`)
 const FIRST_KICK_STR = fmt(firstKickoff)
 const LAST_KICK_STR = fmt(lastKickoff)
 
+// Round-specific copy.
+const ROUND_COPY = {
+  group_r1: { headline: 'Round 1 starts today ⚽',  subhead: 'Group Stage · Matchday 1',                 lastLabel: 'Last MD1 kickoff',   button: 'Set My Round 1 Picks →', shortName: 'Round 1' },
+  group_r2: { headline: 'Round 2 starts today ⚽',  subhead: 'Group Stage · Matchday 2',                 lastLabel: 'Last MD2 kickoff',   button: 'Set My Round 2 Picks →', shortName: 'Round 2' },
+  group_r3: { headline: 'Round 3 starts today ⚽',  subhead: 'Group Stage · Matchday 3',                 lastLabel: 'Last MD3 kickoff',   button: 'Set My Round 3 Picks →', shortName: 'Round 3' },
+  r32:      { headline: 'Round 4 starts today ⚽',  subhead: 'Round of 32 · Knockouts begin',            lastLabel: 'Last R32 kickoff',   button: 'Set My R32 Picks →',     shortName: 'R32' },
+  r16:      { headline: 'Round 5 starts today ⚽',  subhead: 'Round of 16 · Knockouts begin',            lastLabel: 'Last R16 kickoff',   button: 'Set My R16 Picks →',     shortName: 'R16' },
+  qf:       { headline: 'Round 6 starts today ⚽',  subhead: 'Quarter-Finals · Eight left, four to go',  lastLabel: 'Last QF kickoff',    button: 'Set My QF Picks →',      shortName: 'QF' },
+  sf:       { headline: 'Round 7 starts today ⚽',  subhead: 'Semi-Finals · One step from the final',    lastLabel: 'Last SF kickoff',    button: 'Set My SF Picks →',      shortName: 'SF' },
+  final:    { headline: 'The Final is here 🏆',     subhead: 'World Cup Final · Last picks of the run',  lastLabel: 'Kickoff',            button: 'Set My Final Pick →',    shortName: 'Final' },
+}
+const COPY = ROUND_COPY[ROUND] ?? { headline: `${ROUND_LABEL} starts today ⚽`, subhead: ROUND_LABEL, lastLabel: 'Last kickoff', button: `Set My ${ROUND_LABEL} Picks →`, shortName: ROUND_LABEL }
+const URL_SLUG = ROUND
+const IS_KNOCKOUT_FIRST = ROUND === 'r32' // "new this round: goalscorer" only fires when goalscorer picking is first introduced
+
 function buildHtml({ unsubToken, firstName }) {
   const greeting = firstName ? `Hey ${firstName},` : 'Hey,'
   const unsubBase = 'https://wc26.total90.com/account/unsubscribe'
   const unsubTypeUrl = `${unsubBase}?t=${unsubToken}&type=round_reminders`
   const unsubAllUrl = `${unsubBase}?t=${unsubToken}&all=1`
+
+  // Round-varying body blocks.
+  const INTRO_BY_ROUND = {
+    r32: "The knockouts are here. One loss and you're out — and so are your picks if you don't lock them in.",
+    r16: "The knockouts are here. One loss and you're out — and so are your picks if you don't lock them in.",
+    qf:  "Down to eight. Four matches, four survivors — lock in your picks before the first kickoff.",
+    sf:  "Down to four. Two matches decide who plays for the trophy. Don't blink.",
+    final: "This is it. One match. One winner. Lock your final pick.",
+  }
+  const introText = INTRO_BY_ROUND[ROUND] || 'A new matchday drops today. Lock in your picks before kickoff.'
+  const knockoutIntro = `<p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">${introText}</p>`
+
+  const goalscorerCallout = IS_KNOCKOUT_FIRST
+    ? `<p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;"><strong style="color:#FBBF24;">New this round:</strong> pick an <strong>anytime goalscorer</strong> for each match. Nail it and rack up bonus points on top of your winner.</p>`
+    : (ROUND === 'r16' || ROUND === 'qf' || ROUND === 'sf' || ROUND === 'final')
+    ? `<p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;"><strong style="color:#FBBF24;">Reminder:</strong> pick an <strong>anytime goalscorer</strong> for each match. Bonus points stack on top of your winner.</p>`
+    : ''
+
   const raw = `
 <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;background:#0A0F2E;color:#F0F4FF;padding:2rem 1.5rem;border-radius:1rem;">
   <img src="https://wc26.total90.com/total90-logo-green.png" alt="Total90" style="width:48px;height:48px;display:block;margin:0 auto 1rem;" />
 
-  <h1 style="color:#FBBF24;text-align:center;font-size:1.5rem;margin:0 0 0.25rem;">Round 5 starts today ⚽</h1>
-  <p style="text-align:center;color:#8899CC;margin:0 0 1.75rem;font-size:0.9rem;">Round of 16 · Knockouts begin</p>
+  <h1 style="color:#FBBF24;text-align:center;font-size:1.5rem;margin:0 0 0.25rem;">${COPY.headline}</h1>
+  <p style="text-align:center;color:#8899CC;margin:0 0 1.75rem;font-size:0.9rem;">${COPY.subhead}</p>
 
   <p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">${greeting}</p>
-  <p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">
-    The knockouts are here. One loss and you're out — and so are your picks if you don't lock them in.
-  </p>
-  <p style="margin:0 0 1rem;font-size:1rem;line-height:1.5;">
-    <strong style="color:#FBBF24;">New this round:</strong> pick an <strong>anytime goalscorer</strong> for each match. Nail it and rack up bonus points on top of your winner.
-  </p>
+  ${knockoutIntro}
+  ${goalscorerCallout}
 
   <div style="background:#0F1C4D;border:1px solid #1E3A6E;border-radius:0.875rem;padding:1.25rem;margin:1.5rem 0 1rem;">
     <p style="margin:0 0 0.5rem;color:#8899CC;font-size:0.8rem;letter-spacing:0.05em;">FIRST MATCH</p>
     <p style="margin:0 0 0.75rem;font-size:1.05rem;font-weight:700;color:#FBBF24;">${FIRST_KICK_STR}</p>
-    <p style="margin:0;color:#8899CC;font-size:0.85rem;">Last R16 kickoff: ${LAST_KICK_STR}</p>
+    <p style="margin:0;color:#8899CC;font-size:0.85rem;">${COPY.lastLabel}: ${LAST_KICK_STR}</p>
   </div>
 
   <div style="background:rgba(0,230,118,0.08);border:1px solid rgba(0,230,118,0.25);border-radius:0.75rem;padding:0.875rem 1rem;margin:0 0 1.25rem;">
     <p style="margin:0;color:#A8E6C5;font-size:0.85rem;line-height:1.5;">
-      <strong style="color:#00E676;">Reading this late?</strong> No problem — you can still make picks for any R16 match that hasn't kicked off yet. Only matches already started or finished are locked.
+      <strong style="color:#00E676;">Reading this late?</strong> No problem — you can still make picks for any ${COPY.shortName} match that hasn't kicked off yet. Only matches already started or finished are locked.
     </p>
   </div>
 
-  <a href="https://wc26.total90.com/predictor/round/r16" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:1rem;border-radius:0.875rem;text-decoration:none;margin:0 0 1rem;">
-    Set My R16 Picks →
+  <a href="https://wc26.total90.com/predictor/round/${URL_SLUG}" style="display:block;background:#FBBF24;color:#0A0F2E;text-align:center;font-weight:800;font-size:1rem;padding:1rem;border-radius:0.875rem;text-decoration:none;margin:0 0 1rem;">
+    ${COPY.button}
   </a>
 
   <p style="text-align:center;color:#8899CC;font-size:0.85rem;margin:0 0 0.5rem;">
@@ -220,7 +249,17 @@ const transport = nodemailer.createTransport({
 await transport.verify()
 console.log('SMTP transport verified ✓')
 
-const SUBJECT = 'Round 5 is here — pick your Round of 16 winners + goalscorers ⚽'
+const ROUND_SUBJECTS = {
+  group_r1: 'Round 1 is here — pick your Matchday 1 winners ⚽',
+  group_r2: 'Round 2 is here — pick your Matchday 2 winners ⚽',
+  group_r3: 'Round 3 is here — pick your Matchday 3 winners ⚽',
+  r32:      'Round 4 is here — pick your R32 winners + goalscorers ⚽',
+  r16:      'Round 5 is here — pick your Round of 16 winners + goalscorers ⚽',
+  qf:       'Round 6 is here — pick your Quarter-Final winners + goalscorers ⚽',
+  sf:       'Round 7 is here — pick your Semi-Final winners + goalscorers ⚽',
+  final:    'The Final is here — lock your pick for the World Cup 🏆',
+}
+const SUBJECT = ROUND_SUBJECTS[ROUND] ?? `${ROUND_LABEL} is here — lock your picks ⚽`
 const FROM = smtp.from || `Total90 <${smtp.smtp_user}>`
 const EMAIL_TYPE = `round_reminder:${ROUND}`
 
