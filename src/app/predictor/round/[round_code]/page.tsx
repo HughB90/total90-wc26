@@ -120,7 +120,17 @@ interface PickState {
   goalscorer_player_id: string | null
   goalscorer_team_code: string | null
   goalscorer_player: GoalscorerPlayer | null
+  // Scoreline / winner / star / if_draw_winner changes not yet POSTed.
   dirty: boolean
+  // Goalscorer selection differs from the server-persisted value for this
+  // match. Flushed by the single "Submit Round" button in the parent.
+  goalscorer_dirty: boolean
+}
+
+interface PersistedGoalscorer {
+  team_code: string
+  player_id: string
+  player: GoalscorerPlayer | null
 }
 
 export default function RoundPicksPage({
@@ -142,6 +152,11 @@ export default function RoundPicksPage({
   // on initial fetch and after every successful save/clear. Drives whether
   // "clear" hits the DELETE endpoint or is a local-only state wipe.
   const [persistedIds, setPersistedIds] = useState<Set<string>>(new Set())
+  // Snapshot of the server-persisted goalscorer per match. Keyed by match.id.
+  // Present only when the user has a saved goalscorer server-side. Used to
+  // (a) detect goalscorer dirtiness by comparing to current pick state, and
+  // (b) let "Cancel" in the picker revert to the last persisted value.
+  const [persistedGoalscorers, setPersistedGoalscorers] = useState<Record<string, PersistedGoalscorer>>({})
   const [clearing, setClearing] = useState<Set<string>>(new Set())
   // Per-match score breakdown for this profile. Populated only for matches
   // that have been scored by /api/predictor/score-match (status='final' +
@@ -171,6 +186,7 @@ export default function RoundPicksPage({
         setLocked(Boolean(j.locked))
         setScores((j.my_scores || {}) as Record<string, ScoreBreakdown>)
         const initial: Record<string, PickState> = {}
+        const initialGoalscorers: Record<string, PersistedGoalscorer> = {}
         for (const p of j.my_picks || []) {
           initial[p.match_id] = {
             home: String(p.home_score),
@@ -181,10 +197,19 @@ export default function RoundPicksPage({
             goalscorer_team_code: p.goalscorer_team_code ?? null,
             goalscorer_player: p.goalscorer_player ?? null,
             dirty: false,
+            goalscorer_dirty: false,
+          }
+          if (p.goalscorer_player_id && p.goalscorer_team_code) {
+            initialGoalscorers[p.match_id] = {
+              team_code: p.goalscorer_team_code,
+              player_id: p.goalscorer_player_id,
+              player: p.goalscorer_player ?? null,
+            }
           }
         }
         setPicks(initial)
         setPersistedIds(new Set((j.my_picks || []).map((p: { match_id: string }) => p.match_id)))
+        setPersistedGoalscorers(initialGoalscorers)
       } catch { /* */ }
     })()
     return () => { cancelled = true }
@@ -225,6 +250,28 @@ export default function RoundPicksPage({
     () => submittablePicks.filter(([, p]) => p.dirty),
     [submittablePicks]
   )
+  // Dirty goalscorer picks: match must be unlocked, must have both a team
+  // and a player selected (partial in-progress selections don't get POSTed),
+  // and the selection must differ from the server-persisted value.
+  // Reads from `picks` directly (not `submittablePicks`) because a
+  // goalscorer edit can exist even on a match with no scoreline changes.
+  const dirtyGoalscorerPicks = useMemo(
+    () => Object.entries(picks).filter(([mid, p]) =>
+      !matchLockedById[mid] &&
+      p.goalscorer_dirty &&
+      Boolean(p.goalscorer_player_id && p.goalscorer_team_code)
+    ),
+    [picks, matchLockedById]
+  )
+  // Union of match IDs with any pending change (scoreline OR goalscorer).
+  // Used for the bottom-bar summary count. Dedup so a single match with
+  // both a scoreline edit AND a goalscorer edit only counts once.
+  const dirtyMatchIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const [mid] of dirtyPicks) set.add(mid)
+    for (const [mid] of dirtyGoalscorerPicks) set.add(mid)
+    return set
+  }, [dirtyPicks, dirtyGoalscorerPicks])
   const starCount = filledPicks.filter(([, p]) => p.is_star).length
 
   // Validations
@@ -261,9 +308,20 @@ export default function RoundPicksPage({
   // "Round locked" = every match in the round has kicked off. Until then,
   // the user can keep editing unlocked matches.
   const fullyLocked = matches.length > 0 && matches.every((m) => matchLockedById[m.id])
-  const canSubmit = !fullyLocked && dirtyPicks.length > 0 && !tooManyGroup && !tooManyStars && !knockoutEmpty && !drawNeedsWinner
+  // Submit is enabled when EITHER a scoreline change OR a goalscorer change
+  // is pending. `knockoutEmpty` (no scoreline picks at all on knockout) is
+  // still a hard block because the scoreline POST payload can't be empty.
+  // If the user has only goalscorer changes on a knockout round but zero
+  // scorelines, that's fine — the endpoint accepts an empty picks array
+  // via the goalscorer-only path (we skip the winners POST when nothing
+  // to save there).
+  const hasPending = dirtyPicks.length > 0 || dirtyGoalscorerPicks.length > 0
+  const canSubmit = !fullyLocked && hasPending && !tooManyGroup && !tooManyStars && !knockoutEmpty && !drawNeedsWinner
 
   function setPick(matchId: string, patch: Partial<PickState>) {
+    // Scoreline / star / if_draw_winner path. Marks `dirty: true` but does
+    // NOT touch `goalscorer_dirty` — those are tracked independently and
+    // flushed by the same Submit Round button.
     setPicks((cur) => ({
       ...cur,
       [matchId]: {
@@ -274,10 +332,50 @@ export default function RoundPicksPage({
         goalscorer_player_id: cur[matchId]?.goalscorer_player_id ?? null,
         goalscorer_team_code: cur[matchId]?.goalscorer_team_code ?? null,
         goalscorer_player: cur[matchId]?.goalscorer_player ?? null,
+        goalscorer_dirty: cur[matchId]?.goalscorer_dirty ?? false,
         ...patch,
         dirty: true,
       },
     }))
+  }
+
+  /**
+   * Stage a goalscorer selection into local pick state. Does NOT hit the
+   * network — the parent's Submit Round button flushes everything at once.
+   * Pass `null` team/player to revert to "no pick" (also marked dirty so
+   * server persistence catches up on next submit).
+   */
+  function stageGoalscorer(
+    matchId: string,
+    g: { team_code: string | null; player_id: string | null; player: GoalscorerPlayer | null }
+  ) {
+    setPicks((cur) => {
+      const base = cur[matchId] ?? {
+        home: '',
+        away: '',
+        is_star: false,
+        if_draw_winner: null,
+        goalscorer_player_id: null,
+        goalscorer_team_code: null,
+        goalscorer_player: null,
+        dirty: false,
+        goalscorer_dirty: false,
+      }
+      const persisted = persistedGoalscorers[matchId] ?? null
+      const goalscorer_dirty =
+        (g.player_id ?? null) !== (persisted?.player_id ?? null) ||
+        (g.team_code ?? null) !== (persisted?.team_code ?? null)
+      return {
+        ...cur,
+        [matchId]: {
+          ...base,
+          goalscorer_player_id: g.player_id,
+          goalscorer_team_code: g.team_code,
+          goalscorer_player: g.player,
+          goalscorer_dirty,
+        },
+      }
+    })
   }
 
   async function clearPick(matchId: string) {
@@ -335,7 +433,15 @@ export default function RoundPicksPage({
   async function submit() {
     if (!canSubmit || busy) return
     setBusy(true); setMsg(null)
-    try {
+
+    // ----- Phase 1: winners / scorelines --------------------------------
+    // Skip the winners POST entirely if the user only touched goalscorers
+    // AND has zero unlocked filled picks to send. In practice the picks
+    // endpoint would just no-op on an empty array, but skipping saves a
+    // round trip and avoids a confusing "Saved 0 picks" toast.
+    const hasScorelineChanges = dirtyPicks.length > 0
+    let winnersSavedCount = 0
+    if (hasScorelineChanges) {
       // Only POST submittable (unlocked) picks. Locked matches stay
       // visible read-only but are NEVER sent to the server.
       const payload = {
@@ -348,16 +454,25 @@ export default function RoundPicksPage({
           is_star: p.is_star,
         })),
       }
-      const r = await fetch('/api/predictor/picks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      })
+      let r: Response
+      try {
+        r = await fetch('/api/predictor/picks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        })
+      } catch {
+        setMsg({ kind: 'err', text: 'Network error.' })
+        setBusy(false)
+        return
+      }
       const j = await r.json().catch(() => null)
       if (r.status === 401) {
         setMsg({ kind: 'err', text: 'Sign in to save your picks.' })
-      } else if (r.status === 403) {
+        setBusy(false); return
+      }
+      if (r.status === 403) {
         if (j?.error === 'match_locked') {
           const ids = Array.isArray(j.locked)
             ? (j.locked as Array<{ match_id?: string }>).map((x) => x.match_id).filter(Boolean).join(', ')
@@ -369,30 +484,114 @@ export default function RoundPicksPage({
           setMsg({ kind: 'err', text: 'This round is locked.' })
           setLocked(true)
         }
-      } else if (!r.ok) {
+        setBusy(false); return
+      }
+      if (!r.ok) {
         if (j?.error === 'pick_cap_exceeded') {
           setMsg({ kind: 'err', text: `Pick cap: ${j.current}/16 already saved. Drop existing picks before adding new ones.` })
         } else {
           setMsg({ kind: 'err', text: j?.error || 'Save failed.' })
         }
-      } else {
-        // mark all as not-dirty
-        setPicks((cur) => Object.fromEntries(Object.entries(cur).map(
-          ([k, v]) => [k, { ...v, dirty: false }]
-        )))
-        // Anything we just submitted is now persisted server-side.
-        setPersistedIds((cur) => {
-          const next = new Set(cur)
-          for (const [mid] of submittablePicks) next.add(mid)
-          return next
-        })
-        setMsg({ kind: 'ok', text: `Saved ${j.saved_count} pick${j.saved_count === 1 ? '' : 's'}.` })
+        setBusy(false); return
       }
-    } catch {
-      setMsg({ kind: 'err', text: 'Network error.' })
-    } finally {
-      setBusy(false)
+      // Winners OK. Mark scoreline-side dirty flags clean and remember
+      // that these matches now have persisted rows (so goalscorer POSTs
+      // in Phase 2 won't hit the scoreline_required 409).
+      winnersSavedCount = typeof j?.saved_count === 'number' ? j.saved_count : submittablePicks.length
+      setPicks((cur) => Object.fromEntries(Object.entries(cur).map(
+        ([k, v]) => [k, { ...v, dirty: false }]
+      )))
+      setPersistedIds((cur) => {
+        const next = new Set(cur)
+        for (const [mid] of submittablePicks) next.add(mid)
+        return next
+      })
     }
+
+    // ----- Phase 2: goalscorers (sequential) ----------------------------
+    // Serial POSTs — max 4 goalscorer rounds per round (QF/SF/Final) so
+    // fanout would be tiny anyway, and Supabase / Vercel free tier can
+    // hiccup under parallel bursts. Track partial success so we surface
+    // exactly which match failed.
+    const goalscorerJobs: Array<[string, PickState]> = dirtyGoalscorerPicks
+    let goalscorersSavedCount = 0
+    const failedGoalscorers: Array<{ match_id: string; label: string; error: string }> = []
+    for (const [matchId, p] of goalscorerJobs) {
+      if (!p.goalscorer_player_id || !p.goalscorer_team_code) continue
+      let r: Response
+      try {
+        r = await fetch('/api/predictor/picks/goalscorer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            match_id: matchId,
+            team_code: p.goalscorer_team_code,
+            player_id: p.goalscorer_player_id,
+          }),
+        })
+      } catch {
+        const mt = matches.find((m) => m.id === matchId)
+        failedGoalscorers.push({
+          match_id: matchId,
+          label: mt ? `${mt.home_team_code} vs ${mt.away_team_code}` : matchId,
+          error: 'network',
+        })
+        continue
+      }
+      const jg = await r.json().catch(() => null)
+      if (!r.ok) {
+        const mt = matches.find((m) => m.id === matchId)
+        const errText = r.status === 409 && jg?.error === 'scoreline_required'
+          ? 'submit scoreline first'
+          : (jg?.error || `HTTP ${r.status}`)
+        failedGoalscorers.push({
+          match_id: matchId,
+          label: mt ? `${mt.home_team_code} vs ${mt.away_team_code}` : matchId,
+          error: errText,
+        })
+        continue
+      }
+      goalscorersSavedCount++
+      // Clear this goalscorer's dirty flag + snapshot the new persisted value.
+      const savedTeam = p.goalscorer_team_code
+      const savedPlayerId = p.goalscorer_player_id
+      const savedPlayer = p.goalscorer_player
+      setPicks((cur) => {
+        const row = cur[matchId]
+        if (!row) return cur
+        return { ...cur, [matchId]: { ...row, goalscorer_dirty: false } }
+      })
+      setPersistedGoalscorers((cur) => ({
+        ...cur,
+        [matchId]: { team_code: savedTeam, player_id: savedPlayerId, player: savedPlayer },
+      }))
+    }
+
+    // ----- Phase 3: final user-facing message ---------------------------
+    if (failedGoalscorers.length > 0) {
+      const details = failedGoalscorers.map((f) => `${f.label} (${f.error})`).join(', ')
+      const winnerBit = hasScorelineChanges
+        ? `Saved ${winnersSavedCount} pick${winnersSavedCount === 1 ? '' : 's'}, but `
+        : ''
+      setMsg({
+        kind: 'err',
+        text: `${winnerBit}goalscorer save failed for ${details} — retry.`,
+      })
+    } else {
+      const parts: string[] = []
+      if (hasScorelineChanges) {
+        parts.push(`${winnersSavedCount} pick${winnersSavedCount === 1 ? '' : 's'}`)
+      }
+      if (goalscorersSavedCount > 0) {
+        parts.push(`${goalscorersSavedCount} goalscorer${goalscorersSavedCount === 1 ? '' : 's'}`)
+      }
+      setMsg({
+        kind: 'ok',
+        text: parts.length ? `Saved ${parts.join(' + ')}.` : 'Nothing to save.',
+      })
+    }
+    setBusy(false)
   }
 
   return (
@@ -500,6 +699,7 @@ export default function RoundPicksPage({
             goalscorer_team_code: null,
             goalscorer_player: null,
             dirty: false,
+            goalscorer_dirty: false,
           }
           const isDraw = pick.home !== '' && pick.home === pick.away
           const drawNeedsPick = isKnockout && isDraw && !pick.if_draw_winner
@@ -528,10 +728,10 @@ export default function RoundPicksPage({
                 pick.away !== ''
               }
               clearing={clearing.has(mt.id)}
-              scorelinePersisted={persistedIds.has(mt.id)}
+              persistedGoalscorer={persistedGoalscorers[mt.id] ?? null}
               onChange={(patch) => setPick(mt.id, patch)}
               onClear={() => clearPick(mt.id)}
-              onGoalscorerSaved={(g) => setPick(mt.id, { ...g, dirty: false })}
+              onStageGoalscorer={(g) => stageGoalscorer(mt.id, g)}
             />
           )
         })}
@@ -561,9 +761,9 @@ export default function RoundPicksPage({
             {knockoutShort && <span style={{ color: C.muted }}>{filledPicks.length}/{pickableCount} picked — save what you have, add more anytime</span>}
             {knockoutEmpty && <span style={{ color: C.red }}>Pick at least one match to save</span>}
             {drawNeedsWinner && <span style={{ color: C.red }}>Choose draw advancer</span>}
-            {canSubmit && <span>Ready to submit {dirtyPicks.length} change{dirtyPicks.length === 1 ? '' : 's'}</span>}
+            {canSubmit && <span>Ready to submit {dirtyMatchIds.size} change{dirtyMatchIds.size === 1 ? '' : 's'}</span>}
             {!canSubmit && filledPicks.length === 0 && <span>No picks yet</span>}
-            {!canSubmit && filledPicks.length > 0 && dirtyPicks.length === 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner && (
+            {!canSubmit && filledPicks.length > 0 && dirtyMatchIds.size === 0 && !tooManyGroup && !tooManyStars && !knockoutShort && !drawNeedsWinner && (
               <span>No changes to save</span>
             )}
           </span>
@@ -608,7 +808,8 @@ export default function RoundPicksPage({
 
 function MatchCard({
   match, pick, score, isKnockout, hasStars, hasGoalscorer, locked, matchLocked = false, drawNeedsPick,
-  clearable = false, clearing = false, scorelinePersisted = false, onChange, onClear, onGoalscorerSaved,
+  clearable = false, clearing = false, persistedGoalscorer = null,
+  onChange, onClear, onStageGoalscorer,
 }: {
   match: PredictorMatch
   pick: PickState
@@ -621,11 +822,12 @@ function MatchCard({
   drawNeedsPick: boolean
   clearable?: boolean
   clearing?: boolean
-  /** True once the user has actually submitted a scoreline for this match. */
-  scorelinePersisted?: boolean
+  /** Server-persisted goalscorer snapshot; drives "Cancel" revert. */
+  persistedGoalscorer?: PersistedGoalscorer | null
   onChange: (patch: Partial<PickState>) => void
   onClear?: () => void
-  onGoalscorerSaved: (g: Partial<PickState>) => void
+  /** Stage a goalscorer selection into parent state (dirty; not yet POSTed). */
+  onStageGoalscorer: (g: { team_code: string | null; player_id: string | null; player: GoalscorerPlayer | null }) => void
 }) {
   const isDraw = pick.home !== '' && pick.home === pick.away
   const koDate = new Date(match.kickoff_at)
@@ -765,8 +967,8 @@ function MatchCard({
           pick={pick}
           locked={locked}
           isKnockout={isKnockout}
-          scorelinePersisted={scorelinePersisted}
-          onSaved={onGoalscorerSaved}
+          persistedGoalscorer={persistedGoalscorer}
+          onStage={onStageGoalscorer}
         />
       )}
     </div>
@@ -774,38 +976,33 @@ function MatchCard({
 }
 
 function GoalscorerSection({
-  match, pick, locked, isKnockout, scorelinePersisted, onSaved,
+  match, pick, locked, isKnockout, persistedGoalscorer, onStage,
 }: {
   match: PredictorMatch
   pick: PickState
   locked: boolean
   /** When true, the player picker hard-filters to players with logged minutes. */
   isKnockout: boolean
+  /** Last server-persisted goalscorer for this match (null if none). */
+  persistedGoalscorer: PersistedGoalscorer | null
   /**
-   * True once the user has actually submitted a scoreline pick for this
-   * match. Goalscorer saves are blocked until this is true — the API
-   * enforces the same rule (returns 409 scoreline_required otherwise).
+   * Stage a goalscorer selection into parent state. Marks the pick dirty;
+   * the parent's Submit Round button flushes to the server. Pass
+   * `{ team_code: null, player_id: null, player: null }` to clear.
    */
-  scorelinePersisted: boolean
-  onSaved: (g: Partial<PickState>) => void
+  onStage: (g: { team_code: string | null; player_id: string | null; player: GoalscorerPlayer | null }) => void
 }) {
-  const saved = Boolean(pick.goalscorer_player_id && pick.goalscorer_team_code)
+  // "Has any selection" (dirty in-progress OR persisted). The chip view
+  // shows when there's a complete selection AND we're not in edit mode.
+  const hasSelection = Boolean(pick.goalscorer_player_id && pick.goalscorer_team_code)
   const [editing, setEditing] = useState(false)
-  const open = !saved || editing
+  const open = !hasSelection || editing
 
-  const [selTeam, setSelTeam] = useState<string>(pick.goalscorer_team_code ?? '')
-  const [selPlayer, setSelPlayer] = useState<string>(pick.goalscorer_player_id ?? '')
+  const selTeam = pick.goalscorer_team_code ?? ''
+  const selPlayer = pick.goalscorer_player_id ?? ''
+
   const [players, setPlayers] = useState<GoalscorerPlayer[] | null>(null)
   const [loadingPlayers, setLoadingPlayers] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  // Sync selTeam / selPlayer if the saved pick changes from above (e.g. round
-  // page re-fetch after another save).
-  useEffect(() => {
-    setSelTeam(pick.goalscorer_team_code ?? '')
-    setSelPlayer(pick.goalscorer_player_id ?? '')
-  }, [pick.goalscorer_team_code, pick.goalscorer_player_id])
 
   // Fetch squad whenever team changes.
   useEffect(() => {
@@ -829,57 +1026,48 @@ function GoalscorerSection({
       }
     })()
     return () => { cancelled = true }
-  }, [selTeam])
+  }, [selTeam, isKnockout])
 
-  // Reset player selection if team changes and current player isn't on the new squad.
+  // If team changes and the currently-selected player isn't on the new
+  // squad, clear the player half of the selection. Done by staging a
+  // team-only update.
   useEffect(() => {
-    if (!players) return
-    if (selPlayer && !players.some((p) => p.id === selPlayer)) {
-      setSelPlayer('')
+    if (!players || !selPlayer) return
+    if (!players.some((p) => p.id === selPlayer)) {
+      onStage({ team_code: selTeam || null, player_id: null, player: null })
     }
-  }, [players, selPlayer])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players])
 
-  const canSave = !locked && !busy && scorelinePersisted && Boolean(selTeam && selPlayer) && (
-    selPlayer !== pick.goalscorer_player_id || selTeam !== pick.goalscorer_team_code
-  )
+  function pickTeam(nextTeam: string) {
+    if (locked) return
+    if (nextTeam === selTeam) return
+    // Team change wipes the player selection until the new squad loads.
+    onStage({ team_code: nextTeam || null, player_id: null, player: null })
+  }
 
-  async function save() {
-    if (!canSave) return
-    setBusy(true); setErr(null)
-    try {
-      const r = await fetch('/api/predictor/picks/goalscorer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          match_id: match.id,
-          team_code: selTeam,
-          player_id: selPlayer,
-        }),
+  function pickPlayer(nextPlayerId: string) {
+    if (locked || !selTeam) return
+    if (!nextPlayerId) {
+      onStage({ team_code: selTeam, player_id: null, player: null })
+      return
+    }
+    const found = (players ?? []).find((p) => p.id === nextPlayerId) ?? null
+    onStage({ team_code: selTeam, player_id: nextPlayerId, player: found })
+  }
+
+  function cancelEdit() {
+    // Revert to last server-persisted value (or clear if none).
+    if (persistedGoalscorer) {
+      onStage({
+        team_code: persistedGoalscorer.team_code,
+        player_id: persistedGoalscorer.player_id,
+        player: persistedGoalscorer.player,
       })
-      const j = await r.json().catch(() => null)
-      if (r.status === 401) {
-        setErr('Sign in to save your goalscorer pick.')
-      } else if (r.status === 403) {
-        setErr('Round is locked.')
-      } else if (r.status === 409 && j?.error === 'scoreline_required') {
-        setErr('Submit your score prediction first, then set your goalscorer.')
-      } else if (!r.ok) {
-        setErr(j?.error || 'Save failed.')
-      } else {
-        const found = (players ?? []).find((p) => p.id === selPlayer) ?? null
-        onSaved({
-          goalscorer_player_id: selPlayer,
-          goalscorer_team_code: selTeam,
-          goalscorer_player: found,
-        })
-        setEditing(false)
-      }
-    } catch {
-      setErr('Network error.')
-    } finally {
-      setBusy(false)
+    } else {
+      onStage({ team_code: null, player_id: null, player: null })
     }
+    setEditing(false)
   }
 
   const chipName = pick.goalscorer_player?.short_name
@@ -893,26 +1081,32 @@ function GoalscorerSection({
       padding: '0.55rem 0.7rem',
       borderRadius: '0.4rem',
       backgroundColor: 'rgba(251,191,36,0.05)',
-      border: `1px solid ${saved && !editing ? '#2a3550' : 'rgba(251,191,36,0.25)'}`,
+      border: `1px solid ${hasSelection && !editing ? '#2a3550' : 'rgba(251,191,36,0.25)'}`,
     }}>
-      <div style={{ color: C.muted, fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-        Anytime Goalscorer
+      <div style={{
+        color: C.muted,
+        fontSize: '0.7rem',
+        fontWeight: 800,
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        marginBottom: '0.4rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        flexWrap: 'wrap',
+      }}>
+        <span>Anytime Goalscorer</span>
+        {pick.goalscorer_dirty && (
+          <span style={{
+            color: C.gold,
+            fontSize: '0.65rem',
+            fontWeight: 700,
+            textTransform: 'none',
+            letterSpacing: 0,
+          }}>· unsaved</span>
+        )}
       </div>
-      {!locked && !scorelinePersisted && (
-        <div style={{
-          fontSize: '0.72rem',
-          color: '#FBBF24',
-          background: 'rgba(251,191,36,0.08)',
-          border: '1px solid rgba(251,191,36,0.3)',
-          borderRadius: '0.4rem',
-          padding: '0.35rem 0.55rem',
-          marginBottom: '0.4rem',
-          lineHeight: 1.4,
-        }}>
-          Pick your score above and hit <strong>Submit</strong> first — then you can lock in a goalscorer.
-        </div>
-      )}
-      {!open && saved && (
+      {!open && hasSelection && (
         <button
           type="button"
           onClick={() => !locked && setEditing(true)}
@@ -921,8 +1115,8 @@ function GoalscorerSection({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.4rem',
-            background: 'rgba(0,230,118,0.10)',
-            border: `1px solid ${C.green}`,
+            background: pick.goalscorer_dirty ? 'rgba(251,191,36,0.10)' : 'rgba(0,230,118,0.10)',
+            border: `1px solid ${pick.goalscorer_dirty ? C.gold : C.green}`,
             color: C.text,
             borderRadius: '999px',
             padding: '0.3rem 0.7rem',
@@ -943,7 +1137,7 @@ function GoalscorerSection({
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <select
               value={selTeam}
-              onChange={(e) => setSelTeam(e.target.value)}
+              onChange={(e) => pickTeam(e.target.value)}
               disabled={locked}
               style={{ ...selectStyle, flex: '1 1 140px', minWidth: 120 }}
               aria-label="Select team"
@@ -954,7 +1148,7 @@ function GoalscorerSection({
             </select>
             <select
               value={selPlayer}
-              onChange={(e) => setSelPlayer(e.target.value)}
+              onChange={(e) => pickPlayer(e.target.value)}
               disabled={locked || !selTeam || loadingPlayers}
               style={{ ...selectStyle, flex: '2 1 200px', minWidth: 160 }}
               aria-label="Select player"
@@ -971,32 +1165,11 @@ function GoalscorerSection({
                 return <option key={pl.id} value={pl.id}>{label}</option>
               })}
             </select>
-            <button
-              type="button"
-              onClick={save}
-              disabled={!canSave}
-              style={{
-                backgroundColor: canSave ? C.gold : '#2a3550',
-                color: canSave ? '#0A0F2E' : C.muted,
-                border: 'none',
-                borderRadius: '0.4rem',
-                padding: '0.42rem 0.85rem',
-                fontWeight: 800,
-                fontSize: '0.78rem',
-                cursor: canSave ? 'pointer' : 'default',
-              }}
-            >{busy ? 'Saving…' : 'Save'}</button>
           </div>
-          {err && <div style={{ color: C.red, fontSize: '0.72rem' }}>{err}</div>}
-          {saved && editing && (
+          {editing && (
             <button
               type="button"
-              onClick={() => {
-                setEditing(false)
-                setSelTeam(pick.goalscorer_team_code ?? '')
-                setSelPlayer(pick.goalscorer_player_id ?? '')
-                setErr(null)
-              }}
+              onClick={cancelEdit}
               style={{
                 alignSelf: 'flex-start',
                 background: 'none',
@@ -1008,6 +1181,11 @@ function GoalscorerSection({
                 textDecoration: 'underline',
               }}
             >Cancel</button>
+          )}
+          {!locked && hasSelection && !editing && pick.goalscorer_dirty && (
+            <div style={{ fontSize: '0.7rem', color: C.muted }}>
+              Hit <strong>Submit Round</strong> below to save.
+            </div>
           )}
         </div>
       )}
