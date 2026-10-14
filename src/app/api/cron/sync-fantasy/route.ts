@@ -50,15 +50,15 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 function authOk(req: NextRequest): boolean {
-  if (req.headers.get('x-vercel-cron-signature')) return true
-  const ua = req.headers.get('user-agent') ?? ''
-  if (/vercel-cron/i.test(ua)) return true
-
+  // SECURITY (2026-10-14): previously trusted the x-vercel-cron-signature header and a
+  // /vercel-cron/ User-Agent. Both are plain request headers anyone can send, so anyone could
+  // trigger paid Opta pulls. Vercel Cron sends "Authorization: Bearer <CRON_SECRET>" when the
+  // CRON_SECRET env var is set; manual calls may use x-cron-secret. Fail closed if unset.
   const expected = process.env.CRON_SECRET
   if (!expected) return false
-  const fromHeader = req.headers.get('x-cron-secret')
-  const fromQuery = new URL(req.url).searchParams.get('secret')
-  return fromHeader === expected || fromQuery === expected
+  const bearer = req.headers.get('authorization') === `Bearer ${expected}`
+  const fromHeader = req.headers.get('x-cron-secret') === expected
+  return bearer || fromHeader
 }
 
 const REQUIRED_ENV = [
