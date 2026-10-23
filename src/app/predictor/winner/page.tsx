@@ -1,14 +1,24 @@
 'use client'
 
 /**
- * /predictor/winner — pre-tournament winner pick.
- * 48-nation grid. Single-select. Sticky submit. Lock countdown banner.
+ * /predictor/winner — tournament winner pick.
+ *
+ * Three states:
+ *   1. PRE-KICKOFF (before Jun 11, 14:00 CT):
+ *      - User picks freely, can change before lock. Full +40 if correct.
+ *   2. LATE ENTRY (after Jun 11 kickoff, but before tournament finalized):
+ *      - User has no existing pick → can submit ONE TIME. Their bonus is
+ *        capped at 40 − 5*(days late, CT). Shown live before commit.
+ *      - User already has a pick → display only, no edits.
+ *      - User who picked pre-kickoff → display only ("Locked in pre-kickoff").
+ *   3. TOURNAMENT FINALIZED: read-only for everyone.
  */
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { flagUrl } from '@/lib/predictor-flags'
 import AuthHeader from '@/components/AuthHeader'
+import { computeWinnerPenalty, FULL_BONUS_PTS } from '@/lib/predictor/winner-penalty'
 
 const C = {
   bg: '#0A0F2E',
@@ -24,21 +34,27 @@ const C = {
 
 const WINNER_LOCK_ISO = '2026-06-11T19:00:00.000Z'
 
+interface SavedPick {
+  team_code: string
+  days_late: number
+  bonus_cap: number
+  penalty_pts: number
+}
+
 export default function WinnerPickPage() {
   const [teams, setTeams] = useState<string[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [savedPick, setSavedPick] = useState<string | null>(null)
+  const [savedPick, setSavedPick] = useState<SavedPick | null>(null)
   const [now, setNow] = useState(() => new Date())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
-  // Ticking clock for countdown
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(t)
   }, [])
 
-  // Load teams (from group-stage matches via /api/predictor/round/group_r1)
+  // Load teams
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -67,7 +83,12 @@ export default function WinnerPickPage() {
         if (!r.ok) return
         const j = await r.json()
         if (!cancelled && j?.pick?.team_code) {
-          setSavedPick(j.pick.team_code)
+          setSavedPick({
+            team_code: j.pick.team_code,
+            days_late: j.pick.days_late ?? 0,
+            bonus_cap: j.pick.bonus_cap ?? FULL_BONUS_PTS,
+            penalty_pts: j.pick.penalty_pts ?? 0,
+          })
           setSelected(j.pick.team_code)
         }
       } catch { /* anon */ }
@@ -75,7 +96,21 @@ export default function WinnerPickPage() {
     return () => { cancelled = true }
   }, [])
 
-  const locked = now.getTime() >= new Date(WINNER_LOCK_ISO).getTime()
+  const isPreKickoff = now.getTime() < new Date(WINNER_LOCK_ISO).getTime()
+
+  // Live penalty preview (for late-entry users without a saved pick).
+  const livePenalty = useMemo(() => computeWinnerPenalty(now), [now])
+
+  // Once a late-entry user has saved, they're locked. Pre-kickoff users
+  // can still change up until the kickoff.
+  const lockedReason: 'none' | 'pre_locked_in' | 'late_one_shot_used' | 'finalized' = (() => {
+    if (!savedPick) return 'none'
+    // Pre-kickoff users with a saved pick can still update until lock.
+    if (isPreKickoff && savedPick.days_late === 0) return 'none'
+    return 'late_one_shot_used'
+  })()
+  const locked = lockedReason !== 'none'
+
   const countdown = useMemo(
     () => formatCountdown(new Date(WINNER_LOCK_ISO).getTime() - now.getTime()),
     [now]
@@ -95,12 +130,27 @@ export default function WinnerPickPage() {
       const j = await r.json().catch(() => null)
       if (r.status === 401) {
         setMsg({ kind: 'err', text: 'Sign in to save your pick.' })
+      } else if (r.status === 403 && j?.error === 'winner_pick_already_set') {
+        setMsg({ kind: 'err', text: 'Late entry: one shot only. Your pick is locked.' })
+        if (j.pick) setSavedPick({
+          team_code: j.pick.team_code,
+          days_late: j.pick.days_late ?? 0,
+          bonus_cap: j.pick.bonus_cap ?? FULL_BONUS_PTS,
+          penalty_pts: j.pick.penalty_pts ?? 0,
+        })
+      } else if (r.status === 403 && j?.error === 'tournament_finalized') {
+        setMsg({ kind: 'err', text: 'Tournament is over — winner picks are closed.' })
       } else if (r.status === 403) {
         setMsg({ kind: 'err', text: 'Winner pick is locked.' })
       } else if (!r.ok) {
         setMsg({ kind: 'err', text: j?.error || 'Failed to save.' })
       } else {
-        setSavedPick(selected)
+        setSavedPick({
+          team_code: j.pick.team_code,
+          days_late: j.pick.days_late ?? 0,
+          bonus_cap: j.pick.bonus_cap ?? FULL_BONUS_PTS,
+          penalty_pts: j.pick.penalty_pts ?? 0,
+        })
         setMsg({ kind: 'ok', text: 'Saved.' })
       }
     } catch {
@@ -110,7 +160,7 @@ export default function WinnerPickPage() {
     }
   }
 
-  const dirty = selected && selected !== savedPick
+  const dirty = selected && selected !== savedPick?.team_code
 
   return (
     <>
@@ -128,26 +178,18 @@ export default function WinnerPickPage() {
           Pick the Tournament Winner
         </h1>
         <p style={{ color: C.muted, fontSize: '0.85rem', margin: 0 }}>
-          One team. 40 points if you nail it. Public after submission.
+          One team. Up to {FULL_BONUS_PTS} pts if you nail it.
         </p>
       </div>
 
-      {/* Lock banner */}
-      <div style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-        marginBottom: '1.25rem',
-        padding: '0.6rem 1rem',
-        borderRadius: '0.6rem',
-        backgroundColor: locked ? 'rgba(136,153,204,0.08)' : 'rgba(251,191,36,0.08)',
-        border: `1px solid ${locked ? '#2a3550' : 'rgba(251,191,36,0.3)'}`,
-        textAlign: 'center',
-      }}>
-        <span style={{ color: locked ? C.muted : C.gold, fontSize: '0.78rem', fontWeight: 700 }}>
-          {locked ? 'Pick locked' : `Locks in ${countdown} (June 11, 2:00 PM CT)`}
-        </span>
-      </div>
+      {/* Status banner — context-aware */}
+      <StatusBanner
+        isPreKickoff={isPreKickoff}
+        countdown={countdown}
+        livePenalty={livePenalty}
+        savedPick={savedPick}
+        lockedReason={lockedReason}
+      />
 
       {/* Grid */}
       {!teams && <div style={{ color: C.muted, textAlign: 'center', padding: '2rem 0' }}>Loading nations…</div>}
@@ -210,9 +252,20 @@ export default function WinnerPickPage() {
           justifyContent: 'center',
           alignItems: 'center',
           gap: '1rem',
+          flexWrap: 'wrap',
         }}>
           <span style={{ color: C.muted, fontSize: '0.8rem' }}>
-            {selected ? <>Pick: <strong style={{ color: C.text }}>{selected}</strong></> : 'No pick yet'}
+            {selected ? (
+              <>
+                Pick: <strong style={{ color: C.text }}>{selected}</strong>
+                {!isPreKickoff && !savedPick && (
+                  <span style={{ color: C.gold, marginLeft: '0.4rem' }}>
+                    · Max {livePenalty.bonusCap} pts
+                    {livePenalty.daysLate > 0 && ` (${livePenalty.daysLate} day${livePenalty.daysLate === 1 ? '' : 's'} late)`}
+                  </span>
+                )}
+              </>
+            ) : 'No pick yet'}
           </span>
           <button
             onClick={submit}
@@ -228,7 +281,7 @@ export default function WinnerPickPage() {
               cursor: dirty && !busy ? 'pointer' : 'default',
             }}
           >
-            {busy ? 'Saving…' : (savedPick ? 'Update Pick' : 'Submit Pick')}
+            {busy ? 'Saving…' : (savedPick ? 'Update Pick' : (isPreKickoff ? 'Submit Pick' : 'Lock In Pick'))}
           </button>
         </div>
       )}
@@ -250,6 +303,95 @@ export default function WinnerPickPage() {
       )}
     </main>
     </>
+  )
+}
+
+/**
+ * Top-of-page banner. Shows the right context: pre-kickoff countdown, late-entry
+ * penalty preview, or "your pick is locked at +X" once saved.
+ */
+function StatusBanner({
+  isPreKickoff, countdown, livePenalty, savedPick, lockedReason,
+}: {
+  isPreKickoff: boolean
+  countdown: string
+  livePenalty: { daysLate: number; bonusCap: number; penaltyPts: number }
+  savedPick: SavedPick | null
+  lockedReason: 'none' | 'pre_locked_in' | 'late_one_shot_used' | 'finalized'
+}) {
+  // Pre-kickoff branch
+  if (isPreKickoff) {
+    return (
+      <div style={{
+        marginBottom: '1.25rem',
+        padding: '0.75rem 1rem',
+        borderRadius: '0.6rem',
+        backgroundColor: 'rgba(251,191,36,0.08)',
+        border: '1px solid rgba(251,191,36,0.3)',
+        textAlign: 'center',
+      }}>
+        <div style={{ color: C.gold, fontSize: '0.85rem', fontWeight: 800 }}>
+          Locks in {countdown} (June 11, 2:00 PM CT) · Full +{FULL_BONUS_PTS} pts
+        </div>
+      </div>
+    )
+  }
+
+  // Post-kickoff branches
+  if (savedPick) {
+    // Locked: already used the one shot.
+    return (
+      <div style={{
+        marginBottom: '1.25rem',
+        padding: '0.85rem 1rem',
+        borderRadius: '0.6rem',
+        backgroundColor: 'rgba(0,230,118,0.08)',
+        border: '1px solid rgba(0,230,118,0.3)',
+        textAlign: 'center',
+        display: 'grid',
+        gap: '0.3rem',
+      }}>
+        <div style={{ color: C.green, fontSize: '0.85rem', fontWeight: 800 }}>
+          Your pick: {savedPick.team_code} · Max +{savedPick.bonus_cap} pts
+        </div>
+        <div style={{ color: C.muted, fontSize: '0.72rem' }}>
+          {savedPick.days_late === 0
+            ? 'Locked in pre-kickoff — full bonus.'
+            : `+${FULL_BONUS_PTS} − ${savedPick.penalty_pts} (${savedPick.days_late} day${savedPick.days_late === 1 ? '' : 's'} late) = +${savedPick.bonus_cap}`
+          }
+          {' · '}Pick is locked — late entry is one-shot.
+        </div>
+      </div>
+    )
+  }
+
+  // Late entry, no pick yet — show live preview
+  return (
+    <div style={{
+      marginBottom: '1.25rem',
+      padding: '0.85rem 1rem',
+      borderRadius: '0.6rem',
+      backgroundColor: 'rgba(248,113,113,0.06)',
+      border: '1px solid rgba(248,113,113,0.3)',
+      textAlign: 'center',
+      display: 'grid',
+      gap: '0.35rem',
+    }}>
+      <div style={{ color: C.red, fontSize: '0.85rem', fontWeight: 800 }}>
+        Late entry — one shot, no edits
+      </div>
+      <div style={{ color: C.text, fontSize: '0.78rem' }}>
+        Max bonus today: <strong style={{ color: C.gold }}>+{livePenalty.bonusCap} pts</strong>
+        {livePenalty.daysLate > 0 && (
+          <span style={{ color: C.muted }}>
+            {' '}(+{FULL_BONUS_PTS} − {livePenalty.penaltyPts} for {livePenalty.daysLate} day{livePenalty.daysLate === 1 ? '' : 's'} late)
+          </span>
+        )}
+      </div>
+      <div style={{ color: C.muted, fontSize: '0.7rem' }}>
+        −5 pts per calendar day after June 11. Once you save, your pick is locked.
+      </div>
+    </div>
   )
 }
 
