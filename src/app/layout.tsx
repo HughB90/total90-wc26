@@ -201,6 +201,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           ⚽ Get the Fantasy League App →
         </a>
+        <footer
+          data-testid="nike-disclaimer"
+          style={{ padding: '1.25rem 1rem', textAlign: 'center', color: '#6B7AA8', fontSize: '0.7rem', lineHeight: 1.5, position: 'relative' }}
+        >
+          Total90, LLC is not affiliated with, sponsored by, endorsed by, licensed by, or associated with Nike, Inc.
+        </footer>
       <Analytics />
       <SpeedInsights />
       </body>
