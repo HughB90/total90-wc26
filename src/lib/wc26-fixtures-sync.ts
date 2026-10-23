@@ -359,10 +359,24 @@ export function buildSyncUpdate(
   }
   if (md.periodId === 14) { status = 'final'; period = 'FT' }
 
-  // Scores: prefer total → ft → ht → 0/0 if live with no scores yet
+  // Scores: our predictor_matches.home_score/away_score column is the
+  // regulation+ET score BEFORE any penalty shootout. This matters because
+  // the scoring engine treats home_score/away_score as the ET-final line
+  // and uses (went_to_pks, pk_winner_team_code) separately to resolve
+  // shootout picks. If we write Opta's `total` here on a PK-decided match
+  // that field INCLUDES shootout goals — the scorer then thinks it was a
+  // decisive regulation win and every user's pick scores as if there were
+  // no shootout at all.
+  //
+  // Bug caught 2026-07-03 (Australia 1-1 Egypt, Egypt won pens): Opta
+  // returned scores.total = 3-5 (ft 1-1 + pen 2-4). We wrote 3-5, all 33
+  // users' picks scored red 0. Fix: prefer `et` (ET-final) → `ft` → `total`
+  // → `ht` (live fallback). `total` is only used when neither `et` nor
+  // `ft` is present — which should mean no PKs happened.
   const totalScores =
-    md.scores?.total ??
+    md.scores?.et ??
     md.scores?.ft ??
+    md.scores?.total ??
     (status === 'live' ? md.scores?.ht ?? { home: 0, away: 0 } : undefined)
 
   const home_score = totalScores?.home ?? null
